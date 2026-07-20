@@ -34,7 +34,31 @@ function swapLead(ch) {
   return map[ch] || ch;
 }
 
-export function buildChart(rudiment, groove, bars, ramp, lead = 'R') {
+export const ACCENT_MODES = [
+  { id: 'pattern', label: 'pattern' },   // the rudiment's own accents
+  { id: 'downbeats', label: 'pulses' },  // first note of every pulse
+  { id: 'moving', label: 'moving' },     // classic study: shifts one step per repetition
+  { id: 'none', label: 'none' },
+  { id: 'custom', label: 'custom' },     // tap notes in the editor to place accents
+];
+
+export function accentFor(rudiment, accent, noteIndex) {
+  const len = rudiment.steps.length;
+  const step = noteIndex % len;
+  switch (accent.mode) {
+    case 'none': return false;
+    case 'downbeats': return noteIndex % rudiment.sub === 0;
+    case 'moving': return step === Math.floor(noteIndex / len) % len;
+    case 'custom': return accent.custom.includes(step);
+    default: { // 'pattern'
+      const ch = rudiment.steps[step];
+      return rudiment.accentUpper ? ch === ch.toUpperCase() : false;
+    }
+  }
+}
+
+export function buildChart(rudiment, groove, bars, ramp, lead = 'R',
+  accent = { mode: 'pattern', custom: [] }) {
   const { steps, clicks, barOffsets, segments, total } = buildChartTimes({
     bpm: groove.bpm,
     meter: groove.meter,
@@ -49,7 +73,7 @@ export function buildChart(rudiment, groove, bars, ramp, lead = 'R') {
     return {
       index: i,
       stick: ch.toUpperCase(),
-      accent: rudiment.accentUpper ? ch === ch.toUpperCase() : false,
+      accent: accentFor(rudiment, accent, i),
       offset,
       state: 'coming',
       devMs: null,
@@ -64,6 +88,8 @@ export class RudimentsMode {
     this.mic = mic;
     this.running = false;
     this.lead = 'R';
+    this.accentMode = 'pattern';
+    this.customAccents = new Set();
     this.render();
     this._raf = null;
     mic.addEventListener('onset', (e) => this.onHit(e.detail));
@@ -91,6 +117,15 @@ export class RudimentsMode {
         <button id="rud-go" class="primary">Play</button>
       </div>
       <div id="rud-groove"></div>
+      <div class="accent-panel">
+        <div class="row">
+          <span class="dim">accents</span>
+          <div class="seg" id="rud-accent-modes">
+            ${ACCENT_MODES.map((m) => `<button data-am="${m.id}" class="${m.id === this.accentMode ? 'on' : ''}">${m.label}</button>`).join('')}
+          </div>
+        </div>
+        <div id="rud-accent-editor" class="accent-editor"></div>
+      </div>
       <div class="hud">
         <div class="stat"><span id="rud-combo">0</span><label>streak</label></div>
         <div class="stat"><span id="rud-acc">—</span><label>accuracy</label></div>
@@ -107,17 +142,86 @@ export class RudimentsMode {
     this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
       this.lead = this.lead === 'R' ? 'L' : 'R';
       e.target.textContent = `lead: ${this.lead}`;
+      this.renderAccentEditor();
+    });
+    this.root.querySelector('#rud-pattern').addEventListener('change', () => {
+      this.customAccents.clear();
+      this.renderAccentEditor();
+    });
+    this.root.querySelectorAll('#rud-accent-modes button').forEach((b) => {
+      b.addEventListener('click', () => this.setAccentMode(b.dataset.am));
+    });
+    this.renderAccentEditor();
+  }
+
+  currentRudiment() {
+    return RUDIMENTS.find((r) => r.id === this.root.querySelector('#rud-pattern').value);
+  }
+
+  accentValue() {
+    return { mode: this.accentMode, custom: [...this.customAccents] };
+  }
+
+  setAccentMode(mode) {
+    this.accentMode = mode;
+    if (mode === 'custom' && this.customAccents.size === 0) {
+      // seed custom from the pattern's own accents so editing starts from sense
+      const rud = this.currentRudiment();
+      for (let s = 0; s < rud.steps.length; s++) {
+        if (accentFor(rud, { mode: 'pattern', custom: [] }, s)) this.customAccents.add(s);
+      }
+    }
+    this.root.querySelectorAll('#rud-accent-modes button')
+      .forEach((b) => b.classList.toggle('on', b.dataset.am === mode));
+    this.renderAccentEditor();
+  }
+
+  // One cycle of the pattern as tappable pucks; tapping any puck switches to
+  // custom mode with that accent toggled. 'moving' previews repetition 1.
+  renderAccentEditor() {
+    const el = this.root.querySelector('#rud-accent-editor');
+    const rud = this.currentRudiment();
+    const accent = this.accentValue();
+    const pucks = [];
+    for (let s = 0; s < rud.steps.length; s++) {
+      let ch = rud.steps[s];
+      if (this.lead === 'L') ch = swapLead(ch);
+      const on = accentFor(rud, accent, s);
+      const pulseStart = s % rud.sub === 0;
+      pucks.push(`<button class="accent-puck ${on ? 'on' : ''} ${pulseStart ? 'pulse-start' : ''}"
+        data-step="${s}" aria-pressed="${on}">${ch.toUpperCase()}</button>`);
+    }
+    el.innerHTML = pucks.join('')
+      + `<span class="dim accent-note">${this.accentMode === 'moving' ? 'shifts one step each time through' : 'tap notes to place accents'}</span>`;
+    el.querySelectorAll('.accent-puck').forEach((p) => {
+      p.addEventListener('click', () => {
+        const step = +p.dataset.step;
+        if (this.accentMode !== 'custom') {
+          // adopt whatever is currently shown, then toggle the tapped step
+          this.customAccents = new Set();
+          for (let s = 0; s < rud.steps.length; s++) {
+            if (accentFor(rud, this.accentValue(), s)) this.customAccents.add(s);
+          }
+          this.accentMode = 'custom';
+          this.root.querySelectorAll('#rud-accent-modes button')
+            .forEach((b) => b.classList.toggle('on', b.dataset.am === 'custom'));
+        }
+        if (this.customAccents.has(step)) this.customAccents.delete(step);
+        else this.customAccents.add(step);
+        this.renderAccentEditor();
+      });
     });
   }
 
   toggle() {
     if (this.running) { this.stop(true); return; }
-    const rud = RUDIMENTS.find((r) => r.id === this.root.querySelector('#rud-pattern').value);
+    const rud = this.currentRudiment();
     this.rudiment = rud;
     const bars = +this.root.querySelector('#rud-bars').value;
     const rampDef = RAMPS.find((r) => r.id === this.root.querySelector('#rud-ramp').value);
     const groove = this.groove.value();
-    this.chart = buildChart(rud, groove, bars, rampDef.ramp, this.lead);
+    this.accentUsed = this.accentValue();
+    this.chart = buildChart(rud, groove, bars, rampDef.ramp, this.lead, this.accentUsed);
     this.grooveUsed = groove;
 
     // one count-in bar of plain pulses at the starting tempo, then the chart
@@ -174,7 +278,7 @@ export class RudimentsMode {
     const judge = judgeHit(dev, windows);
     best.state = judge === 'miss' ? 'miss' : `hit-${judge}`;
     best.devMs = dev;
-    this.judged.push({ note: best, judge, devMs: dev });
+    this.judged.push({ note: best, judge, devMs: dev, level: onset.level || 0 });
     if (judge === 'perfect' || judge === 'good') {
       this.combo++;
       this.bestCombo = Math.max(this.bestCombo, this.combo);
@@ -304,6 +408,30 @@ export class RudimentsMode {
       if (ss && ss.n >= 3) perStep.push(`${rud.steps[p].toUpperCase()}${p + 1}: ${ss.mean >= 0 ? '+' : ''}${ss.mean.toFixed(1)}`);
     }
 
+    // accents: did the marked notes actually speak, and does either class
+    // rush? Level is as heard by this mic position — relative, not absolute.
+    let accentLine = '';
+    const accHits = this.judged.filter((j) => j.judge !== 'miss' && j.note.accent && j.level > 0);
+    const tapHits = this.judged.filter((j) => j.judge !== 'miss' && !j.note.accent && j.level > 0);
+    if (accHits.length >= 3 && tapHits.length >= 3) {
+      const med = (arr) => {
+        const s = arr.map((j) => j.level).sort((a, b) => a - b);
+        return s[Math.floor(s.length / 2)];
+      };
+      const accMed = med(accHits);
+      const tapMed = med(tapHits);
+      const db = 20 * Math.log10(accMed / Math.max(tapMed, 1e-9));
+      const silent = accHits.filter((j) => j.level < tapMed).length;
+      const sAcc = summarize(accHits.map((j) => j.devMs));
+      const sTap = summarize(tapHits.map((j) => j.devMs));
+      accentLine = `accents: ${accHits.length} played · level ${db >= 0 ? '+' : ''}${db.toFixed(1)} dB vs taps`
+        + (silent ? ` · ${silent} did not speak (at tap level)` : '')
+        + ` · timing acc ${sAcc.mean >= 0 ? '+' : ''}${sAcc.mean.toFixed(1)}ms / taps ${sTap.mean >= 0 ? '+' : ''}${sTap.mean.toFixed(1)}ms<br>`;
+      this._accentDb = +db.toFixed(1);
+    } else {
+      this._accentDb = null;
+    }
+
     // per-tempo: where does it fall apart? (the ramp's whole point)
     const perTempo = [];
     for (const seg of this.chart.segments) {
@@ -319,6 +447,7 @@ export class RudimentsMode {
     el.innerHTML = `
       <b>${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
       mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
+      ${accentLine}
       ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}
       <span class="dim">per step (mean ms): ${perStep.join(' · ') || 'not enough hits per step'}</span><br>
       <span class="dim">negative = early. The judgement is yours; these are just the facts.</span>`;
@@ -326,7 +455,8 @@ export class RudimentsMode {
     const segs = this.chart.segments;
     store.addRun({
       kind: 'rudiment',
-      label: `${rud.name} (${this.lead}-lead)`,
+      label: `${rud.name} (${this.lead}-lead${this.accentUsed.mode !== 'pattern' ? `, ${this.accentUsed.mode} accents` : ''})`,
+      accentDb: this._accentDb,
       meter: `${this.grooveUsed.meter.label} ${this.grooveUsed.grouping}`,
       bpmStart: segs[0].bpm,
       bpmEnd: segs[segs.length - 1].bpm,

@@ -143,6 +143,18 @@ canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 .chip.small { padding: .3rem .7rem; font-size: .85rem; }
 .chip.on { background: var(--green); color: var(--bg); border-color: var(--green); font-weight: 700; }
 
+/* accent editor */
+.accent-panel { margin: 0 0 1rem; }
+.accent-editor { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-top: .5rem; }
+.accent-puck {
+  width: 46px; height: 46px; border-radius: 50%; font-weight: 800; font-size: 1rem;
+  color: var(--bg); background: var(--blue); border: 3px solid transparent;
+  touch-action: manipulation;
+}
+.accent-puck.on { background: var(--green); border-color: #fff; transform: scale(1.12); }
+.accent-puck.pulse-start { box-shadow: 0 0 0 2px var(--line); }
+.accent-note { margin-left: .5rem; }
+
 /* history */
 .hist-table { margin-top: 1rem; overflow-x: auto; }
 .hist-row {

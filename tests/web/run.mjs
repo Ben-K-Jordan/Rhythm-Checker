@@ -170,6 +170,31 @@ const meterCheck = await page.evaluate(async () => {
     if (chart.notes.length !== rud.sub * 3 * 4) why.push(`3/4 chart ${chart.notes.length}`);
     if (chart.notes[0].stick !== 'L') why.push('lead swap');
   }
+
+  { // accent modes are exact
+    const R = await import('./js/rudiments.js');
+    const singles = R.RUDIMENTS.find((r) => r.id === 'singles'); // RLRLRLRL, len 8, sub 2
+    const g = { bpm: 120, meter: M.meterById('4/4'), grouping: '4' };
+    // moving: accent shifts one step per repetition of the pattern
+    const mov = R.buildChart(singles, g, 4, null, 'R', { mode: 'moving', custom: [] });
+    const reps = 4 * 4 * singles.sub / singles.steps.length; // 4 bars of 4 pulses
+    for (let rep = 0; rep < reps; rep++) {
+      for (let s = 0; s < 8; s++) {
+        const n = mov.notes[rep * 8 + s];
+        if (n.accent !== (s === rep % 8)) { why.push(`moving accent rep${rep} step${s}`); rep = 99; break; }
+      }
+    }
+    // custom: exactly the chosen steps, on every repetition
+    const cust = R.buildChart(singles, g, 2, null, 'R', { mode: 'custom', custom: [0, 3] });
+    const bad = cust.notes.some((n) => n.accent !== [0, 3].includes(n.index % 8));
+    if (bad) why.push('custom accents');
+    // downbeats: first note of every pulse (sub=2 -> every 2nd note)
+    const down = R.buildChart(singles, g, 1, null, 'R', { mode: 'downbeats', custom: [] });
+    if (down.notes.some((n) => n.accent !== (n.index % singles.sub === 0))) why.push('downbeat accents');
+    // none: nothing accented
+    const none = R.buildChart(singles, g, 1, null, 'R', { mode: 'none', custom: [] });
+    if (none.notes.some((n) => n.accent)) why.push('none accents');
+  }
   return { ok: why.length === 0, why: why.join('; ') };
 });
 check('meter-and-ramps', meterCheck.ok, meterCheck.why);
@@ -204,6 +229,22 @@ const grooveUi = await page.evaluate(() => {
   };
 });
 check('groove-bar-ui', grooveUi.chips >= 8 && grooveUi.tap && grooveUi.lead && grooveUi.ramp);
+
+// 6a. accent editor: pucks render, tapping one switches to custom + toggles it
+const accentUi = await page.evaluate(() => {
+  const rud = document.querySelector('#mode-rudiments');
+  const pucks = rud.querySelectorAll('.accent-puck');
+  const modes = rud.querySelectorAll('#rud-accent-modes button').length;
+  if (!pucks.length || modes !== 5) return { ok: false, why: `pucks ${pucks.length} modes ${modes}` };
+  const first = pucks[0];
+  const wasOn = first.classList.contains('on');
+  first.click();
+  const after = rud.querySelectorAll('.accent-puck')[0].classList.contains('on');
+  const customOn = rud.querySelector('#rud-accent-modes button[data-am="custom"]').classList.contains('on');
+  return { ok: after === !wasOn && customOn, why: `toggle ${wasOn}->${after} custom ${customOn}` };
+});
+check('accent-editor', accentUi.ok, accentUi.why);
+await page.click('#mode-rudiments #rud-accent-modes button[data-am="pattern"]');
 await page.click('#mode-rudiments [data-meter="7/8"]');
 const groupingShown = await page.$eval('#mode-rudiments .groove-groupings', (el) => !el.classList.contains('hidden'));
 check('grouping-chips-for-odd-meter', groupingShown);

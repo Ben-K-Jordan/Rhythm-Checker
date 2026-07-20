@@ -149,10 +149,14 @@ export class OnsetDetector {
     this.lastOnset = -Infinity;
     this.block = Math.max(16, Math.round(sampleRate * 0.0029)); // ~2.9 ms
     this.slowAlpha = 0.02; // slow floor adapts over ~50 blocks (~150 ms)
+    this._pending = null;  // onset maturing its level reading
+    this._matureBlocks = Math.max(1, Math.round(0.025 / (this.block / sampleRate)));
   }
 
   // samples: Float32Array; startTime: audio-clock seconds of samples[0].
-  // Returns [{time, strength}] — possibly empty.
+  // Returns [{time, strength, level}] — possibly empty. Emission lags the hit
+  // by ~25 ms so `level` (peak block RMS of the attack, the honest loudness
+  // proxy for accent analysis) covers the whole attack, not its first 3 ms.
   feed(samples, startTime) {
     const out = [];
     for (let off = 0; off + this.block <= samples.length; off += this.block) {
@@ -165,6 +169,15 @@ export class OnsetDetector {
       }
       const fast = Math.sqrt(acc / this.block);
       const t = startTime + off / this.sampleRate;
+
+      if (this._pending) {
+        this._pending.level = Math.max(this._pending.level, fast);
+        if (--this._pending.blocksLeft <= 0) {
+          out.push({ time: this._pending.time, strength: this._pending.strength, level: this._pending.level });
+          this._pending = null;
+        }
+      }
+
       if (
         fast > this.minLevel &&
         fast > this.threshold * this.slow &&
@@ -176,7 +189,15 @@ export class OnsetDetector {
           if (Math.abs(samples[i]) >= gate) { hit = i; break; }
         }
         this.lastOnset = startTime + hit / this.sampleRate;
-        out.push({ time: this.lastOnset, strength: fast / Math.max(this.slow, 1e-6) });
+        if (this._pending) { // flush an unmatured predecessor (tight flam)
+          out.push({ time: this._pending.time, strength: this._pending.strength, level: this._pending.level });
+        }
+        this._pending = {
+          time: this.lastOnset,
+          strength: fast / Math.max(this.slow, 1e-6),
+          level: fast,
+          blocksLeft: this._matureBlocks,
+        };
         this.slow = Math.max(this.slow, fast * 0.5); // decay ≠ second onset
       } else {
         this.slow += this.slowAlpha * (fast - this.slow);
@@ -287,6 +308,26 @@ export function selftest() {
       const worst = Math.max(...found.map((o, i) => Math.abs(o.time - truth[i]) * 1000));
       check('onset-accuracy-4ms', worst < 4);
     }
+  }
+
+  { // onset level: a half-amplitude hit reports ~half the level (accents rely on this)
+    const dur = 2;
+    const s = new Float32Array(dur * sr);
+    const place = (t0, amp) => {
+      const start = Math.floor(t0 * sr);
+      for (let i = 0; i < Math.floor(0.05 * sr); i++) {
+        s[start + i] += amp * Math.exp(-i / (0.005 * sr)) * Math.sin((2 * Math.PI * 800 * i) / sr);
+      }
+    };
+    place(0.4, 0.8);
+    place(0.9, 0.4);
+    const det = new OnsetDetector(sr);
+    const found = [];
+    for (let off = 0; off + 1024 <= s.length; off += 1024) {
+      found.push(...det.feed(s.subarray(off, off + 1024), off / sr));
+    }
+    const ratio = found.length === 2 ? found[1].level / found[0].level : 0;
+    check('onset-level-ratio', found.length === 2 && ratio > 0.35 && ratio < 0.65);
   }
 
   { // judgement windows and honest summary
