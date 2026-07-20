@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,21 +72,51 @@ def save_record(record: SessionRecord, store_dir: Path | None = None) -> Path:
     return path
 
 
+_FIELD_TYPES: dict[str, Any] = {
+    "date": str, "name": str, "file": str,
+    "bpm": float, "duration_s": float, "mean_ms": float, "sd_ms": float,
+    "pct_in_pocket": float,
+    "subdivision": int, "n_hits": int,
+    "anchored": bool,
+    "drift_ms_per_min": "float?", "dense_mean_ms": "float?", "sparse_mean_ms": "float?",
+}
+
+
+def _coerce(data: dict[str, Any]) -> SessionRecord:
+    clean: dict[str, Any] = {}
+    for key, kind in _FIELD_TYPES.items():
+        value = data[key]  # KeyError -> caught by the caller, line skipped
+        if kind == "float?":
+            clean[key] = None if value is None else float(value)
+        elif kind is bool:
+            if not isinstance(value, bool):
+                raise ValueError(f"{key} must be a bool")
+            clean[key] = value
+        else:
+            clean[key] = kind(value)
+    return SessionRecord(**clean)
+
+
 def load_records(store_dir: Path | None = None) -> list[SessionRecord]:
     path = (store_dir or default_store_dir()) / "sessions.jsonl"
     if not path.exists():
         return []
     records: list[SessionRecord] = []
+    skipped = 0
     with path.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
                 continue
             try:
-                data = json.loads(line)
-                records.append(SessionRecord(**data))
-            except (json.JSONDecodeError, TypeError):
-                continue  # a hand-edited or older-format line; skip, don't crash
+                records.append(_coerce(json.loads(line)))
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+                skipped += 1  # a hand-edited or older-format line; skip, don't crash
+    if skipped:
+        print(
+            f"warning: skipped {skipped} unreadable line(s) in {path}",
+            file=sys.stderr,
+        )
     return records
 
 

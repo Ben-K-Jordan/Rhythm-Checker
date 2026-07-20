@@ -18,8 +18,10 @@ pip install .            # numpy only
 pip install .[charts]    # + matplotlib, for the HTML chart reports
 ```
 
-WAV files work out of the box. For phone-native formats (`.m4a`, `.mp3`),
-install [ffmpeg](https://ffmpeg.org) and Rhythm Checker will use it automatically.
+WAV files work out of the box — 8/16/24/32-bit PCM, float, stereo, and
+`WAVE_FORMAT_EXTENSIBLE` headers included. For phone-native formats (`.m4a`,
+`.mp3`), install [ffmpeg](https://ffmpeg.org) and Rhythm Checker will use it
+automatically.
 
 ## Record a session
 
@@ -130,9 +132,19 @@ flaws and require the report to find them (`tests/`).
 
 - Unanchored mode cannot see a constant early/late tendency. The report says so
   every time; use `--count-in` when you want the absolute number.
+- Hits closer together than 30 ms merge into one, so a tight flam or drag
+  counts as a single hit (`--min-gap-ms` adjusts the window), and a hit inside
+  the first ~25 ms of the recording can't be detected — leave a moment of room
+  tone before playing.
 - Very quiet ghost notes may be missed (raise `--sensitivity`), and buried
   metronome bleed can occasionally be picked up as hits.
 - `--fit-tempo` cannot distinguish device-clock skew from a perfectly steady
   human tempo drift. It's off by default for that reason.
+- Swung or shuffled playing measured against a straight grid splits into two
+  clusters; the report warns and suggests a subdivision that fits instead of
+  quietly printing a meaningless spread. Likewise, a wrong `--bpm` is refused
+  outright (the hits don't *concentrate* on any grid at that tempo), tempos
+  outside 20–400 BPM are rejected, and recordings below 16 kHz get a warning
+  that several ms of the reported spread may be measurement error.
 - The tool measures a recording, not a performance. A bad mic position will
   smear transients and inflate the spread a few milliseconds.

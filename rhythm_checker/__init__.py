@@ -25,12 +25,18 @@ def analyze_file(
     fit_tempo: bool = False,
     pocket_ms: float = 10.0,
     sensitivity: float = 1.0,
+    min_gap_ms: float = 30.0,
 ) -> SessionAnalysis:
     """One-call API: load a recording, detect hits, analyze against the grid."""
     from pathlib import Path
 
     recording = load_recording(path)
-    onsets = detect_onsets(recording.samples, recording.sample_rate, sensitivity=sensitivity)
+    onsets = detect_onsets(
+        recording.samples,
+        recording.sample_rate,
+        sensitivity=sensitivity,
+        min_separation=min_gap_ms / 1000.0,
+    )
     return analyze_session(
         onsets,
         file=Path(path).name,
@@ -40,4 +46,5 @@ def analyze_file(
         count_in=count_in,
         fit_tempo=fit_tempo,
         pocket_ms=pocket_ms,
+        sample_rate=recording.sample_rate,
     )

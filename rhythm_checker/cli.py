@@ -46,6 +46,9 @@ def _build_parser() -> argparse.ArgumentParser:
     an.add_argument("--sensitivity", type=float, default=1.0,
                     help="onset detection sensitivity; raise toward 1.5-2 for quiet "
                          "recordings or brushes (default: 1.0)")
+    an.add_argument("--min-gap-ms", type=float, default=30.0, metavar="MS",
+                    help="hits closer together than this merge into one — flams "
+                         "and drags count as a single hit (default: 30)")
     an.add_argument("--name", default="", help="label for this session in history")
     an.add_argument("--html", metavar="PATH", help="also write a chart report to PATH")
     an.add_argument("--json", dest="json_path", metavar="PATH",
@@ -69,7 +72,10 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_analyze(args: argparse.Namespace) -> int:
     recording = load_recording(args.file)
     onsets = detect_onsets(
-        recording.samples, recording.sample_rate, sensitivity=args.sensitivity
+        recording.samples,
+        recording.sample_rate,
+        sensitivity=args.sensitivity,
+        min_separation=args.min_gap_ms / 1000.0,
     )
     analysis = analyze_session(
         onsets,
@@ -80,6 +86,7 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         count_in=args.count_in,
         fit_tempo=args.fit_tempo,
         pocket_ms=args.pocket_ms,
+        sample_rate=recording.sample_rate,
     )
 
     print(text_report(analysis))
@@ -131,8 +138,12 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {"analyze": _cmd_analyze, "history": _cmd_history, "onsets": _cmd_onsets}
     try:
         return handlers[args.command](args)
-    except (AudioError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+    except (AudioError, ValueError, OSError) as exc:
+        if isinstance(exc, OSError) and exc.filename:
+            msg = f"{exc.strerror or exc}: {exc.filename}"
+        else:
+            msg = str(exc)
+        print(f"error: {msg}", file=sys.stderr)
         return 1
 
 

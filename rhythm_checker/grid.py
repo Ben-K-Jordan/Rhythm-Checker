@@ -21,6 +21,7 @@ class Grid:
     anchored: bool    # True when the offset came from a count-in, not from the hits
     tempo_correction: float = 1.0  # applied multiplier on the beat interval
     count_in_warning: str | None = None
+    n_skipped_after_count_in: int = 0  # hits during the count-in tail, excluded from stats
 
     @property
     def beat_interval(self) -> float:
@@ -96,10 +97,13 @@ def build_grid(
     tempo_tolerance: float = 0.005,
 ) -> tuple[Grid, np.ndarray]:
     """Returns the grid plus the performance onsets (count-in clicks removed)."""
-    if bpm <= 0:
-        raise ValueError("bpm must be positive")
-    if subdivision < 1:
-        raise ValueError("subdivision must be >= 1")
+    if not 20.0 <= bpm <= 400.0:
+        raise ValueError(
+            f"--bpm {bpm:g} is outside the supported 20-400 BPM range; "
+            "metronome tempos live there, and grid math degenerates outside it"
+        )
+    if not 1 <= subdivision <= 12:
+        raise ValueError("subdivision must be between 1 and 12")
     if count_in < 0:
         raise ValueError("count-in must be >= 0")
     if count_in and len(onset_times) <= count_in:
@@ -109,9 +113,12 @@ def build_grid(
 
     clicks = onset_times[:count_in] if count_in else np.empty(0)
     performance = onset_times[count_in:] if count_in else onset_times
+    n_skipped = 0
     if count_in:
         # drop anything still ringing right after the last click
-        performance = performance[performance > clicks[-1] + 0.25 * 60.0 / bpm]
+        kept = performance > clicks[-1] + 0.25 * 60.0 / bpm
+        n_skipped = int(np.sum(~kept))
+        performance = performance[kept]
     if len(performance) == 0:
         raise ValueError("no hits left after removing the count-in")
 
@@ -132,6 +139,7 @@ def build_grid(
         anchored=anchored,
         tempo_correction=correction,
         count_in_warning=warning,
+        n_skipped_after_count_in=n_skipped,
     )
     return grid, performance
 

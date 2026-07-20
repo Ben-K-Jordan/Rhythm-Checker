@@ -95,3 +95,26 @@ def test_build_grid_validates_input():
         build_grid(times, 120, 0)
     with pytest.raises(ValueError):
         build_grid(np.arange(3.0), 120, 4, count_in=4)
+
+
+def test_build_grid_rejects_absurd_tempi():
+    times = 0.5 + 0.5 * np.arange(20)
+    with pytest.raises(ValueError, match="20-400"):
+        build_grid(times, 0.5, 4)
+    with pytest.raises(ValueError, match="20-400"):
+        build_grid(times, 1000, 4)
+    with pytest.raises(ValueError, match="subdivision"):
+        build_grid(times, 120, 16)
+
+
+def test_count_in_tail_hits_are_counted_not_vanished():
+    bpm = 120
+    beat = 60.0 / bpm
+    clicks = 0.5 + beat * np.arange(4)
+    sneaky = clicks[-1] + 0.1 * beat  # ghost hit still inside the count-in tail
+    play = clicks[-1] + beat + beat * np.arange(16)
+    grid, perf = build_grid(
+        np.sort(np.concatenate([clicks, [sneaky], play])), bpm, 1, count_in=4
+    )
+    assert grid.n_skipped_after_count_in == 1
+    assert len(perf) == 16

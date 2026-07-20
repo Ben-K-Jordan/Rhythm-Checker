@@ -59,8 +59,9 @@ class Drift:
 class DensePassage:
     start: float
     end: float
-    n_hits: int
-    mean_ms: float
+    n_hits: int        # every detected hit in the passage, on-grid or not
+    n_aligned: int     # the subset with a measurable deviation
+    mean_ms: float | None  # None when no hit in the passage could be attributed
 
 
 @dataclass
@@ -82,6 +83,8 @@ class SessionAnalysis:
     count_in: int = 0
     grid_fit: float = 1.0  # circular concentration of hits on the grid, 0..1
     fit_warning: str | None = None
+    sample_rate: int | None = None
+    precision_warning: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -101,9 +104,13 @@ class SessionAnalysis:
             },
             "hits": {
                 "detected": self.n_detected,
+                "count_in": self.count_in,
+                "skipped_after_count_in": self.grid.n_skipped_after_count_in,
                 "aligned": len(self.alignment.deviations_ms),
                 "unaligned": len(self.alignment.unaligned_times),
             },
+            "sample_rate": self.sample_rate,
+            "precision_warning": self.precision_warning,
             "pocket_ms": self.pocket_ms,
             "overall": self.overall.to_dict(),
             "drift": None
@@ -119,7 +126,8 @@ class SessionAnalysis:
                     "start_s": round(p.start, 2),
                     "end_s": round(p.end, 2),
                     "n_hits": p.n_hits,
-                    "mean_ms": round(p.mean_ms, 2),
+                    "n_aligned": p.n_aligned,
+                    "mean_ms": None if p.mean_ms is None else round(p.mean_ms, 2),
                 }
                 for p in self.dense_passages
             ],
@@ -144,11 +152,13 @@ def analyze_session(
     count_in: int = 0,
     fit_tempo: bool = False,
     pocket_ms: float = 10.0,
+    sample_rate: int | None = None,
 ) -> SessionAnalysis:
     if len(onsets) < max(4, count_in + 4):
         raise ValueError(
             f"only {len(onsets)} hits detected — not enough to analyze. "
-            "Is the recording very quiet? Try --sensitivity 1.5."
+            "Confirm the recording contains the playing; if the take is just "
+            "quiet, try --sensitivity 1.5."
         )
 
     grid, performance = build_grid(
@@ -160,20 +170,32 @@ def analyze_session(
     # Concentration of hits on the grid (offset-independent, 0..1). A fine grid
     # is always "near" every hit, so alignment fraction alone can't catch a
     # wrong BPM — but hits from an unrelated tempo don't *concentrate*.
-    grid_fit = float(np.abs(np.mean(np.exp(2j * np.pi * performance / grid.interval))))
-    if grid_fit < 0.15 or len(dev) < 4:
+    def concentration(interval: float) -> float:
+        return float(np.abs(np.mean(np.exp(2j * np.pi * performance / interval))))
+
+    grid_fit = concentration(grid.interval)
+    beat_fit = concentration(grid.beat_interval)
+    if grid_fit < 0.15:
+        if beat_fit >= 0.35:
+            # the tempo is right — the subdivision grid is what doesn't fit
+            raise ValueError(
+                f"the hits line up with the beat at {bpm:g} BPM but not with the "
+                f"1-in-{subdivision} subdivision grid (grid fit {grid_fit:.2f}). "
+                "Either the take is far looser than that grid can measure, or "
+                f"--subdivision {subdivision} is finer than what was played — "
+                "try a coarser --subdivision."
+            )
         raise ValueError(
             "the hits do not line up with this grid at any offset — the BPM is "
             f"probably wrong (got --bpm {bpm:g}, grid fit {grid_fit:.2f}). "
             "Re-check the metronome setting for this recording."
         )
-    fit_warning = None
-    if grid_fit < 0.35:
-        fit_warning = (
-            f"weak grid fit ({grid_fit:.2f}): either this take is far looser than "
-            "the grid, or the --bpm/--subdivision doesn't match what was played. "
-            "Treat the numbers below with suspicion."
+    if len(dev) < 4:
+        raise ValueError(
+            f"only {len(dev)} hits could be attributed to grid positions — "
+            "too few to compute honest statistics."
         )
+    fit_warning = _fit_warning(grid_fit, dev, performance, grid)
 
     overall = Stats.from_deviations(dev, pocket_ms)
     drift = _drift(times, dev, pocket_ms)
@@ -206,7 +228,91 @@ def analyze_session(
         count_in=count_in,
         grid_fit=grid_fit,
         fit_warning=fit_warning,
+        sample_rate=sample_rate,
+        precision_warning=(
+            None
+            if sample_rate is None or sample_rate >= 16000
+            else (
+                f"recorded at {sample_rate} Hz — onset timing precision degrades "
+                "at low sample rates, so several ms of the spread below may be "
+                "measurement error, not you. Record at 44.1 kHz if you can."
+            )
+        ),
     )
+
+
+def _fit_warning(
+    grid_fit: float, dev_ms: np.ndarray, performance: np.ndarray, grid: Grid
+) -> str | None:
+    """Warnings for grids that fit, but suspiciously."""
+    if grid_fit < 0.35:
+        return (
+            f"weak grid fit ({grid_fit:.2f}): either this take is far looser than "
+            "the grid, or the --bpm/--subdivision doesn't match what was played. "
+            "Treat the numbers below with suspicion."
+        )
+    # Two well-separated clusters of deviations = swung/shuffled playing measured
+    # against a straight grid (or vice versa). The mixture inflates the spread
+    # with a number that describes neither cluster — say so instead of hiding it.
+    # A *small* gap (one position consistently a few ms late) is normal playing;
+    # the position table reports it, so only flag gaps that are large relative
+    # to the grid and that actually degrade the fit or point to another grid.
+    min_gap = max(8.0, 0.15 * grid.interval * 1000.0)
+    split = _bimodal_split(dev_ms, min_gap)
+    if split is not None:
+        better = _better_subdivision(performance, grid)
+        if better is not None or grid_fit < 0.6:
+            hint = (
+                f" A 1-in-{better} subdivision grid fits these hits markedly "
+                f"better — try --subdivision {better}." if better else ""
+            )
+            return (
+                f"hits land in two distinct clusters about {split:.0f} ms apart — "
+                "this looks like swung or shuffled playing measured against a "
+                "straight grid. The spread and pocket numbers describe the "
+                f"mixture, not your consistency.{hint}"
+            )
+    return None
+
+
+def _bimodal_split(dev_ms: np.ndarray, min_gap: float) -> float | None:
+    """Cluster-gap size in ms if the deviations are strongly two-clustered."""
+    if len(dev_ms) < 20:
+        return None
+    lo, hi = float(np.percentile(dev_ms, 10)), float(np.percentile(dev_ms, 90))
+    if hi - lo < 1e-6:
+        return None
+    c1, c2 = lo, hi  # 2-means in one dimension
+    for _ in range(25):
+        assign = np.abs(dev_ms - c1) <= np.abs(dev_ms - c2)
+        if not np.any(assign) or np.all(assign):
+            return None
+        n1, n2 = c1, c2
+        c1, c2 = float(np.mean(dev_ms[assign])), float(np.mean(dev_ms[~assign]))
+        if abs(c1 - n1) + abs(c2 - n2) < 1e-9:
+            break
+    share = float(np.mean(assign))
+    if not 0.2 <= share <= 0.8:
+        return None
+    within = np.concatenate([dev_ms[assign] - c1, dev_ms[~assign] - c2])
+    pooled_sd = float(np.std(within)) or 1e-9
+    gap = abs(c2 - c1)
+    return gap if gap > 3.0 * pooled_sd and gap > min_gap else None
+
+
+def _better_subdivision(performance: np.ndarray, grid: Grid) -> int | None:
+    """A coarser-or-triplet subdivision whose grid the hits concentrate on
+    markedly better than the one analyzed, if any."""
+    current = float(np.abs(np.mean(np.exp(2j * np.pi * performance / grid.interval))))
+    best, best_fit = None, current
+    for cand in (1, 2, 3, 4, 6, 8):
+        if cand == grid.subdivision:
+            continue
+        interval = grid.beat_interval / cand
+        fit = float(np.abs(np.mean(np.exp(2j * np.pi * performance / interval))))
+        if fit > best_fit + 0.15:
+            best, best_fit = cand, fit
+    return best
 
 
 def _drift(times: np.ndarray, dev_ms: np.ndarray, pocket_ms: float) -> Drift | None:
@@ -258,7 +364,9 @@ def _dense_passages(
     if not np.any(hot) or np.all(hot):
         return [], dense_mask
 
-    passages: list[DensePassage] = []
+    # runs of hot windows -> spans; overlapping spans merged so no hit is
+    # counted in two passages (window length > step, so runs can overlap)
+    spans: list[list[float]] = []
     i = 0
     while i < len(hot):
         if hot[i]:
@@ -266,20 +374,29 @@ def _dense_passages(
             while j + 1 < len(hot) and hot[j + 1]:
                 j += 1
             start, end = float(starts[i]), float(starts[j]) + DENSITY_WINDOW
-            sel = (times >= start) & (times <= end)
-            dense_mask |= sel
-            n_all = int(np.searchsorted(all_times, end) - np.searchsorted(all_times, start))
-            passages.append(
-                DensePassage(
-                    start=start,
-                    end=end,
-                    n_hits=n_all,
-                    mean_ms=float(np.mean(dev_ms[sel])) if np.any(sel) else 0.0,
-                )
-            )
+            if spans and start <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], end)
+            else:
+                spans.append([start, end])
             i = j + 1
         else:
             i += 1
+
+    passages: list[DensePassage] = []
+    for start, end in spans:
+        sel = (times >= start) & (times <= end)
+        dense_mask |= sel
+        n_aligned = int(np.sum(sel))
+        n_all = int(np.searchsorted(all_times, end) - np.searchsorted(all_times, start))
+        passages.append(
+            DensePassage(
+                start=start,
+                end=end,
+                n_hits=n_all,
+                n_aligned=n_aligned,
+                mean_ms=float(np.mean(dev_ms[sel])) if n_aligned else None,
+            )
+        )
     return passages, dense_mask
 
 

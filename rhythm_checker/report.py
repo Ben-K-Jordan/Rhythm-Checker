@@ -56,16 +56,24 @@ def text_report(a: SessionAnalysis) -> str:
     add(f"bpm {a.bpm:g} · grid {_grid_name(a.subdivision)} · length {_duration(a.duration)}")
     n_aligned = a.overall.n
     n_unaligned = len(a.alignment.unaligned_times)
-    add(f"hits: {a.n_detected} detected, {n_aligned} on the grid, {n_unaligned} unattributable"
-        + (f", first {a.count_in} used as count-in anchor" if a.count_in else ""))
+    n_skipped = a.grid.n_skipped_after_count_in
+    parts = [f"hits: {a.n_detected} detected", f"{n_aligned} on the grid",
+             f"{n_unaligned} unattributable"]
+    if a.count_in:
+        parts.append(f"first {a.count_in} used as count-in anchor")
+    if n_skipped:
+        parts.append(f"{n_skipped} in the count-in tail ignored")
+    add(", ".join(parts))
     if a.grid.tempo_correction != 1.0:
         eff = 60.0 / a.grid.beat_interval
         add(f"tempo fitted: effective {eff:.2f} BPM "
-            f"({(a.grid.tempo_correction - 1) * 100:+.2f}% vs nominal)")
+            f"({(eff / a.bpm - 1) * 100:+.2f}% vs nominal)")
     if a.grid.count_in_warning:
         add(f"WARNING: {a.grid.count_in_warning}")
     if a.fit_warning:
         add(f"WARNING: {a.fit_warning}")
+    if a.precision_warning:
+        add(f"WARNING: {a.precision_warning}")
     add("")
 
     add(f"TIMING vs the grid   (negative = early/ahead, positive = late/behind)")
@@ -91,12 +99,16 @@ def text_report(a: SessionAnalysis) -> str:
 
     if a.dense_passages:
         add(f"HIGH-DENSITY PASSAGES (busy playing — often fills): "
-            f"{len(a.dense_passages)} found, {a.dense_stats.n} hits")
+            f"{len(a.dense_passages)} found, {a.dense_stats.n} measurable hits")
         add(f"  in dense passages: {_stats_line(a.dense_stats)}")
         add(f"  everywhere else:   {_stats_line(a.sparse_stats)}")
         for p in a.dense_passages:
-            add(f"    {_duration(p.start)}–{_duration(p.end)}: {p.n_hits} hits, "
-                f"mean {_fmt_ms(p.mean_ms)}")
+            timing = (
+                f"mean {_fmt_ms(p.mean_ms)} over {p.n_aligned} on-grid hits"
+                if p.mean_ms is not None
+                else "no hit near a grid line — timing not measurable at this subdivision"
+            )
+            add(f"    {_duration(p.start)}–{_duration(p.end)}: {p.n_hits} hits, {timing}")
         add("")
 
     if a.position_stats:
@@ -171,7 +183,8 @@ def _charts(a: SessionAnalysis) -> list[tuple[str, str]]:
         ]
         labels = [_position_label(p, a.subdivision) for p in sorted(a.position_stats)]
         ax.axhline(0, color="#333", lw=1)
-        ax.boxplot(groups, tick_labels=labels, showfliers=False)
+        ax.boxplot(groups, showfliers=False)  # tick_labels= needs mpl>=3.9
+        ax.set_xticks(range(1, len(labels) + 1), labels)
         ax.set_ylabel("deviation (ms)")
         ax.set_title("By position in the beat")
         charts.append(("positions", render(fig)))
@@ -180,13 +193,18 @@ def _charts(a: SessionAnalysis) -> list[tuple[str, str]]:
 
 
 def html_report(a: SessionAnalysis) -> str:
-    charts = _charts(a)
+    try:
+        charts = _charts(a)
+        chart_note = "<p><em>Install matplotlib (<code>pip install matplotlib</code>) for charts.</em></p>"
+    except Exception as exc:  # a chart failure must not take the report down with it
+        charts = []
+        chart_note = f"<p><em>Charts unavailable ({html.escape(type(exc).__name__)}: {html.escape(str(exc))}).</em></p>"
     imgs = "\n".join(
         f'<figure><img alt="{name}" src="data:image/png;base64,{b64}"></figure>'
         for name, b64 in charts
     )
     if not charts:
-        imgs = "<p><em>Install matplotlib (<code>pip install matplotlib</code>) for charts.</em></p>"
+        imgs = chart_note
     pre = html.escape(text_report(a))
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
     return f"""<!doctype html>
