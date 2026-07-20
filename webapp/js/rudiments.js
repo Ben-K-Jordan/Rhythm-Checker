@@ -7,8 +7,9 @@
 import { ChartPlayer } from './metronome.js';
 import { buildChartTimes, segmentAt, unitGlyph } from './meter.js';
 import { GrooveBar } from './groove.js';
-import { judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
+import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
+import { wakeLock } from './audio.js';
 
 export const RUDIMENTS = [
   { id: 'singles', name: 'Single Stroke Roll', sub: 2, steps: 'RLRLRLRL' },
@@ -244,8 +245,19 @@ export class RudimentsMode {
     this.bestCombo = 0;
     this.strays = 0;
     this.judged = [];
+    this.bleed = new BleedGuard();
+    this._clickPtr = 0;
     this.root.querySelector('#rud-summary').classList.add('hidden');
     this.running = true;
+    this.mic.lockDetector(this, { refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    wakeLock.acquire();
+    this._lostHandler = () => {
+      this.stop(true);
+      const el = this.root.querySelector('#rud-summary');
+      el.classList.remove('hidden');
+      el.textContent = 'run invalidated: microphone lost — reconnect and play it again.';
+    };
+    this.mic.addEventListener('lost', this._lostHandler);
     this.root.querySelector('#rud-go').textContent = 'Stop';
     const runSecs = countInDur + this.chart.total + 1;
     this._endTimer = setTimeout(() => this.stop(false), (runSecs + 0.4) * 1000);
@@ -255,8 +267,24 @@ export class RudimentsMode {
     this.running = false;
     clearTimeout(this._endTimer);
     if (this.player) this.player.stop();
+    this.mic.unlockDetector(this);
+    wakeLock.release();
+    if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
     this.root.querySelector('#rud-go').textContent = 'Play';
-    if (!cancelled) this.showSummary();
+    if (!cancelled) {
+      // every deadline has passed by now: anything still pending is a miss
+      for (const n of this.chart.notes) if (n.state === 'coming') n.state = 'miss';
+      this.showSummary();
+    }
+  }
+
+  deactivate() {
+    if (this.running) {
+      this.stop(true);
+      const el = this.root.querySelector('#rud-summary');
+      el.classList.remove('hidden');
+      el.textContent = 'run cancelled — you left the Rudiments tab mid-run.';
+    }
   }
 
   onHit(onset) {
@@ -264,6 +292,15 @@ export class RudimentsMode {
     const cal = (store.get('calibrationMs') || 0) / 1000;
     const t = onset.time - cal;
     if (t < this.chartStart - 0.2) return; // count-in noodling is free
+    // quiet "hits" landing exactly on the app's own clicks are bleed, not play
+    const clicks = this.player.clicks;
+    while (this._clickPtr + 1 < clicks.length
+      && this.player.t0 + clicks[this._clickPtr + 1].offset < onset.time) this._clickPtr++;
+    const nearClick = [this._clickPtr, this._clickPtr + 1].some((k) => {
+      const c = clicks[k];
+      return c && Math.abs(this.player.t0 + c.offset - onset.time) < 0.03 + Math.abs(cal);
+    });
+    if (this.bleed.shouldDrop(onset.level || 0, nearClick)) return;
     let best = null;
     let bestAbs = Infinity;
     for (const n of this.chart.notes) {
@@ -295,7 +332,9 @@ export class RudimentsMode {
     el.className = `judge ${judge}`;
     this.root.querySelector('#rud-combo').textContent = String(this.combo);
     const hits = this.judged.filter((j) => j.judge !== 'miss').length;
-    const seen = this.judged.length + this.chart.notes.filter((n) => n.state === 'miss').length;
+    // note states already include judged misses — adding judged.length back
+    // in would double-count them
+    const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
     if (seen) this.root.querySelector('#rud-acc').textContent = `${((100 * hits) / seen).toFixed(0)}%`;
   }
 
@@ -333,8 +372,12 @@ export class RudimentsMode {
     }
     const now = this.mic.now();
 
+    // sweep on the CALIBRATED clock (as onHit scores) plus delivery slack —
+    // otherwise a device's fixed latency eats into the late judgement window
+    const cal = (store.get('calibrationMs') || 0) / 1000;
+    const deadline = MATCH_WINDOW_MS / 1000 + 0.05;
     for (const n of this.chart.notes) {
-      if (n.state === 'coming' && now - (this.chartStart + n.offset) > MATCH_WINDOW_MS / 1000) {
+      if (n.state === 'coming' && now - cal - (this.chartStart + n.offset) > deadline) {
         n.state = 'miss';
         this.combo = 0;
       }
@@ -444,8 +487,10 @@ export class RudimentsMode {
       if (ss) perTempo.push(`${glyph}${seg.bpm}: ±${ss.sd.toFixed(1)}ms${segMiss ? ` (${segMiss} missed)` : ''}`);
     }
 
+    const bleedNote = this.bleed.warning();
     el.innerHTML = `
       <b>${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
+      ${bleedNote ? `<span class="dim">NOTE: ${bleedNote}</span><br>` : ''}
       mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
       ${accentLine}
       ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}

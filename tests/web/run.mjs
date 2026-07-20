@@ -50,10 +50,9 @@ const server = await serve();
 const base = `http://127.0.0.1:${server.address().port}`;
 
 // the sandbox preinstalls Chromium outside playwright's version registry
+const { existsSync } = await import('node:fs');
 const executablePath = process.env.CHROMIUM_PATH
-  || (await import('node:fs')).existsSync('/opt/pw-browsers/chromium')
-    ? '/opt/pw-browsers/chromium'
-    : undefined;
+  || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 const browser = await chromium.launch({
   executablePath,
@@ -271,6 +270,54 @@ const histUi = await page.evaluate(() => {
   };
 });
 check('history-tab', histUi.active && histUi.hasTable && histUi.hasTrend);
+
+// 6c. pre-show re-renders on activation: saving prerequisites elsewhere must
+// enable the check without a page reload (regression: it never re-rendered)
+const preshowCheck = await page.evaluate(async () => {
+  const { store } = await import('./js/store.js');
+  const startDisabled = document.querySelector('#mode-preshow #ps-go').disabled;
+  store.updateDrum(store.get('kit')[0].id, { targetHz: 141 });
+  store.set('baseline', { bpm: 120, subdivision: 2, mean: 0, sd: 8, pocketPct: 70, date: '2026-07-20' });
+  store.set('calibrationMs', 12);
+  document.querySelector('.tab-btn[data-tab="tuner"]').click();
+  document.querySelector('.tab-btn[data-tab="preshow"]').click();
+  const nowEnabled = !document.querySelector('#mode-preshow #ps-go').disabled;
+  return { ok: startDisabled && nowEnabled, why: `before=${startDisabled} after=${nowEnabled}` };
+});
+check('preshow-rerenders-on-activate', preshowCheck.ok, preshowCheck.why);
+
+// 6d. store sanitizer: a poisoned backup must not survive into state
+const sanitizeCheck = await page.evaluate(async () => {
+  const { store } = await import('./js/store.js');
+  const calBefore = store.get('calibrationMs');
+  store.importJson(JSON.stringify({
+    kit: [{ id: 'x', name: '<img src=x onerror=1>', targetHz: 100 }, { bad: true }],
+    calibrationMs: '99', pocketMs: 'oops', baseline: {},
+  }));
+  const ok = store.get('calibrationMs') === calBefore // device-specific: never imported
+    && store.get('pocketMs') === 10                    // bad type -> default
+    && store.get('baseline') === null                  // malformed -> default
+    && store.get('kit').length === 1;                  // invalid entry filtered
+  // the hostile name must render inert in settings
+  document.querySelector('#settings-btn').click();
+  const injected = !!document.querySelector('#settings img');
+  document.querySelector('#settings-close').click();
+  return { ok: ok && !injected, why: injected ? 'HTML injected' : 'field validation' };
+});
+check('store-sanitizer', sanitizeCheck.ok, sanitizeCheck.why);
+
+// 6e. mid-run tab switch cancels the timing session honestly
+await page.evaluate(async () => {
+  const { store } = await import('./js/store.js');
+  store.reset();
+});
+await page.click('.tab-btn[data-tab="timing"]');
+await page.click('#tm-go');
+await page.waitForTimeout(600);
+await page.click('.tab-btn[data-tab="tuner"]');
+await page.click('.tab-btn[data-tab="timing"]');
+const cancelled = await page.$eval('#tm-final', (el) => el.textContent);
+check('timing-cancelled-on-tab-switch', cancelled.includes('cancelled'), cancelled);
 
 // 7. settings: kit CRUD round trip
 await page.click('#settings-btn');

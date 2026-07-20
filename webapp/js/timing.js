@@ -3,9 +3,10 @@
 // pre-show hands check.
 
 import { Metronome } from './metronome.js';
-import { summarize } from './dsp.js';
+import { BleedGuard, summarize } from './dsp.js';
 import { store } from './store.js';
 import { GrooveBar } from './groove.js';
+import { wakeLock } from './audio.js';
 
 export class TimingSession extends EventTarget {
   // A headless scoring session, reused by the pre-show flow.
@@ -25,8 +26,12 @@ export class TimingSession extends EventTarget {
 
   start() {
     this.running = true;
-    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.bleed = new BleedGuard();
+    this._lostHandler = () => this.abort('microphone lost — reconnect and run it again');
+    this.mic.addEventListener('lost', this._lostHandler);
+    this.mic.lockDetector(this, { refractory: 0.03, threshold: 4, minLevel: 0.01 });
     this.mic.addEventListener('onset', this._onOnset);
+    wakeLock.acquire();
     this.metro.start();
     this._endTimer = setTimeout(() => this.finish(), (this.seconds + 1.5) * 1000);
   }
@@ -42,6 +47,10 @@ export class TimingSession extends EventTarget {
     const grid = this.metro.nearestGrid(t);
     if (!grid) return;
     const devMs = (t - grid.time) * 1000;
+    // the phone's own click bleeds into the mic near grid times, quietly
+    const nearClick = Math.abs(devMs) <= 30
+      && grid.index % this.metro.subdivision === 0;
+    if (this.bleed.shouldDrop(onset.level || 0, nearClick)) return;
     const maxDev = 0.4 * this.metro.gridInterval() * 1000;
     const entry = { t, devMs, aligned: Math.abs(devMs) <= maxDev };
     if (entry.aligned) this.devs.push(devMs);
@@ -51,25 +60,40 @@ export class TimingSession extends EventTarget {
 
   finish() {
     if (!this.running) return;
-    this.running = false;
-    clearTimeout(this._endTimer);
-    this.metro.stop();
-    this.mic.removeEventListener('onset', this._onOnset);
+    this._teardown();
     const stats = summarize(this.devs);
     const pocket = this.devs.length
       ? (100 * this.devs.filter((d) => Math.abs(d) <= store.get('pocketMs')).length) / this.devs.length
       : 0;
     const result = stats
-      ? { ...stats, pocketPct: pocket, unaligned: this.hits.length - this.devs.length }
+      ? {
+        ...stats,
+        pocketPct: pocket,
+        unaligned: this.hits.length - this.devs.length,
+        warning: this.bleed.warning(),
+      }
       : null;
     this.dispatchEvent(new CustomEvent('done', { detail: result }));
   }
 
+  abort(reason) {
+    if (!this.running) return;
+    this._teardown();
+    this.dispatchEvent(new CustomEvent('aborted', { detail: { reason } }));
+  }
+
   cancel() {
+    this._teardown();
+  }
+
+  _teardown() {
     this.running = false;
     clearTimeout(this._endTimer);
     this.metro.stop();
     this.mic.removeEventListener('onset', this._onOnset);
+    if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
+    this.mic.unlockDetector(this);
+    wakeLock.release();
   }
 }
 
@@ -151,8 +175,28 @@ export class TimingMode {
     this.root.querySelector('#tm-baseline').classList.add('hidden');
     this.session.addEventListener('hit', (e) => this.onHit(e.detail));
     this.session.addEventListener('done', (e) => this.onDone(e.detail));
+    this.session.addEventListener('aborted', (e) => {
+      this.root.querySelector('#tm-go').textContent = 'Start';
+      const final = this.root.querySelector('#tm-final');
+      final.classList.remove('hidden');
+      final.textContent = `check invalidated: ${e.detail.reason}`;
+      this.session = null;
+    });
     this.session.start();
     this.root.querySelector('#tm-go').textContent = 'Stop';
+  }
+
+  deactivate() {
+    // leaving the tab mid-check would silently corrupt the score; a cancelled
+    // check with a stated reason is the honest outcome
+    if (this.session && this.session.running) {
+      this.session.cancel();
+      this.session = null;
+      this.root.querySelector('#tm-go').textContent = 'Start';
+      const final = this.root.querySelector('#tm-final');
+      final.classList.remove('hidden');
+      final.textContent = 'check cancelled — you left the Timing tab mid-run.';
+    }
   }
 
   onHit(hit) {
@@ -213,6 +257,7 @@ export class TimingMode {
       const dSd = result.sd - base.sd;
       verdict += ` — baseline spread ${base.sd.toFixed(1)} ms (${dSd >= 0 ? '+' : ''}${dSd.toFixed(1)})`;
     }
+    if (result.warning) verdict += ` — NOTE: ${result.warning}`;
     final.textContent = verdict;
     this.lastResult = result;
     this.root.querySelector('#tm-baseline').classList.remove('hidden');

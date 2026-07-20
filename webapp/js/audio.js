@@ -12,6 +12,10 @@ export class MicEngine extends EventTarget {
     this._ring = null;
     this._ringStart = 0; // audio time of ring[0]
     this._detector = null;
+    this._stream = null;
+    this._workletLoaded = false;
+    this._detectorLock = null; // a running session owns the detector config
+    this._watchHealth();
   }
 
   get audioContext() {
@@ -36,11 +40,15 @@ export class MicEngine extends EventTarget {
         `and reload. (${err.name || err})`,
       );
     }
+    this._stream = stream;
     this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)({
       latencyHint: 'interactive',
     });
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
-    await this.ctx.audioWorklet.addModule('worklet/capture.js');
+    if (this.ctx.state !== 'running') await this.ctx.resume();
+    if (!this._workletLoaded) {
+      await this.ctx.audioWorklet.addModule('worklet/capture.js');
+      this._workletLoaded = true;
+    }
     const src = this.ctx.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(this.ctx, 'capture', {
       numberOfInputs: 1,
@@ -53,11 +61,70 @@ export class MicEngine extends EventTarget {
     this._ringStart = 0;
     this._detector = new OnsetDetector(sr);
     node.port.onmessage = (e) => this._onBlock(e.data, sr);
+    for (const track of stream.getTracks()) {
+      track.addEventListener('ended', () => this._lost('the microphone was taken away'));
+      track.addEventListener('mute', () => this._lost('the microphone went silent'));
+    }
     this.running = true;
     this.dispatchEvent(new Event('started'));
   }
 
-  setDetectorOptions({ refractory, threshold, minLevel } = {}) {
+  // iOS suspends the AudioContext and kills mic tracks on screen lock, app
+  // switch, calls, and Siri — and does not reliably restore them. Watch for
+  // it and surface a reconnect path instead of a dead-looking app.
+  _watchHealth() {
+    const checkSoon = () => setTimeout(() => this._checkHealth(), 350);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkSoon();
+    });
+    window.addEventListener('pageshow', checkSoon);
+  }
+
+  _checkHealth() {
+    if (!this.running) return;
+    const ctxDead = this.ctx && this.ctx.state !== 'running';
+    const trackDead = this._stream
+      && this._stream.getTracks().some((t) => t.readyState === 'ended' || t.muted);
+    if (ctxDead || trackDead) this._lost('audio was interrupted');
+  }
+
+  _lost(reason) {
+    if (!this.running) return;
+    this.running = false;
+    this.dispatchEvent(new CustomEvent('lost', { detail: { reason } }));
+  }
+
+  // must be called from a user gesture (the reconnect tap)
+  async reconnect() {
+    if (this._stream) {
+      for (const track of this._stream.getTracks()) track.stop();
+      this._stream = null;
+    }
+    this.running = false;
+    if (this.ctx && this.ctx.state !== 'running') {
+      try { await this.ctx.resume(); } catch { /* recreated below via start() */ }
+    }
+    await this.start();
+  }
+
+  // A running session locks the detector config so a mid-run tab switch
+  // can't clobber it (the tuner's 300 ms refractory would swallow every
+  // other eighth note at 120 BPM).
+  lockDetector(token, opts) {
+    this._detectorLock = token;
+    this._apply(opts);
+  }
+
+  unlockDetector(token) {
+    if (this._detectorLock === token) this._detectorLock = null;
+  }
+
+  setDetectorOptions(opts = {}) {
+    if (this._detectorLock) return;
+    this._apply(opts);
+  }
+
+  _apply({ refractory, threshold, minLevel } = {}) {
     if (!this._detector) return;
     if (refractory !== undefined) this._detector.refractory = refractory;
     if (threshold !== undefined) this._detector.threshold = threshold;
@@ -95,3 +162,37 @@ export class MicEngine extends EventTarget {
     return this.ctx ? this.ctx.currentTime : 0;
   }
 }
+
+// Screen wake lock for the duration of a session: iOS auto-lock (30 s default)
+// would otherwise fire mid hands-check while both hands hold sticks.
+export class SessionWakeLock {
+  constructor() {
+    this._lock = null;
+    this._want = false;
+    document.addEventListener('visibilitychange', () => {
+      if (this._want && document.visibilityState === 'visible') this._request();
+    });
+  }
+
+  async acquire() {
+    this._want = true;
+    await this._request();
+  }
+
+  async _request() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      this._lock = await navigator.wakeLock.request('screen');
+    } catch { /* low battery or unsupported: the session still runs */ }
+  }
+
+  release() {
+    this._want = false;
+    if (this._lock) {
+      this._lock.release().catch(() => {});
+      this._lock = null;
+    }
+  }
+}
+
+export const wakeLock = new SessionWakeLock();

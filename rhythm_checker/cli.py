@@ -15,6 +15,15 @@ from .report import html_report, text_report
 from .store import SessionRecord, load_records, save_record, trend_summary
 
 
+def _positive_hz(text: str) -> float:
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError(
+            f"target must be a positive frequency in Hz, got {text}"
+        )
+    return value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rhythm-checker",
@@ -68,7 +77,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     tune = sub.add_parser("tune", help="analyze a recording of drum taps for tuning")
     tune.add_argument("file", help="recording of individual taps (lug pass or center hits)")
-    tune.add_argument("--target", type=float, default=None, metavar="HZ",
+    tune.add_argument("--target", type=_positive_hz, default=None, metavar="HZ",
                       help="your saved target fundamental for this drum")
     tune.add_argument("--sensitivity", type=float, default=1.0)
     tune.add_argument("--json", dest="json_path", metavar="PATH",

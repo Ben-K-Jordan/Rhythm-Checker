@@ -68,10 +68,55 @@ def test_fundamental_found_across_the_kit_range(freq):
 
 
 def test_fundamental_not_fooled_by_louder_overtones():
-    # overtones 1.4x the fundamental's amplitude: loudest peak is NOT the answer
-    got = _pitch_of(120.0, overtone_boost=1.4)
+    # boost overtones until the loudest spectral peak provably ISN'T the
+    # fundamental — then require the estimator to find the fundamental anyway
+    y, times = render_taps([120.0], overtone_boost=3.0)
+    seg = y[int((times[0] + 0.025) * SR): int((times[0] + 0.375) * SR)]
+    spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg))))
+    freqs = np.fft.rfftfreq(len(seg), 1.0 / SR)
+    loudest = freqs[np.argmax(np.where((freqs >= 40) & (freqs <= 1000), spec, 0))]
+    assert abs(loudest - 120.0) > 30, (
+        f"test premise broken: loudest peak {loudest:.1f} Hz is still the fundamental"
+    )
+    got = estimate_pitch(y, SR, float(times[0]))
     assert got is not None
     assert abs(got - 120.0) < 1.0, f"locked onto an overtone: {got:.2f} Hz"
+
+
+def test_mains_hum_is_never_reported_as_the_drum():
+    # a 60 Hz hum bed (bad grounding) under a 141 Hz tap: hum is tonal and
+    # sustained, defeating naive gates — the pre-onset spectrum unmasks it
+    y, times = render_taps([141.0] * 3)
+    t = np.arange(len(y)) / SR
+    y = y + 0.02 * np.sin(2 * np.pi * 60.0 * t).astype(y.dtype)
+    for t0 in times:
+        got = estimate_pitch(y, SR, float(t0))
+        assert got is not None
+        assert abs(got - 141.0) < 1.0, f"reported {got:.1f} Hz (the hum?) instead of 141"
+
+
+def test_hum_only_trigger_yields_none_not_60hz():
+    rng = np.random.default_rng(3)
+    t = np.arange(2 * SR) / SR
+    y = (0.02 * np.sin(2 * np.pi * 60.0 * t) + 0.002 * rng.standard_normal(len(t))).astype(np.float32)
+    assert estimate_pitch(y, SR, 0.8) is None
+
+
+def test_boundary_tap_joins_the_nearer_drum():
+    # drums 120 cents apart; one lug of the UPPER drum is 30c flat — it must
+    # be flagged on the upper drum, not blamed on the (perfect) lower one
+    upper = 141.0 * 2 ** (120 / 1200)
+    flat_lug = upper * 2 ** (-30 / 1200)
+    freqs = [141.0] * 4 + [upper] * 3 + [flat_lug]
+    y, _ = render_taps(freqs)
+    onsets = detect_onsets(y, SR, min_separation=0.12)
+    a = analyze_tuning(y, SR, onsets, file="two.wav")
+    assert len(a.groups) == 2
+    low, high = a.groups
+    assert len(low.taps) == 4 and len(high.taps) == 4
+    assert all(abs(t.cents_vs_group) < 10 for t in low.taps), "lower drum wrongly blamed"
+    worst = max(high.taps, key=lambda t: abs(t.cents_vs_group))
+    assert worst.cents_vs_group == pytest.approx(-22.5, abs=8)  # -30c vs median shifted by itself
 
 
 def test_detuned_lug_flagged_in_lug_pass():
@@ -124,6 +169,8 @@ def test_note_and_cents_helpers():
 
 
 def test_tune_cli_end_to_end(tmp_path):
+    import json
+
     freqs = [141.0] * 4
     freqs[2] = 141.0 * 2 ** (40 / 1200)
     y, _ = render_taps(freqs)
@@ -137,7 +184,38 @@ def test_tune_cli_end_to_end(tmp_path):
     assert out.returncode == 0, out.stderr
     assert "tuning report" in out.stdout
     assert "adjust this lug" in out.stdout
-    assert (tmp_path / "t.json").exists()
+    data = json.loads((tmp_path / "t.json").read_text())
+    assert data["target_hz"] == 141.0
+    assert len(data["taps"]) == 4
+    g = data["groups"][0]
+    assert g["n_taps"] == 4
+    assert abs(g["median_hz"] - 141.0) < 1.5
+    assert abs(g["cents_vs_target"]) < 20
+
+
+def test_tune_cli_rejects_bad_targets(tmp_path):
+    y, _ = render_taps([141.0] * 3)
+    wav = tmp_path / "t.wav"
+    write_wav(wav, y)
+    for bad in ("0", "-100"):
+        out = subprocess.run(
+            [sys.executable, "-m", "rhythm_checker", "tune", str(wav), "--target", bad],
+            capture_output=True, text=True,
+        )
+        assert out.returncode != 0, f"--target {bad} accepted"
+        assert "positive frequency" in out.stderr
+        assert "Traceback" not in out.stderr
+
+
+def test_unpitched_taps_are_disclosed(tmp_path):
+    y, times = render_taps([141.0] * 3, gap=1.0)
+    cut = int((times[-1] + 0.05) * SR)  # damp the final tap almost immediately
+    y = y.copy()
+    y[cut:] = 0.0
+    onsets = detect_onsets(y, SR, min_separation=0.12)
+    a = analyze_tuning(y, SR, onsets, file="damp.wav")
+    assert sum(1 for t in a.taps if t.freq is None) == 1
+    assert "rang too briefly" in text_report(a)
 
 
 def test_tune_cli_silence_fails_clearly(tmp_path):

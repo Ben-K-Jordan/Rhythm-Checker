@@ -18,11 +18,19 @@ let currentTab = 'preshow';
 function $(sel) { return document.querySelector(sel); }
 
 function showTab(name) {
+  const leaving = modes[currentTab];
+  if (leaving && leaving !== modes[name] && leaving.deactivate) leaving.deactivate();
   currentTab = name;
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
   document.querySelectorAll('.mode').forEach((m) => m.classList.toggle('active', m.id === `mode-${name}`));
   const mode = modes[name];
   if (mode && mode.activate) mode.activate();
+}
+
+function escText(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
 }
 
 function initModes() {
@@ -50,8 +58,8 @@ function renderSettings() {
     <h3>Kit</h3>
     <div id="kit-list">
       ${kit.map((d) => `
-        <div class="kit-row" data-id="${d.id}">
-          <input class="kit-name" value="${d.name}">
+        <div class="kit-row" data-id="${escText(d.id)}">
+          <input class="kit-name" value="${escText(d.name).replaceAll('"', '&quot;')}">
           <span>${d.targetHz ? `${d.targetHz} Hz` : 'no target'}</span>
           <button class="kit-del" title="remove">✕</button>
         </div>`).join('')}
@@ -122,9 +130,26 @@ async function boot() {
     return;
   }
   $('#app').classList.remove('hidden');
-  initModes();
-  levelMeterLoop();
-  renderSettings();
+  if (!Object.keys(modes).length) {
+    initModes();
+    levelMeterLoop();
+    renderSettings();
+    // iOS kills the mic on screen lock/calls; show a reconnect path instead
+    // of a dead-looking app
+    mic.addEventListener('lost', (e) => {
+      const overlay = $('#mic-lost');
+      overlay.classList.remove('hidden');
+      overlay.querySelector('#mic-lost-reason').textContent = e.detail.reason;
+    });
+    $('#mic-lost-btn').addEventListener('click', async () => {
+      try {
+        await mic.reconnect();
+        $('#mic-lost').classList.add('hidden');
+      } catch (err) {
+        $('#mic-lost-reason').textContent = err.message;
+      }
+    });
+  }
   showTab(currentTab);
 }
 

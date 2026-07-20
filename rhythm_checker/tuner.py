@@ -110,6 +110,13 @@ def estimate_pitch(
         return None
     raw = samples[start:end]
 
+    # spectrum of the moment just BEFORE the tap: whatever is tonal there
+    # (mains hum, monitor bleed) was not created by the drum and must never
+    # be reported as its pitch
+    pre_end = max(0, int((onset_time - 0.005) * sample_rate))
+    pre_start = max(0, pre_end - len(raw))
+    pre = samples[pre_start:pre_end] if pre_end - pre_start >= int(0.1 * sample_rate) else None
+
     # require actual sustained ring: a damped thud or a stray noise trigger
     # must return None, not a confidently wrong number
     block = max(1, int(0.02 * sample_rate))
@@ -134,14 +141,31 @@ def estimate_pitch(
     if float(np.max(mags)) < 10.0 * float(np.median(mags)):
         return None
 
+    pre_mags = None
+    if pre is not None:
+        pre_seg = pre[-len(raw):] * np.hanning(min(len(pre), len(raw)))
+        pre_mags = np.abs(np.fft.rfft(pre_seg, n_fft))[band]
+        # match analysis gain: same window length, so magnitudes are comparable
+
     floor = float(np.max(mags)) * (10 ** (-PEAK_FLOOR_DB / 20))
-    # local maxima above the floor, lowest frequency first
-    peaks = np.flatnonzero(
+    # local maxima above the floor, lowest frequency first; skip any peak that
+    # was already ringing before the tap (hum/bleed, not the drum)
+    candidates = np.flatnonzero(
         (mags[1:-1] >= mags[:-2]) & (mags[1:-1] >= mags[2:]) & (mags[1:-1] >= floor)
     ) + 1
-    if len(peaks) == 0:
+    peaks = [
+        int(c) for c in candidates
+        if pre_mags is None or pre_mags[c] < 0.6 * mags[c]
+    ]
+    if not peaks:
         return None
-    p = int(peaks[0])
+    p = peaks[0]
+
+    # a stronger peak below the measurable band means the true fundamental is
+    # sub-40 Hz and `p` is merely its overtone — admit ignorance instead
+    low_band = (freqs >= 20.0) & (freqs < PITCH_MIN_HZ)
+    if np.any(low_band) and float(np.max(spectrum[low_band])) >= mags[p]:
+        return None
 
     # parabolic interpolation around the bin for sub-bin precision
     if 0 < p < len(mags) - 1:
@@ -198,7 +222,9 @@ def analyze_tuning(
 def _cluster(taps: list[TapPitch]) -> list[DrumGroup]:
     """Group taps whose pitches sit within CLUSTER_CENTS of a group's running
     median — separate drums (or a drastically detuned lug) become separate
-    groups."""
+    groups. After the greedy pass, taps are reassigned to their NEAREST
+    group's median until stable, so a boundary tap (one drum's flat lug near
+    another drum's pitch) lands with the right drum."""
     groups: list[list[TapPitch]] = []
     for tap in sorted(taps, key=lambda t: t.freq):  # type: ignore[arg-type, return-value]
         placed = False
@@ -210,6 +236,22 @@ def _cluster(taps: list[TapPitch]) -> list[DrumGroup]:
                 break
         if not placed:
             groups.append([tap])
+
+    for _ in range(8):  # nearest-median refinement; converges in 1-2 passes
+        medians = [float(np.median([t.freq for t in g])) for g in groups]
+        reassigned: list[list[TapPitch]] = [[] for _ in groups]
+        changed = False
+        for gi, g in enumerate(groups):
+            for tap in g:
+                dists = [abs(cents_between(tap.freq, m)) for m in medians]  # type: ignore[arg-type]
+                best = int(np.argmin(dists))
+                if dists[best] > CLUSTER_CENTS:
+                    best = gi  # nothing close enough to steal it; stay put
+                reassigned[best].append(tap)
+                changed = changed or best != gi
+        groups = [g for g in reassigned if g]
+        if not changed:
+            break
 
     out: list[DrumGroup] = []
     for g in sorted(groups, key=lambda g: float(np.median([t.freq for t in g]))):

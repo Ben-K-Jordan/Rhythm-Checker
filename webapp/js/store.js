@@ -25,12 +25,50 @@ const DEFAULTS = {
 
 const MAX_RUNS = 500;
 
+// Field-by-field validation: a drifted or hand-edited backup must degrade to
+// defaults per field, never half-brick the whole app on the next launch.
+function sanitize(data) {
+  const clean = structuredClone(DEFAULTS);
+  if (typeof data !== 'object' || data === null) return clean;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const numOrNull = (v) => (v === null ? null : num(v));
+
+  const cal = numOrNull(data.calibrationMs);
+  if (cal !== undefined) clean.calibrationMs = cal;
+  for (const key of ['pocketMs', 'tuneToleranceCents', 'lugCount', 'preferredBpm']) {
+    const v = num(data[key]);
+    if (v !== undefined) clean[key] = v;
+  }
+  if (data.judgeMode === 'standard' || data.judgeMode === 'pro') clean.judgeMode = data.judgeMode;
+  if (Array.isArray(data.kit)) {
+    const kit = data.kit.filter((d) => d && typeof d === 'object'
+      && typeof d.id === 'string' && typeof d.name === 'string'
+      && (d.targetHz === null || num(d.targetHz) !== undefined))
+      .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz }));
+    if (kit.length) clean.kit = kit;
+  }
+  const b = data.baseline;
+  if (b && typeof b === 'object'
+    && [b.bpm, b.subdivision, b.mean, b.sd, b.pocketPct].every((v) => num(v) !== undefined)) {
+    clean.baseline = { ...b };
+  }
+  for (const key of ['grooveRud', 'grooveTiming']) {
+    const g = data[key];
+    if (g && typeof g === 'object' && num(g.bpm) !== undefined) clean[key] = { ...g };
+  }
+  if (Array.isArray(data.runs)) {
+    clean.runs = data.runs
+      .filter((r) => r && typeof r === 'object' && num(r.sd) !== undefined && num(r.mean) !== undefined)
+      .slice(-MAX_RUNS);
+  }
+  return clean;
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return structuredClone(DEFAULTS);
-    const data = JSON.parse(raw);
-    return { ...structuredClone(DEFAULTS), ...data };
+    return sanitize(JSON.parse(raw));
   } catch {
     return structuredClone(DEFAULTS);
   }
@@ -77,7 +115,11 @@ export const store = {
     if (typeof data !== 'object' || data === null || !Array.isArray(data.kit)) {
       throw new Error('not a Rhythm Checker backup file');
     }
-    state = { ...structuredClone(DEFAULTS), ...data };
+    const current = state;
+    state = sanitize(data);
+    // latency is a property of THIS device's audio chain, not of the backup:
+    // carrying it across devices would silently skew every timing score
+    state.calibrationMs = current.calibrationMs;
     persist();
   },
   reset() {

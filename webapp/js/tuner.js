@@ -27,12 +27,17 @@ export class TunerMode {
 
   onOnset(onset) {
     if (!this.root.classList.contains('active')) return;
-    if (this._pending) clearTimeout(this._pending);
-    // wait until the ring is in the buffer, then pitch it
-    this._pending = setTimeout(() => {
-      const win = this.mic.grabWindow(onset.time + TONE_SKIP, TONE_WINDOW);
+    this._lastOnsetTime = onset.time;
+    // wait until the ring is in the buffer, then pitch it. Each tap gets its
+    // own timer — cancelling the previous one silently ate taps 300-435 ms
+    // apart. If another tap lands first, this window is trimmed to it.
+    setTimeout(() => {
+      const next = this._lastOnsetTime > onset.time ? this._lastOnsetTime : null;
+      const dur = Math.min(TONE_WINDOW, (next ? next - 0.01 - onset.time : Infinity) - TONE_SKIP);
+      const win = dur > 0 ? this.mic.grabWindow(onset.time + TONE_SKIP, dur) : null;
       if (!win) return;
-      const hz = estimatePitch(win, this.mic.audioContext.sampleRate);
+      const pre = this.mic.grabWindow(onset.time - TONE_WINDOW - 0.01, TONE_WINDOW);
+      const hz = estimatePitch(win, this.mic.audioContext.sampleRate, pre);
       if (hz === null) {
         this.flashStatus('no clear pitch — let the head ring (hit near a lug, not the center, for lug tuning)');
         return;
@@ -56,15 +61,21 @@ export class TunerMode {
 
   render() {
     const kit = store.get('kit');
+    // settings can re-render this tab at any moment: reconcile state first so
+    // the DOM never claims one thing while saves act on another
+    if (this.drumId && !kit.some((d) => d.id === this.drumId)) {
+      this.drumId = null;
+      this.lugTaps = [];
+    }
     this.root.innerHTML = `
       <div class="mode-head">
         <div class="seg" role="tablist">
-          <button data-m="fundamental" class="on">Fundamental</button>
-          <button data-m="lug">Lug match</button>
+          <button data-m="fundamental" class="${this.mode === 'fundamental' ? 'on' : ''}">Fundamental</button>
+          <button data-m="lug" class="${this.mode === 'lug' ? 'on' : ''}">Lug match</button>
         </div>
         <select id="tuner-drum">
           <option value="">(no drum selected)</option>
-          ${kit.map((d) => `<option value="${d.id}">${d.name}</option>`).join('')}
+          ${kit.map((d) => `<option value="${d.id}" ${d.id === this.drumId ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
         </select>
       </div>
       <div class="big-read">
@@ -73,7 +84,7 @@ export class TunerMode {
         <canvas id="tuner-needle" width="640" height="120"></canvas>
         <div id="tuner-status" class="status"></div>
       </div>
-      <div id="tuner-lugs" class="lug-panel hidden">
+      <div id="tuner-lugs" class="lug-panel ${this.mode === 'lug' ? '' : 'hidden'}">
         <div class="lug-row" id="lug-list"></div>
         <div class="row">
           <button id="lug-clear">Clear pass</button>
@@ -97,16 +108,18 @@ export class TunerMode {
       this.updateReadout();
     });
     this.root.querySelector('#tuner-save').addEventListener('click', () => {
+      const drum = store.get('kit').find((d) => d.id === this.drumId);
       const hz = this.mode === 'lug' && this.lugTaps.length ? median(this.lugTaps) : this.lastHz;
-      if (this.drumId && hz) {
-        store.updateDrum(this.drumId, { targetHz: Math.round(hz * 10) / 10 });
-        this.flashStatus(`saved ${hz.toFixed(1)} Hz as target`);
+      if (drum && hz) {
+        store.updateDrum(drum.id, { targetHz: Math.round(hz * 10) / 10 });
+        this.flashStatus(`saved ${hz.toFixed(1)} Hz as target for ${drum.name}`);
       }
     });
     this.root.querySelector('#lug-clear').addEventListener('click', () => {
       this.lugTaps = [];
       this.updateReadout();
     });
+    if (this.lastHz !== null) this.updateReadout();
   }
 
   flashStatus(msg) {
@@ -181,4 +194,10 @@ export class TunerMode {
 function median(arr) {
   const s = [...arr].sort((a, b) => a - b);
   return s[Math.floor(s.length / 2)];
+}
+
+function esc(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
 }
