@@ -21,6 +21,7 @@ const DEFAULTS = {
   grooveRud: null,              // {bpm, meterId, grouping}
   grooveTiming: null,
   runs: [],                     // every completed session, append-only (capped)
+  show: null,                   // armed show ritual: {armedAt, stageTime, drums, hands}
 };
 
 const MAX_RUNS = 500;
@@ -60,6 +61,15 @@ function sanitize(data) {
     clean.runs = data.runs
       .filter((r) => r && typeof r === 'object' && num(r.sd) !== undefined && num(r.mean) !== undefined)
       .slice(-MAX_RUNS);
+  }
+  const s = data.show;
+  if (s && typeof s === 'object' && num(s.armedAt) !== undefined && num(s.stageTime) !== undefined) {
+    clean.show = {
+      armedAt: s.armedAt,
+      stageTime: s.stageTime,
+      drums: s.drums && typeof s.drums === 'object' ? s.drums : null,
+      hands: s.hands && typeof s.hands === 'object' ? s.hands : null,
+    };
   }
   return clean;
 }

@@ -5,6 +5,7 @@
 import { Metronome } from './metronome.js';
 import { BleedGuard, summarize } from './dsp.js';
 import { store } from './store.js';
+import { theme } from './theme.js';
 import { GrooveBar } from './groove.js';
 import { wakeLock } from './audio.js';
 
@@ -219,11 +220,12 @@ export class TimingMode {
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = 'rgba(61,220,132,.12)';
+    const T = theme();
+    ctx.fillStyle = T.green + '22';
     const pk = store.get('pocketMs');
     const yOf = (d) => h / 2 - (d / 60) * (h / 2 - 10);
     ctx.fillRect(0, yOf(pk), w, yOf(-pk) - yOf(pk));
-    ctx.strokeStyle = '#3a3f4a';
+    ctx.strokeStyle = T.line;
     ctx.beginPath();
     ctx.moveTo(0, h / 2);
     ctx.lineTo(w, h / 2);
@@ -232,13 +234,13 @@ export class TimingMode {
     this.recent.forEach((d, i) => {
       const x = w - (n - i) * 8 - 10;
       if (x < 0) return;
-      ctx.fillStyle = Math.abs(d) <= pk ? '#3ddc84' : d < 0 ? '#4da3ff' : '#ffb04d';
+      ctx.fillStyle = Math.abs(d) <= pk ? T.green : d < 0 ? T.blue : T.acid;
       ctx.beginPath();
       ctx.arc(x, yOf(Math.max(-60, Math.min(60, d))), 4, 0, 7);
       ctx.fill();
     });
-    ctx.fillStyle = '#8a919e';
-    ctx.font = '12px system-ui';
+    ctx.fillStyle = T.dim;
+    ctx.font = '12px ' + T.mono;
     ctx.fillText('early ↑', 8, 14);
     ctx.fillText('late ↓', 8, h - 8);
   }

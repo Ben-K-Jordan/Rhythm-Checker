@@ -23,8 +23,65 @@ export class PreshowMode {
     this.mic = mic;
     this.state = 'idle'; // idle | drum | hands | done
     this.results = [];
+    this._leg = 'full';  // 'full' (dry run) | 'drums' | 'hands' (armed ritual legs)
+    this.navTo = null;   // set by the shell so completed legs return home
     this.render();
     mic.addEventListener('onset', (e) => this.onOnset(e.detail));
+  }
+
+  // Armed-ritual entry: run ONE leg, write its outcome into the show ledger,
+  // then go home. Show day splits naturally — drums at soundcheck, hands
+  // backstage hours later — so the legs must be independently runnable.
+  beginLeg(leg) {
+    if (this.navTo) this.navTo('preshow');
+    clearInterval(this._countTimer);
+    if (this.session) { this.session.cancel(); this.session = null; }
+    this._leg = leg;
+    this.results = [];
+    if (leg === 'hands') {
+      this.state = 'hands';
+      this.startHands();
+      return;
+    }
+    this.queue = this.targetsReady().map((d) => ({ drum: d, taps: [] }));
+    if (!this.queue.length) {
+      this.state = 'idle';
+      this.render();
+      return;
+    }
+    this.state = 'drum';
+    this.current = 0;
+    this.mic.setDetectorOptions({ refractory: 0.3, threshold: 5, minLevel: 0.012 });
+    this.renderStage();
+  }
+
+  _afterDrums() {
+    if (this._leg === 'drums') this._completeLeg('drums');
+    else this.startHands();
+  }
+
+  _completeLeg(leg) {
+    const show = store.get('show');
+    const rows = this.results;
+    const pass = rows.length > 0 && rows.every((r) => r.pass);
+    let detail;
+    if (leg === 'drums') {
+      const bad = rows.filter((r) => !r.pass);
+      detail = bad.length
+        ? `${bad.length} off: ${bad.map((r) => r.name).join(', ')}`
+        : `${rows.length}/${rows.length} in tune`;
+    } else {
+      detail = rows[0] ? rows[0].detail : 'no data';
+    }
+    if (show && this._leg !== 'full') {
+      show[leg] = { time: Date.now(), pass, detail };
+      store.set('show', show);
+      this.state = 'idle';
+      this._leg = 'full';
+      if (this.navTo) this.navTo('home');
+    } else {
+      this.finishAll();
+    }
   }
 
   activate() {
@@ -107,7 +164,7 @@ export class PreshowMode {
         });
         this.current++;
         if (this.current < this.queue.length) this.renderStage();
-        else this.startHands();
+        else this._afterDrums();
       });
     } else if (this.state === 'hands') {
       stage.innerHTML = `
@@ -165,13 +222,19 @@ export class PreshowMode {
     if (this.current < this.queue.length) {
       this.renderStage();
     } else {
-      this.startHands();
+      this._afterDrums();
     }
   }
 
   startHands() {
     const base = store.get('baseline');
-    if (!base) { this.finishAll(); return; }
+    if (!base) {
+      if (this._leg === 'hands') {
+        this.results.push({ name: 'Hands', pass: false, detail: 'no baseline saved — run Timing first' });
+        this._completeLeg('hands');
+      } else this.finishAll();
+      return;
+    }
     this.state = 'hands';
     this.mic.setDetectorOptions({ refractory: 0.03, threshold: 4, minLevel: 0.01 });
     this.session = new TimingSession(this.mic, {
@@ -208,7 +271,8 @@ export class PreshowMode {
         detail: `spread ${result.sd.toFixed(1)} ms (baseline ${base.sd.toFixed(1)}) · pocket ${result.pocketPct.toFixed(0)}% (baseline ${base.pocketPct.toFixed(0)}%) · mean ${result.mean >= 0 ? '+' : ''}${result.mean.toFixed(1)} ms`,
       });
     }
-    this.finishAll();
+    if (this._leg === 'hands') this._completeLeg('hands');
+    else this.finishAll();
   }
 
   finishAll() {

@@ -3,6 +3,7 @@
 // the practice is working — no medals, just the graph moving.
 
 import { store } from './store.js';
+import { theme } from './theme.js';
 
 export class HistoryMode {
   constructor(root) {
@@ -77,17 +78,18 @@ export class HistoryMode {
     const x = (i) => 30 + (i / Math.max(1, recent.length - 1)) * (w - 60);
     const y = (sd) => h - 20 - (sd / maxSd) * (h - 40);
     // 10 ms reference line
-    ctx.strokeStyle = '#2a303c';
+    const T = theme();
+    ctx.strokeStyle = T.line;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(30, y(10));
     ctx.lineTo(w - 30, y(10));
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#8a919e';
-    ctx.font = '11px system-ui';
+    ctx.fillStyle = T.dim;
+    ctx.font = '11px ' + T.mono;
     ctx.fillText('10 ms', 2, y(10) + 4);
-    ctx.strokeStyle = '#4da3ff';
+    ctx.strokeStyle = T.pink;
     ctx.lineWidth = 2;
     ctx.beginPath();
     recent.forEach((r, i) => {
@@ -95,7 +97,7 @@ export class HistoryMode {
       else ctx.lineTo(x(i), y(r.sd));
     });
     ctx.stroke();
-    ctx.fillStyle = '#4da3ff';
+    ctx.fillStyle = T.pink;
     recent.forEach((r, i) => {
       ctx.beginPath();
       ctx.arc(x(i), y(r.sd), 3, 0, 7);

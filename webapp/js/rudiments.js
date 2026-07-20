@@ -9,6 +9,7 @@ import { buildChartTimes, segmentAt, unitGlyph } from './meter.js';
 import { GrooveBar } from './groove.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
+import { theme } from './theme.js';
 import { wakeLock } from './audio.js';
 
 export const RUDIMENTS = [
@@ -354,9 +355,10 @@ export class RudimentsMode {
     const strikeY = h - 70;
     const pxPerSec = 260;
 
-    ctx.fillStyle = '#151922';
+    const T = theme();
+    ctx.fillStyle = T.panel;
     ctx.fillRect(w / 2 - 130, 0, 260, h);
-    ctx.strokeStyle = '#3ddc84';
+    ctx.strokeStyle = T.pink;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(w / 2 - 150, strikeY);
@@ -364,8 +366,8 @@ export class RudimentsMode {
     ctx.stroke();
 
     if (!this.running) {
-      ctx.fillStyle = '#8a919e';
-      ctx.font = '18px system-ui';
+      ctx.fillStyle = T.dim;
+      ctx.font = '15px ' + T.mono;
       ctx.textAlign = 'center';
       ctx.fillText('pick a rudiment, dial the groove bar, hit Play — one bar count-in', w / 2, h / 2);
       return;
@@ -390,7 +392,7 @@ export class RudimentsMode {
       `${unitGlyph(this.grooveUsed.meter)}=${seg.bpm}`;
 
     // bar lines
-    ctx.strokeStyle = '#2a303c';
+    ctx.strokeStyle = T.line;
     ctx.lineWidth = 1;
     for (const b of this.chart.barOffsets) {
       const y = strikeY - (this.chartStart + b - now) * pxPerSec;
@@ -403,8 +405,8 @@ export class RudimentsMode {
 
     ctx.textAlign = 'center';
     const colors = {
-      'coming': '#4da3ff', 'hit-perfect': '#3ddc84', 'hit-good': '#b8e986',
-      'hit-ok': '#ffb04d', 'miss': '#ff5252',
+      'coming': T.blue, 'hit-perfect': T.green, 'hit-good': '#9be34f',
+      'hit-ok': T.acid, 'miss': T.pink,
     };
     for (const n of this.chart.notes) {
       const t = this.chartStart + n.offset;
@@ -417,15 +419,15 @@ export class RudimentsMode {
       ctx.arc(w / 2, y, r, 0, 7);
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#0d1015';
+      ctx.fillStyle = T.ink;
       ctx.font = `bold ${n.accent ? 18 : 13}px system-ui`;
       ctx.fillText(n.stick, w / 2, y + 5);
     }
 
     if (now < this.chartStart) {
       const pulsesLeft = Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses));
-      ctx.fillStyle = '#e8eaf0';
-      ctx.font = 'bold 64px system-ui';
+      ctx.fillStyle = T.paper;
+      ctx.font = "72px 'Anton', system-ui";
       ctx.fillText(String(pulsesLeft), w / 2, h / 2);
     }
   }

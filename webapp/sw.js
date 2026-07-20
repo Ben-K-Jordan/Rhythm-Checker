@@ -5,7 +5,7 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v4';
+const CACHE = 'rhythm-checker-v5';
 const ASSETS = [
   '.',
   'index.html',
@@ -15,6 +15,8 @@ const ASSETS = [
   'js/calibrate.js',
   'js/dsp.js',
   'js/groove.js',
+  'js/home.js',
+  'js/theme.js',
   'js/history.js',
   'js/meter.js',
   'js/metronome.js',
@@ -28,6 +30,7 @@ const ASSETS = [
   'icons/icon.svg',
   'icons/icon-180.png',
   'icons/icon-512.png',
+  'fonts/Anton-Regular.ttf',
 ];
 
 self.addEventListener('install', (e) => {

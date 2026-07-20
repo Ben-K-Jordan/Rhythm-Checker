@@ -1,0 +1,9 @@
+{
+  "appId": "com.benjordan.rhythmchecker",
+  "appName": "Rhythm Checker",
+  "webDir": "webapp",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0b0b0d"
+  }
+}

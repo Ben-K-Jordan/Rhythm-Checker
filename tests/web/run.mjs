@@ -80,10 +80,52 @@ await page.click('#start-btn');
 await page.waitForSelector('#app:not(.hidden)', { timeout: 10000 });
 check('mic-boot', true);
 
+// 2b. two-state home: practice state renders, arm flow reaches the ritual,
+// the Big Button carries the next action, and disarm requires a real hold
+const homeState = await page.evaluate(() => ({
+  active: document.querySelector('#mode-home').classList.contains('active'),
+  arm: !!document.querySelector('#arm-strip'),
+  tiles: document.querySelectorAll('#mode-home .tile').length,
+}));
+check('home-practice-state', homeState.active && homeState.arm && homeState.tiles >= 6);
+
+await page.click('#arm-strip');
+await page.click('#arm-sheet .chip[data-rel="2"]');
+await page.click('#arm-go');
+const armed = await page.evaluate(() => ({
+  big: (document.querySelector('#big-btn .big-word') || {}).textContent || '',
+  ledger: document.querySelectorAll('.ledger-row').length,
+  disarm: !!document.querySelector('#disarm'),
+}));
+check('home-armed-state', /check\s*drums/i.test(armed.big) && armed.ledger === 2 && armed.disarm, JSON.stringify(armed));
+
+// a quick tap must NOT disarm; a 600 ms hold must
+await page.evaluate(() => {
+  const d = document.querySelector('#disarm');
+  d.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  d.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+});
+await page.waitForTimeout(700);
+const stillArmed = await page.evaluate(() => !!document.querySelector('#big-btn'));
+check('disarm-ignores-taps', stillArmed);
+await page.evaluate(() => {
+  document.querySelector('#disarm').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+});
+await page.waitForTimeout(750);
+const disarmed = await page.evaluate(() => !!document.querySelector('#arm-strip'));
+check('disarm-hold-works', disarmed);
+
+// tile navigation + hard back
+await page.click('#mode-home .tile[data-nav="tuner"]');
+const onTuner = await page.evaluate(() => document.querySelector('#mode-tuner').classList.contains('active')
+  && !document.querySelector('#nav-back').classList.contains('hidden'));
+check('tile-nav-and-back', onTuner);
+await page.click('#nav-back');
+
 // 3. every tab renders its mode UI
 const tabs = ['preshow', 'tuner', 'rudiments', 'timing', 'calibrate'];
 for (const tab of tabs) {
-  await page.click(`.tab-btn[data-tab="${tab}"]`);
+  await page.evaluate((n) => window.__rhythmChecker.nav(n), tab);
   const visible = await page.$eval(`#mode-${tab}`, (el) => el.classList.contains('active') && el.innerHTML.length > 50);
   check(`tab-${tab}`, visible);
 }
@@ -209,7 +251,7 @@ const histCheck = await page.evaluate(async () => {
 check('history-store', histCheck.ok);
 
 // 5. timing mode starts and stops without errors
-await page.click('.tab-btn[data-tab="timing"]');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'timing');
 await page.click('#tm-go');
 await page.waitForTimeout(1200);
 const stopLabel = await page.$eval('#tm-go', (b) => b.textContent);
@@ -217,7 +259,7 @@ check('timing-start', stopLabel === 'Stop');
 await page.click('#tm-go');
 
 // 6. rudiment trainer: groove bar present, odd meter + ramp run starts/stops
-await page.click('.tab-btn[data-tab="rudiments"]');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'rudiments');
 const grooveUi = await page.evaluate(() => {
   const rud = document.querySelector('#mode-rudiments');
   return {
@@ -260,7 +302,7 @@ await page.click('#rud-go');
 await page.click('#mode-rudiments [data-meter="4/4"]');
 
 // 6b. history tab renders (with the test run saved earlier)
-await page.click('.tab-btn[data-tab="history"]');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'history');
 const histUi = await page.evaluate(() => {
   const el = document.querySelector('#mode-history');
   return {
@@ -279,8 +321,8 @@ const preshowCheck = await page.evaluate(async () => {
   store.updateDrum(store.get('kit')[0].id, { targetHz: 141 });
   store.set('baseline', { bpm: 120, subdivision: 2, mean: 0, sd: 8, pocketPct: 70, date: '2026-07-20' });
   store.set('calibrationMs', 12);
-  document.querySelector('.tab-btn[data-tab="tuner"]').click();
-  document.querySelector('.tab-btn[data-tab="preshow"]').click();
+  window.__rhythmChecker.nav('tuner');
+  window.__rhythmChecker.nav('preshow');
   const nowEnabled = !document.querySelector('#mode-preshow #ps-go').disabled;
   return { ok: startDisabled && nowEnabled, why: `before=${startDisabled} after=${nowEnabled}` };
 });
@@ -311,11 +353,11 @@ await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
   store.reset();
 });
-await page.click('.tab-btn[data-tab="timing"]');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'timing');
 await page.click('#tm-go');
 await page.waitForTimeout(600);
-await page.click('.tab-btn[data-tab="tuner"]');
-await page.click('.tab-btn[data-tab="timing"]');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'tuner');
+await page.evaluate((n) => window.__rhythmChecker.nav(n), 'timing');
 const cancelled = await page.$eval('#tm-final', (el) => el.textContent);
 check('timing-cancelled-on-tab-switch', cancelled.includes('cancelled'), cancelled);
 

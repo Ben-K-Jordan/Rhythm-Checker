@@ -1,9 +1,10 @@
-// App shell: mic bootstrap (browsers require a user gesture), tabs, settings,
-// kit editor, and the offline service worker.
+// App shell: hub-and-spoke navigation (HOME owns the screen; every tool is
+// one level deep with a hard BACK), mic bootstrap, settings, offline SW.
 
 import { MicEngine } from './audio.js';
 import { selftest } from './dsp.js';
 import { store } from './store.js';
+import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
 import { RudimentsMode } from './rudiments.js';
@@ -13,16 +14,22 @@ import { HistoryMode } from './history.js';
 
 const mic = new MicEngine();
 const modes = {};
-let currentTab = 'preshow';
+let currentScreen = 'home';
+
+const TITLES = {
+  home: '', tuner: 'Tuner', rudiments: 'Rudiments', timing: 'Timing',
+  preshow: 'Pre-show', calibrate: 'Calibrate', history: 'History',
+};
 
 function $(sel) { return document.querySelector(sel); }
 
-function showTab(name) {
-  const leaving = modes[currentTab];
+function nav(name) {
+  const leaving = modes[currentScreen];
   if (leaving && leaving !== modes[name] && leaving.deactivate) leaving.deactivate();
-  currentTab = name;
-  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  currentScreen = name;
   document.querySelectorAll('.mode').forEach((m) => m.classList.toggle('active', m.id === `mode-${name}`));
+  $('#nav-back').classList.toggle('hidden', name === 'home');
+  $('#screen-title').textContent = TITLES[name] || '';
   const mode = modes[name];
   if (mode && mode.activate) mode.activate();
 }
@@ -35,11 +42,13 @@ function escText(text) {
 
 function initModes() {
   modes.preshow = new PreshowMode($('#mode-preshow'), mic);
+  modes.preshow.navTo = nav;
   modes.tuner = new TunerMode($('#mode-tuner'), mic);
   modes.timing = new TimingMode($('#mode-timing'), mic);
   modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
   modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
   modes.history = new HistoryMode($('#mode-history'));
+  modes.home = new HomeMode($('#mode-home'), nav, { preshow: modes.preshow, rudiments: modes.rudiments });
 }
 
 function levelMeterLoop() {
@@ -78,7 +87,8 @@ function renderSettings() {
       <button id="set-import">Import backup</button>
       <input id="set-import-file" type="file" accept="application/json" class="hidden">
     </div>
-    <p class="dim">Everything lives on this device. Nothing is uploaded, ever.</p>`;
+    <p class="dim">Everything lives on this device. Nothing is uploaded, ever.
+    Calibration is per-device and never travels with a backup.</p>`;
 
   $('#kit-add').addEventListener('click', () => {
     store.addDrum(`Drum ${kit.length + 1}`);
@@ -150,24 +160,25 @@ async function boot() {
       }
     });
   }
-  showTab(currentTab);
+  nav('home');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   // machine-checkable health: Playwright and the diagnostics footer read this
   const st = selftest();
-  window.__rhythmChecker = { selftest: st, version: '1.0.0' };
+  window.__rhythmChecker = { selftest: st, version: '2.0.0', nav: (n) => nav(n) };
   $('#diag').textContent = st.passed
     ? 'engine self-test: all passing'
     : `ENGINE SELF-TEST FAILING: ${st.failures.join(', ')}`;
   if (!st.passed) $('#diag').classList.add('warn-text');
 
   $('#start-btn').addEventListener('click', boot);
-  document.querySelectorAll('.tab-btn').forEach((b) => {
-    b.addEventListener('click', () => showTab(b.dataset.tab));
-  });
+  $('#nav-back').addEventListener('click', () => nav('home'));
   $('#settings-btn').addEventListener('click', () => $('#settings').classList.toggle('hidden'));
-  $('#settings-close').addEventListener('click', () => $('#settings').classList.add('hidden'));
+  $('#settings-close').addEventListener('click', () => {
+    $('#settings').classList.add('hidden');
+    if (modes.home && currentScreen === 'home') modes.home.render();
+  });
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline still works after first visit */ });

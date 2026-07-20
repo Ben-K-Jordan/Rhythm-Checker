@@ -3,6 +3,7 @@
 
 import { estimatePitch, hzToNote, centsBetween } from './dsp.js';
 import { store } from './store.js';
+import { theme } from './theme.js';
 
 const TONE_SKIP = 0.025;
 const TONE_WINDOW = 0.35;
@@ -170,7 +171,8 @@ export class TunerMode {
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = '#3a3f4a';
+    const T = theme();
+    ctx.strokeStyle = T.line;
     ctx.lineWidth = 2;
     for (let c = -50; c <= 50; c += 10) {
       const x = w / 2 + (c / 50) * (w / 2 - 20);
@@ -182,7 +184,7 @@ export class TunerMode {
     if (cents === null) return;
     const clamped = Math.max(-50, Math.min(50, cents));
     const x = w / 2 + (clamped / 50) * (w / 2 - 20);
-    ctx.strokeStyle = Math.abs(cents) <= store.get('tuneToleranceCents') ? '#3ddc84' : '#ff5252';
+    ctx.strokeStyle = Math.abs(cents) <= store.get('tuneToleranceCents') ? T.green : T.pink;
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(x, 15);

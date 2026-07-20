@@ -13,3 +13,10 @@ htmlcov/
 *.html
 !docs/**/*.html
 .rhythm-checker/
+
+# native shell
+node_modules/
+ios/App/Pods/
+ios/App/App/public/
+ios/App/output/
+ios/DerivedData/
