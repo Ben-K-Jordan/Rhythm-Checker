@@ -1,0 +1,140 @@
+"""Command-line interface."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from . import __version__
+from .analysis import analyze_session
+from .audio import AudioError, load_recording
+from .onsets import detect_onsets
+from .report import html_report, text_report
+from .store import SessionRecord, load_records, save_record, trend_summary
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="rhythm-checker",
+        description=(
+            "Measure every drum hit in a practice recording against the metronome "
+            "grid. The numbers tell the truth about your time; what to do with "
+            "that truth stays with you."
+        ),
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    an = sub.add_parser("analyze", help="analyze one practice recording")
+    an.add_argument("file", help="recording (WAV natively; m4a/mp3 via ffmpeg)")
+    an.add_argument("--bpm", type=float, required=True,
+                    help="the metronome tempo you practiced to")
+    an.add_argument("--subdivision", type=int, default=4, metavar="N",
+                    help="grid lines per beat: 1=quarters 2=eighths 3=triplets "
+                         "4=sixteenths (default: 4)")
+    an.add_argument("--count-in", type=int, default=0, metavar="N",
+                    help="treat the first N hits as audible metronome/count-in clicks; "
+                         "anchors the grid so absolute push/drag is measurable")
+    an.add_argument("--fit-tempo", action="store_true",
+                    help="correct up to ±0.5%% tempo skew from the recording device's "
+                         "clock (also absorbs genuine steady drift — leave off unless "
+                         "you trust your device less than your hands)")
+    an.add_argument("--pocket-ms", type=float, default=10.0, metavar="MS",
+                    help="tolerance counted as 'in the pocket' (default: 10)")
+    an.add_argument("--sensitivity", type=float, default=1.0,
+                    help="onset detection sensitivity; raise toward 1.5-2 for quiet "
+                         "recordings or brushes (default: 1.0)")
+    an.add_argument("--name", default="", help="label for this session in history")
+    an.add_argument("--html", metavar="PATH", help="also write a chart report to PATH")
+    an.add_argument("--json", dest="json_path", metavar="PATH",
+                    help="also dump full per-hit data as JSON to PATH")
+    an.add_argument("--no-save", action="store_true",
+                    help="don't add this session to the practice history")
+    an.add_argument("--store", metavar="DIR", help="history directory "
+                    "(default: ~/.rhythm-checker, or $RHYTHM_CHECKER_STORE)")
+
+    hist = sub.add_parser("history", help="list analyzed sessions")
+    hist.add_argument("--store", metavar="DIR")
+    hist.add_argument("--limit", type=int, default=0, help="show only the last N")
+
+    onsets_p = sub.add_parser("onsets", help="debug: dump detected hit times")
+    onsets_p.add_argument("file")
+    onsets_p.add_argument("--sensitivity", type=float, default=1.0)
+
+    return parser
+
+
+def _cmd_analyze(args: argparse.Namespace) -> int:
+    recording = load_recording(args.file)
+    onsets = detect_onsets(
+        recording.samples, recording.sample_rate, sensitivity=args.sensitivity
+    )
+    analysis = analyze_session(
+        onsets,
+        file=Path(args.file).name,
+        duration=recording.duration,
+        bpm=args.bpm,
+        subdivision=args.subdivision,
+        count_in=args.count_in,
+        fit_tempo=args.fit_tempo,
+        pocket_ms=args.pocket_ms,
+    )
+
+    print(text_report(analysis))
+
+    if args.html:
+        Path(args.html).write_text(html_report(analysis), encoding="utf-8")
+        print(f"\nchart report written to {args.html}")
+    if args.json_path:
+        Path(args.json_path).write_text(
+            json.dumps(analysis.to_dict(), indent=2), encoding="utf-8"
+        )
+        print(f"full data written to {args.json_path}")
+    if not args.no_save:
+        name = args.name or Path(args.file).stem
+        store_dir = Path(args.store) if args.store else None
+        path = save_record(SessionRecord.from_analysis(analysis, name), store_dir)
+        print(f"session added to history ({path})")
+    return 0
+
+
+def _cmd_history(args: argparse.Namespace) -> int:
+    store_dir = Path(args.store) if args.store else None
+    records = load_records(store_dir)
+    if args.limit > 0:
+        records = records[-args.limit:]
+    print(trend_summary(records))
+    return 0
+
+
+def _cmd_onsets(args: argparse.Namespace) -> int:
+    recording = load_recording(args.file)
+    onsets = detect_onsets(
+        recording.samples, recording.sample_rate, sensitivity=args.sensitivity
+    )
+    print(json.dumps(
+        {
+            "file": args.file,
+            "duration_s": round(recording.duration, 2),
+            "n_onsets": len(onsets),
+            "times_s": [round(float(t), 4) for t in onsets.times],
+        },
+        indent=2,
+    ))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    handlers = {"analyze": _cmd_analyze, "history": _cmd_history, "onsets": _cmd_onsets}
+    try:
+        return handlers[args.command](args)
+    except (AudioError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

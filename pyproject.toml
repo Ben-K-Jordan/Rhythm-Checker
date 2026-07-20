@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rhythm-checker"
+version = "0.1.0"
+description = "Honest timing analysis for drum practice recordings: every hit measured against the metronome grid."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Ben Jordan" }]
+dependencies = ["numpy>=1.22"]
+
+[project.optional-dependencies]
+charts = ["matplotlib>=3.5"]
+dev = ["pytest>=7", "matplotlib>=3.5"]
+
+[project.scripts]
+rhythm-checker = "rhythm_checker.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["rhythm_checker*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

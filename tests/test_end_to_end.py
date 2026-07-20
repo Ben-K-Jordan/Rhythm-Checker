@@ -1,0 +1,186 @@
+"""End-to-end honesty checks: synthesize a 'drummer' with programmed flaws,
+run the full pipeline, and require the report to tell the truth about them."""
+
+import json
+import subprocess
+import sys
+
+import numpy as np
+import pytest
+
+from rhythm_checker import analyze_file
+from rhythm_checker.analysis import analyze_session
+from rhythm_checker.onsets import detect_onsets
+from rhythm_checker.report import html_report, text_report
+
+from synth import SR, grid_times, render, write_wav
+
+BPM = 120
+BEAT = 60.0 / BPM
+
+
+def _analyze(times, tmp_path, name="s.wav", **kwargs):
+    path = tmp_path / name
+    write_wav(path, render(np.asarray(times)))
+    return analyze_file(str(path), BPM, **kwargs)
+
+
+def test_steady_playing_reports_low_spread(tmp_path):
+    rng = np.random.default_rng(3)
+    times = grid_times(BPM, 2, 120) + rng.normal(0, 0.004, 120)  # 4 ms SD human
+    a = _analyze(np.sort(times), tmp_path, subdivision=2)
+    assert a.overall.n >= 110
+    assert a.overall.sd_ms == pytest.approx(4.0, abs=2.0)
+    assert abs(a.overall.mean_ms) < 2.0
+
+
+def test_rushed_player_with_count_in_anchor(tmp_path):
+    clicks = 0.5 + BEAT * np.arange(4)
+    play = clicks[-1] + BEAT + (BEAT / 2) * np.arange(80) - 0.012  # 12 ms early
+    rng = np.random.default_rng(5)
+    play = play + rng.normal(0, 0.003, len(play))
+    a = _analyze(np.concatenate([clicks, np.sort(play)]), tmp_path,
+                 subdivision=2, count_in=4)
+    assert a.grid.anchored
+    assert a.grid.count_in_warning is None
+    assert a.overall.mean_ms == pytest.approx(-12.0, abs=2.5)
+    report = text_report(a)
+    assert "count-in anchor" in report
+
+
+def test_fatigue_drift_is_detected(tmp_path):
+    n = 150
+    base = grid_times(BPM, 2, n)
+    drift = np.linspace(0, 0.030, n)  # slides 30 ms late over the session
+    a = _analyze(base + drift, tmp_path, subdivision=2)
+    assert a.drift is not None
+    session_min = (base[-1] + 0.030 - base[0]) / 60.0
+    expected_slope = 30.0 / session_min
+    assert a.drift.slope_ms_per_min == pytest.approx(expected_slope, rel=0.35)
+    assert a.drift.correlation > 0.8
+    assert a.drift.second_half.mean_ms > a.drift.first_half.mean_ms
+
+
+def test_rushed_fill_shows_in_dense_stats(tmp_path):
+    # quarter-note time, one bar of rushed sixteenths in the middle
+    groove1 = grid_times(BPM, 1, 16)                      # 0.5 .. 8.0
+    fill_start = groove1[-1] + BEAT
+    fill = fill_start + (BEAT / 4) * np.arange(16) - 0.014  # 14 ms early
+    groove2 = fill_start + 4 * BEAT + BEAT * np.arange(16)
+    rng = np.random.default_rng(11)
+    times = np.sort(np.concatenate([groove1, fill, groove2])
+                    + rng.normal(0, 0.002, 48))
+    a = _analyze(times, tmp_path)
+    assert len(a.dense_passages) >= 1
+    assert a.dense_stats.n >= 12
+    assert a.dense_stats.mean_ms < a.sparse_stats.mean_ms - 5.0
+
+
+def test_fill_finer_than_grid_still_registers_as_dense(tmp_path):
+    # eighth-note groove analyzed on an eighth grid, but the fill is sixteenths:
+    # half its hits are off-grid, yet the passage must still show up as dense
+    groove1 = grid_times(BPM, 2, 32)                     # 0.5 .. 8.25
+    fill_start = groove1[-1] + BEAT / 2
+    fill = fill_start + (BEAT / 4) * np.arange(16)
+    groove2 = fill_start + 4 * BEAT + (BEAT / 2) * np.arange(32)
+    times = np.concatenate([groove1, fill, groove2])
+    a = _analyze(times, tmp_path, subdivision=2)
+    assert len(a.dense_passages) >= 1
+    assert any(p.start < fill_start < p.end for p in a.dense_passages)
+    assert len(a.alignment.unaligned_times) >= 6  # the off-grid sixteenths, reported
+
+
+def test_position_breakdown_only_when_anchored(tmp_path):
+    clicks = 0.5 + BEAT * np.arange(4)
+    start = clicks[-1] + BEAT
+    beats = start + BEAT * np.arange(24)
+    ands = beats + BEAT / 2 + 0.010  # every "&" 10 ms late
+    times = np.sort(np.concatenate([clicks, beats, ands]))
+    a = _analyze(times, tmp_path, subdivision=2, count_in=4)
+    assert 0 in a.position_stats and 1 in a.position_stats
+    assert a.position_stats[1].mean_ms > a.position_stats[0].mean_ms + 5.0
+
+    a2 = _analyze(np.sort(np.concatenate([beats, ands])), tmp_path,
+                  name="s2.wav", subdivision=2)
+    assert a2.position_stats == {}
+
+
+def test_fit_tempo_recovers_skewed_clock(tmp_path):
+    interval = (60.0 / BPM / 2) * 1.003
+    times = 0.5 + interval * np.arange(100)
+    a = _analyze(times, tmp_path, subdivision=2, fit_tempo=True)
+    assert a.grid.tempo_correction == pytest.approx(1.003, abs=5e-4)
+    assert a.overall.sd_ms < 3.0
+    # without the fit the same recording shows inflated spread
+    b = _analyze(times, tmp_path, name="b.wav", subdivision=2)
+    assert b.overall.sd_ms > a.overall.sd_ms
+
+
+def test_wrong_bpm_fails_with_helpful_error(tmp_path):
+    times = grid_times(97, 1, 40)  # played at 97 BPM
+    path = tmp_path / "wrong.wav"
+    write_wav(path, render(times))
+    with pytest.raises(ValueError, match="BPM"):
+        analyze_file(str(path), 141)  # far off, not a harmonic
+
+
+def test_too_few_hits_fails_clearly(tmp_path):
+    path = tmp_path / "few.wav"
+    write_wav(path, render([0.5, 1.0]))
+    with pytest.raises(ValueError, match="not enough"):
+        analyze_file(str(path), BPM)
+
+
+def test_reports_render_and_contain_the_disclaimer(tmp_path):
+    rng = np.random.default_rng(8)
+    times = np.sort(grid_times(BPM, 2, 60) + rng.normal(0, 0.006, 60))
+    a = _analyze(times, tmp_path, subdivision=2)
+    txt = text_report(a)
+    assert "your call" in txt  # the judgment stays human
+    page = html_report(a)
+    assert page.startswith("<!doctype html>")
+    assert "data:image/png;base64," in page  # matplotlib present in dev env
+
+
+def test_analysis_to_dict_is_json_serializable(tmp_path):
+    rng = np.random.default_rng(9)
+    times = np.sort(grid_times(BPM, 2, 60) + rng.normal(0, 0.006, 60))
+    a = _analyze(times, tmp_path, subdivision=2)
+    payload = json.dumps(a.to_dict())
+    assert '"deviations_ms"' in payload
+
+
+def test_cli_full_run(tmp_path):
+    rng = np.random.default_rng(4)
+    times = np.sort(grid_times(BPM, 2, 80) + rng.normal(0, 0.005, 80))
+    wav = tmp_path / "practice.wav"
+    write_wav(wav, render(times))
+    store = tmp_path / "store"
+    html = tmp_path / "report.html"
+    out = subprocess.run(
+        [sys.executable, "-m", "rhythm_checker", "analyze", str(wav),
+         "--bpm", "120", "--subdivision", "2", "--store", str(store),
+         "--html", str(html), "--name", "unit-test"],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 0, out.stderr
+    assert "RHYTHM CHECKER" in out.stdout
+    assert html.exists()
+    assert (store / "sessions.jsonl").exists()
+
+    hist = subprocess.run(
+        [sys.executable, "-m", "rhythm_checker", "history", "--store", str(store)],
+        capture_output=True, text=True,
+    )
+    assert hist.returncode == 0, hist.stderr
+    assert "unit-test" in hist.stdout
+
+
+def test_cli_errors_cleanly_on_missing_file(tmp_path):
+    out = subprocess.run(
+        [sys.executable, "-m", "rhythm_checker", "analyze",
+         str(tmp_path / "nope.wav"), "--bpm", "120"],
+        capture_output=True, text=True,
+    )
+    assert out.returncode == 1
+    assert "not found" in out.stderr
