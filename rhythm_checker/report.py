@@ -100,8 +100,13 @@ def text_report(a: SessionAnalysis) -> str:
     if a.dense_passages:
         add(f"HIGH-DENSITY PASSAGES (busy playing — often fills): "
             f"{len(a.dense_passages)} found, {a.dense_stats.n} measurable hits")
-        add(f"  in dense passages: {_stats_line(a.dense_stats)}")
-        add(f"  everywhere else:   {_stats_line(a.sparse_stats)}")
+        if a.dense_stats.n:
+            add(f"  in dense passages: {_stats_line(a.dense_stats)}")
+        else:
+            add("  in dense passages: no hit near a grid line — timing not "
+                "measurable at this subdivision")
+        if a.sparse_stats.n:
+            add(f"  everywhere else:   {_stats_line(a.sparse_stats)}")
         for p in a.dense_passages:
             timing = (
                 f"mean {_fmt_ms(p.mean_ms)} over {p.n_aligned} on-grid hits"

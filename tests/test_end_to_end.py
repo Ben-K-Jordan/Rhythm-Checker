@@ -113,6 +113,30 @@ def test_fill_finer_than_grid_still_registers_as_dense(tmp_path):
     assert len(a.alignment.unaligned_times) >= 6  # the off-grid sixteenths, reported
 
 
+def test_all_offgrid_dense_burst_never_fabricates_stats(tmp_path):
+    # a burst that never touches the quarter-note grid (phases 0.42-0.56 of the
+    # beat, beyond the 0.4-interval attribution limit), isolated from the groove
+    # by rests: the report must say "not measurable" — a fabricated
+    # "mean +0.0 ms" over zero hits would be a lie
+    clicks = 0.5 + BEAT * np.arange(4)
+    start = clicks[-1] + BEAT
+    g1 = start + BEAT * np.arange(10)
+    burst_base = g1[-1] + 3 * BEAT
+    burst = np.array([burst_base + (b + 0.42 + ph) * BEAT
+                      for b in range(4) for ph in (0.0, 0.07, 0.14)])
+    g2 = burst_base + 7 * BEAT + BEAT * np.arange(10)
+    times = np.sort(np.concatenate([clicks, g1, burst, g2]))
+    a = _analyze(times, tmp_path, subdivision=1, count_in=4)
+    dense = [p for p in a.dense_passages if p.n_aligned == 0]
+    assert dense, "the off-grid burst should form a zero-aligned dense passage"
+    assert all(p.mean_ms is None for p in dense)
+    assert a.dense_stats.n == 0
+    assert len(a.alignment.unaligned_times) >= 12
+    report = text_report(a)
+    assert "in dense passages: no hit near a grid line" in report
+    assert "in dense passages: mean" not in report
+
+
 def test_position_breakdown_only_when_anchored(tmp_path):
     clicks = 0.5 + BEAT * np.arange(4)
     start = clicks[-1] + BEAT
