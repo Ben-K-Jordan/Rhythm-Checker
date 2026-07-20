@@ -1,4 +1,19 @@
-# Shipping to TestFlight (iPhone)
+# iPhone distribution
+
+## The free path (recommended): installed PWA, no Apple fee
+
+`.github/workflows/deploy-pages.yml` publishes `webapp/` to GitHub Pages on
+every push to `main`. One-time: repo **Settings → Pages → Source: GitHub
+Actions**. Then on any iPhone: open the Pages URL in Safari → Share → **Add
+to Home Screen**. Full-screen, offline after first visit, updates picked up
+automatically on the next online launch. Cost: **$0, forever.** Bandmates
+install it from the same URL in thirty seconds.
+
+Trade-offs vs TestFlight, honestly: no TestFlight-style install invitations
+(you share a URL instead), and Safari is the runtime (which this app is built
+and tested for). For this product there is no capability you give up.
+
+# Shipping to TestFlight (optional, $99/yr)
 
 The native iOS app is the same `webapp/` wrapped in a Capacitor shell — one
 codebase, and everything still runs on-device with zero cloud calls. The

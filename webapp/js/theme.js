@@ -8,15 +8,15 @@ export function theme() {
     const cs = getComputedStyle(document.documentElement);
     const v = (name, fallback) => (cs.getPropertyValue(name) || fallback).trim();
     cache = {
-      ink: v('--ink', '#0b0b0d'),
-      panel: v('--panel', '#141419'),
-      line: v('--line', '#2b2b33'),
-      paper: v('--paper', '#f2efe6'),
-      dim: v('--dim', '#8d8d99'),
-      pink: v('--pink', '#ff2e63'),
-      acid: v('--acid', '#ffe600'),
-      green: v('--green', '#00e054'),
-      blue: v('--blue', '#3aa6ff'),
+      ink: v('--ink', '#16140f'),
+      panel: v('--panel', '#ede8da'),
+      line: v('--line', '#cfc8b6'),
+      paper: v('--paper', '#f6f2e8'),
+      dim: v('--dim', '#6f6a5c'),
+      pink: v('--pink', '#d92308'),
+      acid: v('--acid', '#b57e00'),
+      green: v('--green', '#187a38'),
+      blue: v('--blue', '#1f5fd6'),
       mono: v('--mono-font', 'ui-monospace, Menlo, monospace'),
     };
   }

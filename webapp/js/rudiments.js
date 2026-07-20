@@ -405,8 +405,8 @@ export class RudimentsMode {
 
     ctx.textAlign = 'center';
     const colors = {
-      'coming': T.blue, 'hit-perfect': T.green, 'hit-good': '#9be34f',
-      'hit-ok': T.acid, 'miss': T.pink,
+      'coming': T.blue, 'hit-perfect': T.green, 'hit-good': '#4f8a10',
+      'hit-ok': '#f5c518', 'miss': T.pink,
     };
     for (const n of this.chart.notes) {
       const t = this.chartStart + n.offset;
@@ -419,14 +419,14 @@ export class RudimentsMode {
       ctx.arc(w / 2, y, r, 0, 7);
       ctx.fill();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = T.ink;
+      ctx.fillStyle = T.paper;
       ctx.font = `bold ${n.accent ? 18 : 13}px system-ui`;
       ctx.fillText(n.stick, w / 2, y + 5);
     }
 
     if (now < this.chartStart) {
       const pulsesLeft = Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses));
-      ctx.fillStyle = T.paper;
+      ctx.fillStyle = T.ink;
       ctx.font = "72px 'Anton', system-ui";
       ctx.fillText(String(pulsesLeft), w / 2, h / 2);
     }
