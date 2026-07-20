@@ -1,0 +1,148 @@
+// App shell: mic bootstrap (browsers require a user gesture), tabs, settings,
+// kit editor, and the offline service worker.
+
+import { MicEngine } from './audio.js';
+import { selftest } from './dsp.js';
+import { store } from './store.js';
+import { TunerMode } from './tuner.js';
+import { TimingMode } from './timing.js';
+import { RudimentsMode } from './rudiments.js';
+import { PreshowMode } from './preshow.js';
+import { CalibrateMode } from './calibrate.js';
+
+const mic = new MicEngine();
+const modes = {};
+let currentTab = 'preshow';
+
+function $(sel) { return document.querySelector(sel); }
+
+function showTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.mode').forEach((m) => m.classList.toggle('active', m.id === `mode-${name}`));
+  const mode = modes[name];
+  if (mode && mode.activate) mode.activate();
+}
+
+function initModes() {
+  modes.preshow = new PreshowMode($('#mode-preshow'), mic);
+  modes.tuner = new TunerMode($('#mode-tuner'), mic);
+  modes.timing = new TimingMode($('#mode-timing'), mic);
+  modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
+  modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
+}
+
+function levelMeterLoop() {
+  const el = $('#mic-level');
+  const tick = () => {
+    const db = mic.level > 0 ? Math.max(0, Math.min(1, (20 * Math.log10(mic.level) + 60) / 60)) : 0;
+    el.style.width = `${(db * 100).toFixed(0)}%`;
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function renderSettings() {
+  const kit = store.get('kit');
+  $('#settings-body').innerHTML = `
+    <h3>Kit</h3>
+    <div id="kit-list">
+      ${kit.map((d) => `
+        <div class="kit-row" data-id="${d.id}">
+          <input class="kit-name" value="${d.name}">
+          <span>${d.targetHz ? `${d.targetHz} Hz` : 'no target'}</span>
+          <button class="kit-del" title="remove">✕</button>
+        </div>`).join('')}
+    </div>
+    <button id="kit-add">+ add drum</button>
+    <h3>Scoring</h3>
+    <label>Pocket window ±<input id="set-pocket" type="number" min="3" max="40" value="${store.get('pocketMs')}"> ms</label>
+    <label>Tuning tolerance ±<input id="set-cents" type="number" min="3" max="50" value="${store.get('tuneToleranceCents')}"> cents</label>
+    <label>Judgement <select id="set-judge">
+      <option value="standard" ${store.get('judgeMode') === 'standard' ? 'selected' : ''}>standard (±20/40/60 ms)</option>
+      <option value="pro" ${store.get('judgeMode') === 'pro' ? 'selected' : ''}>pro (±12/25/40 ms)</option>
+    </select></label>
+    <h3>Data</h3>
+    <div class="row">
+      <button id="set-export">Export backup</button>
+      <button id="set-import">Import backup</button>
+      <input id="set-import-file" type="file" accept="application/json" class="hidden">
+    </div>
+    <p class="dim">Everything lives on this device. Nothing is uploaded, ever.</p>`;
+
+  $('#kit-add').addEventListener('click', () => {
+    store.addDrum(`Drum ${kit.length + 1}`);
+    renderSettings();
+    modes.tuner.render();
+  });
+  document.querySelectorAll('.kit-row').forEach((row) => {
+    row.querySelector('.kit-name').addEventListener('change', (e) => {
+      store.updateDrum(row.dataset.id, { name: e.target.value });
+      modes.tuner.render();
+    });
+    row.querySelector('.kit-del').addEventListener('click', () => {
+      store.removeDrum(row.dataset.id);
+      renderSettings();
+      modes.tuner.render();
+    });
+  });
+  $('#set-pocket').addEventListener('change', (e) => store.set('pocketMs', +e.target.value || 10));
+  $('#set-cents').addEventListener('change', (e) => store.set('tuneToleranceCents', +e.target.value || 10));
+  $('#set-judge').addEventListener('change', (e) => store.set('judgeMode', e.target.value));
+  $('#set-export').addEventListener('click', () => {
+    const blob = new Blob([store.exportJson()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rhythm-checker-backup.json';
+    a.click();
+  });
+  $('#set-import').addEventListener('click', () => $('#set-import-file').click());
+  $('#set-import-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      store.importJson(await file.text());
+      renderSettings();
+      modes.tuner.render();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    }
+  });
+}
+
+async function boot() {
+  $('#start-overlay').classList.add('hidden');
+  try {
+    await mic.start();
+  } catch (err) {
+    $('#start-overlay').classList.remove('hidden');
+    $('#start-error').textContent = err.message;
+    return;
+  }
+  $('#app').classList.remove('hidden');
+  initModes();
+  levelMeterLoop();
+  renderSettings();
+  showTab(currentTab);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // machine-checkable health: Playwright and the diagnostics footer read this
+  const st = selftest();
+  window.__rhythmChecker = { selftest: st, version: '1.0.0' };
+  $('#diag').textContent = st.passed
+    ? 'engine self-test: all passing'
+    : `ENGINE SELF-TEST FAILING: ${st.failures.join(', ')}`;
+  if (!st.passed) $('#diag').classList.add('warn-text');
+
+  $('#start-btn').addEventListener('click', boot);
+  document.querySelectorAll('.tab-btn').forEach((b) => {
+    b.addEventListener('click', () => showTab(b.dataset.tab));
+  });
+  $('#settings-btn').addEventListener('click', () => $('#settings').classList.toggle('hidden'));
+  $('#settings-close').addEventListener('click', () => $('#settings').classList.add('hidden'));
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* offline still works after first visit */ });
+  }
+});

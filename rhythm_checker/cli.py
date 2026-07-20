@@ -66,6 +66,14 @@ def _build_parser() -> argparse.ArgumentParser:
     onsets_p.add_argument("file")
     onsets_p.add_argument("--sensitivity", type=float, default=1.0)
 
+    tune = sub.add_parser("tune", help="analyze a recording of drum taps for tuning")
+    tune.add_argument("file", help="recording of individual taps (lug pass or center hits)")
+    tune.add_argument("--target", type=float, default=None, metavar="HZ",
+                      help="your saved target fundamental for this drum")
+    tune.add_argument("--sensitivity", type=float, default=1.0)
+    tune.add_argument("--json", dest="json_path", metavar="PATH",
+                      help="also dump per-tap data as JSON to PATH")
+
     return parser
 
 
@@ -133,9 +141,33 @@ def _cmd_onsets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tune(args: argparse.Namespace) -> int:
+    from .tuner import analyze_tuning, text_report as tuning_report
+
+    recording = load_recording(args.file)
+    # taps ring into each other less than playing does; a longer merge window
+    # keeps one tap from double-counting via its own decay wobble
+    onsets = detect_onsets(
+        recording.samples, recording.sample_rate,
+        sensitivity=args.sensitivity, min_separation=0.12,
+    )
+    analysis = analyze_tuning(
+        recording.samples, recording.sample_rate, onsets,
+        file=Path(args.file).name, target_hz=args.target,
+    )
+    print(tuning_report(analysis))
+    if args.json_path:
+        Path(args.json_path).write_text(
+            json.dumps(analysis.to_dict(), indent=2), encoding="utf-8"
+        )
+        print(f"\nfull data written to {args.json_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    handlers = {"analyze": _cmd_analyze, "history": _cmd_history, "onsets": _cmd_onsets}
+    handlers = {"analyze": _cmd_analyze, "history": _cmd_history,
+                "onsets": _cmd_onsets, "tune": _cmd_tune}
     try:
         return handlers[args.command](args)
     except (AudioError, ValueError, OSError) as exc:

@@ -2,16 +2,51 @@
 
 Every drummer believes they have good timing until they hear a recording of
 themselves. Behind the kit a fill feels locked in; on the recording, it rushed.
-Rhythm Checker closes that gap: record your practice session, and it lines
-**every hit** up against the metronome grid and tells you where your time
-actually went — whether you rush fills, whether you start dragging once you're
-tired, and whether this week is tighter than last week.
+Rhythm Checker closes that gap — and gets you **dialed before a show**: tuning
+checked against your saved targets, hands checked against your baseline.
 
 **What it deliberately does not do: judge the music.** Groove is a human call —
 sometimes dragging slightly is the whole point. The data has one job, telling
-the truth about your time. Deciding what to do with that truth stays with you.
+the truth about your time (and your tuning). Deciding what to do with that
+truth stays with you.
 
-## Install
+The project is two tools that share one engine (see `docs/PLAN.md`):
+
+| | |
+|---|---|
+| **Live app** (`webapp/`) | Drum tuner, pre-show check, Guitar-Hero-style rudiment trainer, live timing check. Runs on iPhone (installable PWA, offline) and any laptop browser. **Zero cloud APIs, zero runtime cost** — all DSP on-device. |
+| **Deep analyzer** (`rhythm_checker/`) | Post-session truth: drift, fills, per-position stats, multi-week history, tuning reports from recordings. Python CLI. |
+
+## The live app
+
+```bash
+cd webapp && python -m http.server 8000   # → http://localhost:8000
+```
+
+For the iPhone: host `webapp/` on any static HTTPS host (GitHub Pages is free
+and sufficient — iOS requires HTTPS for mic access), open it in Safari, Share →
+**Add to Home Screen**. After the first visit it works fully offline.
+
+- **Tuner** — tap the head, read the fundamental in Hz/note/cents. Lug mode
+  logs a pass around the drum and marks the lugs that are off. Save the Hz you
+  love per drum as its target.
+- **Pre-Show** — the "am I dialed" flow: each drum vs its target, then 30 s of
+  hands vs your saved baseline. Big pass/fail screens, works in a loud
+  backstage with no wifi.
+- **Rudiments** — falling-note highway (paradiddles, doubles, triplets...)
+  synced to a sample-accurate metronome; every hit judged
+  perfect/good/ok/miss with its signed ms error, streaks, and an honest
+  end-of-run report (including per-step means — "your RR doubles run early").
+- **Timing** — free play against the click with a live early/late strip and
+  running mean/spread/pocket. Save a great day as your baseline.
+- **Calibrate** — measures your device's fixed audio latency by tapping along
+  with clicks, then subtracts it from every score. Run it once per device.
+
+Run the browser test suite (uses the in-page ground-truth self-test plus UI
+smoke tests): `node tests/web/run.mjs` (needs `npm i playwright` somewhere on
+`NODE_PATH`).
+
+## The deep analyzer
 
 ```bash
 pip install .            # numpy only
@@ -87,6 +122,18 @@ HIGH-DENSITY PASSAGES (busy playing — often fills): 3 found, 84 hits
 Add `--json data.json` for the full per-hit table, `--fit-tempo` if you suspect
 your phone's clock (it corrects up to ±0.5% skew — but it will also absorb
 genuine steady drift, so leave it off by default).
+
+## Tuning from a recording
+
+Record a lug pass (tap 2–3" from each lug, let each ring) and:
+
+```bash
+rhythm-checker tune lugs.wav --target 141
+```
+
+Every tap is pitched (fundamental, not the louder overtones a drumhead also
+rings), listed with its cents vs the drum's median, and the odd lugs are
+flagged. Multiple drums in one recording cluster into separate groups.
 
 ## Watch weeks, not sessions
 
