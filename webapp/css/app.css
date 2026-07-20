@@ -378,3 +378,57 @@ main {
   .big-btn { min-height: 380px; }
   .tile-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+
+/* -------------------------------------------- flyer-grade poster language
+   Borrowed straight from the references: xerox grain over everything,
+   Venom-style outline caps + starburst badge, pasted-at-an-angle headline
+   blocks, torn edges, stacked bill rows. Energy up, clutter zero. */
+
+body::before { /* photocopier grain */
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+  opacity: .055; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.brand-line.outline {
+  color: transparent;
+  -webkit-text-stroke: 3px var(--ink);
+  letter-spacing: .1em;
+}
+.brand-line.offset { text-shadow: 5px 5px 0 rgba(22, 20, 15, .25); }
+
+.burst {
+  display: inline-grid; place-items: center; text-align: center;
+  width: 148px; aspect-ratio: 1;
+  background: var(--acid-bg); color: var(--ink);
+  font-family: var(--mono-font); font-weight: 700;
+  font-size: .66rem; line-height: 1.35; letter-spacing: .04em;
+  clip-path: polygon(50.0% 0.0%, 59.8% 13.3%, 75.0% 6.7%, 76.9% 23.1%, 93.3% 25.0%, 86.7% 40.2%, 100.0% 50.0%, 86.7% 59.8%, 93.3% 75.0%, 76.9% 76.9%, 75.0% 93.3%, 59.8% 86.7%, 50.0% 100.0%, 40.2% 86.7%, 25.0% 93.3%, 23.1% 76.9%, 6.7% 75.0%, 13.3% 59.8%, 0.0% 50.0%, 13.3% 40.2%, 6.7% 25.0%, 23.1% 23.1%, 25.0% 6.7%, 40.2% 13.3%);
+  transform: rotate(-9deg);
+  padding: 1.6rem;
+}
+
+.bill-row {
+  font-family: var(--mono-font); font-weight: 700; text-transform: uppercase;
+  letter-spacing: .16em; font-size: .72rem; text-align: center;
+  border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+  padding: .35rem .9rem; max-width: 30rem;
+}
+.bill-row + .bill-row { border-top: none; margin-top: -1rem; }
+
+.poster-top { display: flex; align-items: center; gap: 1.6rem; }
+
+/* pasted-on tilt for the loudest blocks */
+.arm-label, .big-word { display: inline-block; transform: rotate(-1.6deg); }
+.big-btn.dialed .big-word, .big-btn.notyet .big-word { transform: rotate(-2.2deg); }
+
+/* torn top edge on the data card (replaces the plain stripe) */
+.data-card::before {
+  background: conic-gradient(from 135deg at 50% 0, var(--ink) 90deg, transparent 0);
+  background-size: 18px 9px; background-repeat: repeat-x; height: 9px;
+}
+
+/* stamps wobble like they were hit twice */
+.stamp { transform: rotate(-1.6deg); }
+section .stamp:nth-of-type(even), .armed-context { transform: rotate(1deg); }
