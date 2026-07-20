@@ -1,7 +1,7 @@
 // Offline-first service worker: after one visit, the whole app works with no
 // network — backstage wifi is not a dependency.
 
-const CACHE = 'rhythm-checker-v1';
+const CACHE = 'rhythm-checker-v2';
 const ASSETS = [
   '.',
   'index.html',
@@ -10,6 +10,9 @@ const ASSETS = [
   'js/audio.js',
   'js/calibrate.js',
   'js/dsp.js',
+  'js/groove.js',
+  'js/history.js',
+  'js/meter.js',
   'js/metronome.js',
   'js/preshow.js',
   'js/rudiments.js',

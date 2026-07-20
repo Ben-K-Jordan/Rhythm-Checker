@@ -123,4 +123,33 @@ canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 .kit-row input { flex: 1; }
 .kit-row span { color: var(--dim); font-size: .85rem; min-width: 5.5rem; }
 
+/* groove bar: tempo + meter, thumb-sized */
+.groove { margin: 0 0 1rem; }
+.groove-tempo { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+.tempo-btn {
+  width: 64px; height: 64px; font-size: 2rem; font-weight: 800;
+  border-radius: 14px; touch-action: manipulation; user-select: none;
+}
+.tempo-read { min-width: 8.5rem; text-align: center; }
+.tempo-glyph { color: var(--dim); font-size: 1.3rem; }
+.tempo-bpm { font-size: 2.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tempo-bpm.tapping { color: var(--amber); }
+.tempo-tap { height: 64px; padding: 0 1.2rem; font-weight: 700; border-radius: 14px; }
+.groove-meters, .groove-groupings { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .4rem; }
+.chip {
+  border-radius: 999px; padding: .45rem .85rem; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.chip.small { padding: .3rem .7rem; font-size: .85rem; }
+.chip.on { background: var(--green); color: var(--bg); border-color: var(--green); font-weight: 700; }
+
+/* history */
+.hist-table { margin-top: 1rem; overflow-x: auto; }
+.hist-row {
+  display: grid; grid-template-columns: 6.5rem 1fr 5.5rem 5rem 3.2rem 3.8rem 3.2rem 8rem;
+  gap: .5rem; padding: .45rem .3rem; border-bottom: 1px solid var(--line);
+  font-size: .88rem; font-variant-numeric: tabular-nums; min-width: 42rem;
+}
+.hist-head { color: var(--dim); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+
 footer { padding: .4rem .8rem; border-top: 1px solid var(--line); }

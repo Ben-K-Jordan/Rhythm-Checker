@@ -5,15 +5,17 @@
 import { Metronome } from './metronome.js';
 import { summarize } from './dsp.js';
 import { store } from './store.js';
+import { GrooveBar } from './groove.js';
 
 export class TimingSession extends EventTarget {
   // A headless scoring session, reused by the pre-show flow.
-  constructor(mic, { bpm, subdivision, seconds }) {
+  constructor(mic, { bpm, subdivision, seconds, meter = null }) {
     super();
     this.mic = mic;
     this.metro = new Metronome(mic.audioContext);
     this.metro.bpm = bpm;
     this.metro.subdivision = subdivision;
+    if (meter) this.metro.meter = meter;
     this.seconds = seconds;
     this.devs = [];
     this.hits = [];
@@ -85,13 +87,13 @@ export class TimingMode {
 
   render() {
     this.root.innerHTML = `
+      <div id="tm-groove"></div>
       <div class="mode-head">
-        <label>BPM <input id="tm-bpm" type="number" min="20" max="400" value="${store.get('preferredBpm')}"></label>
         <label>Grid <select id="tm-sub">
-          <option value="1">quarters</option>
-          <option value="2" selected>eighths</option>
-          <option value="3">triplets</option>
-          <option value="4">sixteenths</option>
+          <option value="1">pulses</option>
+          <option value="2" selected>÷2</option>
+          <option value="3">÷3</option>
+          <option value="4">÷4</option>
         </select></label>
         <label>Length <select id="tm-len">
           <option value="30">30 s</option>
@@ -110,6 +112,10 @@ export class TimingMode {
       </div>
       <div id="tm-final" class="verdict hidden"></div>
       <div class="row"><button id="tm-baseline" class="hidden">Save as my baseline</button></div>`;
+    this.groove = new GrooveBar(this.root.querySelector('#tm-groove'), {
+      storeKey: 'grooveTiming',
+      now: () => this.mic.now(),
+    });
     this.root.querySelector('#tm-go').addEventListener('click', () => this.toggle());
     this.root.querySelector('#tm-baseline').addEventListener('click', () => this.saveBaseline());
     this.updateNag();
@@ -130,12 +136,14 @@ export class TimingMode {
       return;
     }
     this.updateNag();
-    const bpm = Math.min(400, Math.max(20, +this.root.querySelector('#tm-bpm').value || 120));
-    store.set('preferredBpm', bpm);
+    const g = this.groove.value();
+    store.set('preferredBpm', g.bpm);
     this.lastRun = {
-      bpm,
+      bpm: g.bpm,
       subdivision: +this.root.querySelector('#tm-sub').value,
       seconds: +this.root.querySelector('#tm-len').value,
+      meter: { pulses: g.meter.pulses, accents: g.meter.groupings[g.grouping] },
+      meterLabel: `${g.meter.label} ${g.grouping}`,
     };
     this.session = new TimingSession(this.mic, this.lastRun);
     this.recent = [];
@@ -208,6 +216,18 @@ export class TimingMode {
     final.textContent = verdict;
     this.lastResult = result;
     this.root.querySelector('#tm-baseline').classList.remove('hidden');
+    store.addRun({
+      kind: 'timing',
+      label: `free play ÷${this.lastRun.subdivision}`,
+      meter: this.lastRun.meterLabel,
+      bpmStart: this.lastRun.bpm,
+      bpmEnd: this.lastRun.bpm,
+      n: result.n,
+      mean: +result.mean.toFixed(2),
+      sd: +result.sd.toFixed(2),
+      pocketPct: +result.pocketPct.toFixed(1),
+      unaligned: result.unaligned,
+    });
   }
 
   saveBaseline() {

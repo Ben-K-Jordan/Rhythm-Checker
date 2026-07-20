@@ -9,6 +9,7 @@ import { TimingMode } from './timing.js';
 import { RudimentsMode } from './rudiments.js';
 import { PreshowMode } from './preshow.js';
 import { CalibrateMode } from './calibrate.js';
+import { HistoryMode } from './history.js';
 
 const mic = new MicEngine();
 const modes = {};
@@ -30,6 +31,7 @@ function initModes() {
   modes.timing = new TimingMode($('#mode-timing'), mic);
   modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
   modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
+  modes.history = new HistoryMode($('#mode-history'));
 }
 
 function levelMeterLoop() {

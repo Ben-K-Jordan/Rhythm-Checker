@@ -53,7 +53,7 @@ export class CalibrateMode {
     this.metro = new Metronome(this.mic.audioContext);
     this.metro.bpm = 100; // 600 ms apart: unhurried, unambiguous
     this.metro.subdivision = 1;
-    this.metro.accentEvery = 1000;
+    this.metro.meter = { pulses: 1, accents: [] }; // every click identical
     this.metro.start(0.5);
     this.root.querySelector('#cal-status').textContent = 'hit each click';
     this.root.querySelector('#cal-detail').textContent = `0 / ${CLICKS}`;

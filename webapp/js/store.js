@@ -18,7 +18,12 @@ const DEFAULTS = {
   ],
   baseline: null,               // {bpm, subdivision, mean, sd, pocketPct, date}
   preferredBpm: 120,
+  grooveRud: null,              // {bpm, meterId, grouping}
+  grooveTiming: null,
+  runs: [],                     // every completed session, append-only (capped)
 };
+
+const MAX_RUNS = 500;
 
 function load() {
   try {
@@ -57,6 +62,11 @@ export const store = {
   },
   removeDrum(id) {
     state.kit = state.kit.filter((d) => d.id !== id);
+    persist();
+  },
+  addRun(run) {
+    state.runs = [...(state.runs || []), { date: new Date().toISOString(), ...run }];
+    if (state.runs.length > MAX_RUNS) state.runs = state.runs.slice(-MAX_RUNS);
     persist();
   },
   exportJson() {

@@ -37,8 +37,16 @@ and sufficient — iOS requires HTTPS for mic access), open it in Safari, Share 
   synced to a sample-accurate metronome; every hit judged
   perfect/good/ok/miss with its signed ms error, streaks, and an honest
   end-of-run report (including per-step means — "your RR doubles run early").
-- **Timing** — free play against the click with a live early/late strip and
-  running mean/spread/pocket. Save a great day as your baseline.
+  The groove bar makes the practice variables one-tap adjustable: big ±BPM
+  and tap-tempo, time signatures 2/4–12/8 with odd groupings (7/8 as 2+2+3,
+  3+2+2, or 2+3+2), lead-hand switch, and a **tempo ramp** (+5 BPM every 4
+  bars) whose report breaks the spread down *per tempo* — it shows the exact
+  BPM where the rudiment falls apart.
+- **Timing** — free play against the click (same groove bar: any meter, any
+  tempo) with a live early/late strip and running mean/spread/pocket. Save a
+  great day as your baseline.
+- **History** — every completed run is analyzed and saved automatically on
+  the device: spread trend across sessions, per-run table, CSV export.
 - **Calibrate** — measures your device's fixed audio latency by tapping along
   with clicks, then subtracts it from every score. Run it once per device.
 
