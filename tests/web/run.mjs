@@ -327,14 +327,19 @@ check('history-tab', histUi.active && histUi.hasTable && histUi.hasTrend);
 // enable the check without a page reload (regression: it never re-rendered)
 const preshowCheck = await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
-  const startDisabled = document.querySelector('#mode-preshow #ps-go').disabled;
+  // strip every target -> revisit -> the check must disable itself
+  for (const d of store.get('kit')) store.updateDrum(d.id, { targetHz: null });
+  window.__rhythmChecker.nav('tuner');
+  window.__rhythmChecker.nav('preshow');
+  const disabledWhenBare = document.querySelector('#mode-preshow #ps-go').disabled;
+  // restore prerequisites -> revisit -> it must re-enable without a reload
   store.updateDrum(store.get('kit')[0].id, { targetHz: 141 });
   store.set('baseline', { bpm: 120, subdivision: 2, mean: 0, sd: 8, pocketPct: 70, date: '2026-07-20' });
   store.set('calibrationMs', 12);
   window.__rhythmChecker.nav('tuner');
   window.__rhythmChecker.nav('preshow');
-  const nowEnabled = !document.querySelector('#mode-preshow #ps-go').disabled;
-  return { ok: startDisabled && nowEnabled, why: `before=${startDisabled} after=${nowEnabled}` };
+  const enabledWhenReady = !document.querySelector('#mode-preshow #ps-go').disabled;
+  return { ok: disabledWhenBare && enabledWhenReady, why: `bare=${disabledWhenBare} ready=${enabledWhenReady}` };
 });
 check('preshow-rerenders-on-activate', preshowCheck.ok, preshowCheck.why);
 
