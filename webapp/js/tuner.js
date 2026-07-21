@@ -5,21 +5,51 @@ import { estimatePitch, hzToNote, centsBetween } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
 
-// Genre tone presets: common fundamental launch points (Hz) per drum role.
-// Starting points, not laws — the right pitch is the one you like.
+// Genre tone presets: ideal fundamentals (Hz) BY DRUM SIZE per genre.
+// Diameter parsed from the drum name ("8x10" = depth x diameter); values
+// interpolate between listed diameters. Launch points, not laws.
 const TONES = {
-  rock:  { label: 'ROCK',  snare: 190, rack: 115, floor: 82,  kick: 58 },
-  punk:  { label: 'PUNK',  snare: 230, rack: 130, floor: 92,  kick: 63 },
-  metal: { label: 'METAL', snare: 265, rack: 155, floor: 105, kick: 68 },
+  rock:  { label: 'ROCK',
+    tom: { 8: 180, 10: 150, 12: 120, 14: 95, 16: 80, 18: 70 },
+    snare: { 13: 210, 14: 190 },
+    kick: { 18: 62, 20: 58, 22: 55, 24: 50 } },
+  punk:  { label: 'PUNK',
+    tom: { 8: 200, 10: 165, 12: 135, 14: 105, 16: 92, 18: 78 },
+    snare: { 13: 250, 14: 230 },
+    kick: { 18: 70, 20: 66, 22: 63, 24: 58 } },
+  metal: { label: 'METAL',
+    tom: { 8: 220, 10: 185, 12: 155, 14: 120, 16: 105, 18: 88 },
+    snare: { 13: 290, 14: 265 },
+    kick: { 18: 75, 20: 71, 22: 68, 24: 62 } },
 };
 
 function roleOf(name) {
   const n = name.toLowerCase();
   if (n.includes('snare')) return 'snare';
   if (n.includes('kick') || n.includes('bass')) return 'kick';
-  if (n.includes('floor')) return 'floor';
-  if (n.includes('rack') || n.includes('tom')) return 'rack';
+  if (n.includes('floor') || n.includes('rack') || n.includes('tom')) return 'tom';
   return null;
+}
+
+// "8x10" / "5.5x14" -> diameter (the second number, depth x diameter)
+function diameterOf(name) {
+  const m = name.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
+  return m ? +m[2] : null;
+}
+
+const ROLE_DEFAULT_DIA = { tom: 12, snare: 14, kick: 22 };
+
+function toneHz(tone, role, dia) {
+  const curve = tone[role];
+  const keys = Object.keys(curve).map(Number).sort((a, b) => a - b);
+  if (dia <= keys[0]) return curve[keys[0]];
+  if (dia >= keys[keys.length - 1]) return curve[keys[keys.length - 1]];
+  let lo = keys[0];
+  for (const k of keys) {
+    if (k <= dia) lo = k;
+    else return Math.round(curve[lo] + ((dia - lo) / (k - lo)) * (curve[k] - curve[lo]));
+  }
+  return curve[lo];
 }
 
 const TONE_SKIP = 0.025;
@@ -131,7 +161,10 @@ export class TunerMode {
         let hits = 0;
         for (const d of store.get('kit')) {
           const role = roleOf(d.name);
-          if (role && tone[role]) { store.updateDrum(d.id, { targetHz: tone[role] }); hits++; }
+          if (!role) continue;
+          const dia = diameterOf(d.name) || ROLE_DEFAULT_DIA[role];
+          store.updateDrum(d.id, { targetHz: toneHz(tone, role, dia) });
+          hits++;
         }
         this.render();
         this.flashStatus(hits
