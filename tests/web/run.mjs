@@ -132,13 +132,19 @@ check('rud-data-integrity', (await page.evaluate(() => window.__rhythmChecker.ru
 // default (single paradiddle) is editable: 4 accent modes, 8 pucks
 check('rud-accent-pills', await page.locator('[data-am]').count() === 4);
 check('rud-accent-pucks', await page.locator('.accent-puck').count() === 8);
-// a flam rudiment shows a sticking line instead of the accent editor
+// a standard rudiment shows real notation (no accent editor); a flam renders
+// its grace notes as extra noteheads (6 primaries + 2 flams = 8 ellipses)
 await page.selectOption('#rud-pattern', 'flam-accent');
 await page.waitForTimeout(80);
-check('rud-flam-sticking', await page.locator('.rud-sticking').count() === 1
+check('rud-notation-shown', await page.locator('.rud-notation-svg').count() === 1
   && await page.locator('.accent-puck').count() === 0);
+check('rud-flam-graces', await page.locator('.rud-notation-svg ellipse').count() === 8,
+  `${await page.locator('.rud-notation-svg ellipse').count()} noteheads`);
 await page.selectOption('#rud-pattern', 'single-paradiddle');
 await page.waitForTimeout(80);
+// editable patterns show notation AND the accent editor; 8 notes, no graces
+check('rud-notation-editable', await page.locator('.rud-notation-svg').count() === 1
+  && await page.locator('.rud-notation-svg ellipse').count() === 8);
 // tapping a puck flips into custom accent mode
 await page.click('.accent-puck[data-step="1"]');
 await page.waitForTimeout(80);

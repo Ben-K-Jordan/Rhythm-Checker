@@ -8,6 +8,7 @@
 import { ChartPlayer } from './metronome.js';
 import { METERS, meterById, defaultGrouping, accentsFor, segmentAt, unitGlyph, TapTempo } from './meter.js';
 import { RUDIMENTS, CATEGORIES, rudimentById } from './rudiment-data.js';
+import { rudimentNotationSVG } from './notation.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
@@ -223,13 +224,13 @@ export class RudimentsMode {
             ${groupings.length > 1 ? `<span class="expand-sep"></span>
               ${groupings.map((g) => `<button class="pill ${g === this.grouping ? 'on' : ''}" data-grouping="${g}">${g}</button>`).join('')}` : ''}
           </div>` : ''}
+        <div class="rud-notation" aria-label="notation">${this.notationSVG(rud)}</div>
         ${rud.editable ? `
           <div class="expand-row accents-row">
             <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
             ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
           </div>
-          <div id="rud-accent-editor" class="accent-editor"></div>`
-    : `<div class="rud-sticking">${this.stickingLine(rud)}</div>`}
+          <div id="rud-accent-editor" class="accent-editor"></div>` : ''}
       </div>
 
       <div class="highway-panel">
@@ -333,16 +334,19 @@ export class RudimentsMode {
     return rudimentById(this.rudimentId);
   }
 
-  // one-line sticking readout for non-editable rudiments (flams/drags marked)
-  stickingLine(rud) {
-    return rud.notes.map((n) => {
-      let g = '';
-      if (n.grace === 1) g = '<i class="gr">fl</i>';
-      else if (n.grace === 2) g = '<i class="gr">dr</i>';
-      else if (n.buzz) g = '<i class="gr">bz</i>';
-      const cls = `stk ${n.hand === 'R' ? 'r' : 'l'}${n.accent ? ' acc' : ''}`;
-      return `<span class="${cls}">${g}${n.hand}</span>`;
-    }).join('');
+  // real rhythm notation for the current rudiment (accents reflect the mode on
+  // the editable patterns; intrinsic everywhere else) — a sight-reading aid.
+  notationSVG(rud) {
+    const accent = rud.editable ? this.accentValue() : { mode: 'pattern', custom: [] };
+    return rudimentNotationSVG(rud, {
+      lead: this.lead,
+      accentOf: (n, idx) => accentForNote(rud, accent, { ...n, phrasePos: idx }),
+    });
+  }
+
+  refreshNotation() {
+    const el = this.root.querySelector('.rud-notation');
+    if (el) el.innerHTML = this.notationSVG(this.currentRudiment());
   }
 
   accentValue() {
@@ -374,6 +378,7 @@ export class RudimentsMode {
     });
     el.innerHTML = pucks.join('')
       + '<span class="accent-note">tap notes to place accents</span>';
+    this.refreshNotation();
     el.querySelectorAll('.accent-puck').forEach((p) => {
       p.addEventListener('click', () => {
         const step = +p.dataset.step;

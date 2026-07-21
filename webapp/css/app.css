@@ -1149,21 +1149,11 @@ footer:has(.dim:empty) { display: none; }
 }
 .tap-dots i.on { background: var(--green); }
 
-/* ----------------------------------- rudiments: sticking line (non-editable) */
-.rud-sticking {
-  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center;
-}
-.rud-sticking .stk {
-  position: relative; min-width: 22px; text-align: center;
-  font: 700 12px var(--mono-font); padding: 3px 5px;
+/* -------------------------------- rudiments: rhythm notation (sight-reading) */
+.rud-notation {
+  margin-top: 8px; padding: 4px 8px 2px;
   border: 2px solid var(--ink); background: #fff;
+  box-shadow: 3px 3px 0 var(--ink);
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
 }
-.rud-sticking .stk.r { color: var(--red); }
-.rud-sticking .stk.l { color: var(--blue); }
-.rud-sticking .stk.acc { background: var(--ink); color: #fff; }
-.rud-sticking .stk.acc.r, .rud-sticking .stk.acc.l { color: #fff; }
-.rud-sticking .gr {
-  font-style: normal; font-size: 7px; display: block; line-height: 1;
-  color: var(--ink60); letter-spacing: .5px;
-}
-.rud-sticking .stk.acc .gr { color: var(--paper); }
+.rud-notation-svg { display: block; }
