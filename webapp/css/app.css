@@ -106,8 +106,22 @@ main { flex: 1; padding: 1.2rem 1rem 2rem; max-width: 60rem; width: 100%; margin
 .mode { display: none; }
 .mode.active { display: block; }
 
-/* --------------------------------------------------------------- controls */
-.mode-head, .row { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+/* --------------------------------------------------------------- controls
+   Discipline for control rows: a strict 2-column grid, every control the
+   same 52px height, captions stacked above their control — nothing ragged. */
+.mode-head { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem .8rem; align-items: end; margin-bottom: 1.1rem; }
+.mode-head > select, .mode-head > button, .mode-head > .seg { width: 100%; min-height: 52px; }
+.mode-head > button.primary, #rud-pattern { grid-column: 1 / -1; }
+.mode-head label {
+  display: flex; flex-direction: column; align-items: stretch; gap: .3rem;
+  color: var(--dim); font-family: var(--mono-font); font-size: .66rem;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.mode-head label select, .mode-head label input { width: 100%; min-height: 52px; font-size: 1rem; }
+.row { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+.row > button { flex: 1 1 auto; min-height: 52px; }
+.row > .chip { flex: 1 1 0; text-align: center; min-height: 48px; }
 label { color: var(--dim); font-size: .9rem; display: inline-flex; gap: .4rem; align-items: center; }
 input[type=number] { width: 5rem; }
 input, select, button {
@@ -124,7 +138,8 @@ button.primary {
 }
 button.big { font-size: 1.4rem; padding: .9rem 1.8rem; }
 
-.seg { display: flex; border: 2px solid var(--ink); }
+.seg { display: flex; border: 2px solid var(--ink); min-height: 52px; }
+.seg button { flex: 1 1 0; }
 .seg button { border: none; background: var(--paper); color: var(--dim); }
 .seg button.on { background: var(--ink); color: var(--paper); font-weight: 700; }
 
@@ -334,7 +349,10 @@ canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
   margin: 1.2rem 0 .5rem; font-family: var(--mono-font); font-size: .75rem;
   color: var(--pink); text-transform: uppercase; letter-spacing: .18em; font-weight: 700;
 }
-#settings label { display: flex; margin: .5rem 0; }
+#settings label { display: flex; flex-direction: column; align-items: stretch; gap: .3rem;
+  margin: .7rem 0; font-family: var(--mono-font); font-size: .66rem;
+  letter-spacing: .12em; text-transform: uppercase; }
+#settings label input, #settings label select { width: 100%; min-height: 48px; }
 .kit-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .4rem; }
 .kit-row input { flex: 1; }
 .kit-row span { color: var(--dim); font-size: .82rem; min-width: 5.5rem; font-family: var(--mono-font); }
