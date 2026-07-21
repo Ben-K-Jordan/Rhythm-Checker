@@ -5,7 +5,7 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v9';
+const CACHE = 'rhythm-checker-v10';
 const ASSETS = [
   '.',
   'index.html',
@@ -23,6 +23,7 @@ const ASSETS = [
   'js/show.js',
   'js/showflow.js',
   'js/rudiments.js',
+  'js/rudiment-data.js',
   'js/store.js',
   'js/timing.js',
   'js/tuner.js',

@@ -1,25 +1,19 @@
 // Rudiment trainer — the hero screen. A horizontal scroll strip: R/L pucks
 // ride right-to-left past a fixed NOW read-head and are judged live as they
-// cross it. Meter-aware (odd groupings included), lead-hand switchable,
-// accent-placeable, optional tempo ramp with per-tempo analysis.
-// The mic hears WHEN, not WHICH HAND — sticking letters are guidance.
+// cross it. Now drives all 40 PAS/Vic Firth essential rudiments from
+// rudiment-data.js: sparse rhythms, flams, drags, buzz rolls, odd counts.
+// The mic hears WHEN, not WHICH HAND — sticking letters are guidance, and
+// grace notes (flams/drags) render for feel but are scored at their primary.
 
 import { ChartPlayer } from './metronome.js';
-import { METERS, meterById, defaultGrouping, accentsFor, buildChartTimes, segmentAt, unitGlyph, TapTempo } from './meter.js';
+import { METERS, meterById, defaultGrouping, accentsFor, segmentAt, unitGlyph, TapTempo } from './meter.js';
+import { RUDIMENTS, CATEGORIES, rudimentById } from './rudiment-data.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
 import { wakeLock } from './audio.js';
 
-export const RUDIMENTS = [
-  { id: 'singles', name: 'Single Stroke Roll', sub: 2, steps: 'RLRLRLRL' },
-  { id: 'doubles', name: 'Double Stroke Roll', sub: 2, steps: 'RRLLRRLL' },
-  { id: 'paradiddle', name: 'Single Paradiddle', sub: 4, steps: 'RlrrLrll', accentUpper: true },
-  { id: 'dparadiddle', name: 'Double Paradiddle', sub: 3, steps: 'RlrlrrLrlrll', accentUpper: true },
-  { id: 'pdd', name: 'Paradiddle-diddle', sub: 3, steps: 'RlrrllRlrrll', accentUpper: true },
-  { id: 'trip', name: 'Triplet Singles', sub: 3, steps: 'RlrLrl', accentUpper: true },
-  { id: 'sixteenths', name: 'Free Sixteenths', sub: 4, steps: 'RLRL' },
-];
+export { RUDIMENTS };
 
 export const RAMPS = [
   { id: 'off', label: 'steady', ramp: null },
@@ -28,71 +22,111 @@ export const RAMPS = [
   { id: 'r5x8', label: '+5 / 8 bars', ramp: { addBpm: 5, everyBars: 8 } },
 ];
 
+// Accent modes apply only to the editable pure patterns (accent studies);
+// standard rudiments carry their own intrinsic accents.
+export const ACCENT_MODES = [
+  { id: 'pattern', label: 'built-in' },
+  { id: 'pulses', label: 'pulses' },
+  { id: 'none', label: 'none' },
+  { id: 'custom', label: 'custom' },
+];
+
 const MATCH_WINDOW_MS = 90;   // absolute accept cap (slow tempos)
-const MISS_SLACK_MS = 55;     // grace past the accept window before a miss,
-                              // covering onset-delivery jitter
+const MISS_SLACK_MS = 55;     // grace past the accept window before a miss
+const GRACE_GAP_S = 0.045;    // visual lead of a flam/drag grace before its primary
 const BARS_CYCLE = [8, 16, 32, 64];
 
 // Half the local note spacing: every hit maps to its NEAREST note, so there
-// is no dead zone between notes (which used to make an in-pocket hit both a
-// stray AND leave its note to age into a miss). Capped so a slow tempo can't
-// accept a wild hit. Used by both the accept test and the miss deadline.
+// is no dead zone between notes, capped so a slow tempo can't accept a wild
+// hit. Used by both the accept test and the miss deadline.
 export function matchWindowMs(stepSec) {
   return Math.min(MATCH_WINDOW_MS, 0.5 * stepSec * 1000);
 }
 
 function swapLead(ch) {
-  const map = { R: 'L', L: 'R', r: 'l', l: 'r' };
+  const map = { R: 'L', L: 'R' };
   return map[ch] || ch;
 }
 
-export const ACCENT_MODES = [
-  { id: 'pattern', label: 'pattern' },
-  { id: 'downbeats', label: 'pulses' },
-  { id: 'moving', label: 'moving' },
-  { id: 'none', label: 'none' },
-  { id: 'custom', label: 'custom' },
-];
-
-export function accentFor(rudiment, accent, noteIndex) {
-  const len = rudiment.steps.length;
-  const step = noteIndex % len;
+function accentForNote(rud, accent, note) {
+  if (!rud.editable) return note.accent; // intrinsic
   switch (accent.mode) {
     case 'none': return false;
-    case 'downbeats': return noteIndex % rudiment.sub === 0;
-    case 'moving': return step === Math.floor(noteIndex / len) % len;
-    case 'custom': return accent.custom.includes(step);
-    default: {
-      const ch = rudiment.steps[step];
-      return rudiment.accentUpper ? ch === ch.toUpperCase() : false;
-    }
+    case 'pulses': return note.slot % rud.grid === 0;
+    case 'custom': return accent.custom.includes(note.phrasePos);
+    default: return note.accent; // 'pattern' = built-in
   }
 }
 
-export function buildChart(rudiment, groove, bars, ramp, lead = 'R',
+// Build the full chart: a ramp-aware pulse timeline, the rudiment phrase laid
+// repeatedly over it, clicks on the meter's pulses. Returns notes (primaries,
+// each with grace times for drawing), clicks, barOffsets, tempo segments.
+export function buildChart(rud, groove, bars, ramp, lead = 'R',
   accent = { mode: 'pattern', custom: [] }) {
-  const { steps, clicks, barOffsets, segments, total } = buildChartTimes({
-    bpm: groove.bpm,
-    meter: groove.meter,
-    grouping: groove.grouping,
-    sub: rudiment.sub,
-    bars,
-    ramp,
-  });
-  const notes = steps.map((offset, i) => {
-    const step = i + 1 < steps.length ? steps[i + 1] - offset : offset - steps[i - 1];
-    let ch = rudiment.steps[i % rudiment.steps.length];
-    if (lead === 'L') ch = swapLead(ch);
-    return {
-      index: i,
-      step,
-      stick: ch.toUpperCase(),
-      accent: accentFor(rudiment, accent, i),
-      offset,
-      state: 'coming',
-      devMs: null,
-    };
-  });
+  const { meter } = groove;
+  const accents = meter.accents;
+  const pulseStart = [];
+  const pulseDur = [];
+  const clicks = [];
+  const barOffsets = [];
+  const segments = [];
+  let t = 0;
+  let curBpm = groove.bpm;
+  for (let bar = 0; bar < bars; bar++) {
+    if (ramp && bar > 0 && bar % ramp.everyBars === 0) {
+      curBpm = Math.min(ramp.maxBpm || 400, curBpm + ramp.addBpm);
+    }
+    if (!segments.length || segments[segments.length - 1].bpm !== curBpm) {
+      segments.push({ bar, bpm: curBpm, offset: t });
+    }
+    barOffsets.push(t);
+    const pd = 60 / curBpm;
+    for (let p = 0; p < meter.pulses; p++) {
+      pulseStart.push(t + p * pd);
+      pulseDur.push(pd);
+      clicks.push({ offset: t + p * pd, accent: accents.includes(p) });
+    }
+    t += meter.pulses * pd;
+  }
+  const total = t;
+
+  const totalPulses = pulseStart.length;
+  const phraseCount = Math.floor(totalPulses / rud.beats);
+  const notes = [];
+  let idx = 0;
+  for (let ph = 0; ph < phraseCount; ph++) {
+    for (let k = 0; k < rud.notes.length; k++) {
+      const nd = rud.notes[k];
+      const gp = ph * rud.beats + Math.floor(nd.slot / rud.grid);
+      if (gp >= totalPulses) continue;
+      const sub = nd.slot % rud.grid;
+      const offset = pulseStart[gp] + (sub * pulseDur[gp]) / rud.grid;
+      let hand = nd.hand;
+      if (lead === 'L') hand = swapLead(hand);
+      const note = {
+        index: idx++,
+        phrasePos: k,
+        slot: nd.slot,
+        offset,
+        stick: hand,
+        accent: false, // filled below (needs the note object for editable modes)
+        grace: nd.grace,
+        buzz: nd.buzz,
+        graceTimes: [],
+        state: 'coming',
+        devMs: null,
+      };
+      note.accent = accentForNote(rud, accent, { ...nd, phrasePos: k });
+      for (let g = nd.grace; g > 0; g--) note.graceTimes.push(offset - g * GRACE_GAP_S);
+      notes.push(note);
+    }
+  }
+  notes.sort((a, b) => a.offset - b.offset);
+  for (let i = 0; i < notes.length; i++) {
+    notes[i].step = i + 1 < notes.length
+      ? notes[i + 1].offset - notes[i].offset
+      : (notes[i].offset - (notes[i - 1] ? notes[i - 1].offset : notes[i].offset)) || 0.2;
+  }
   return { notes, clicks, barOffsets, segments, total };
 }
 
@@ -106,7 +140,8 @@ export class RudimentsMode {
     this.rampId = 'off';
     this.accentMode = 'pattern';
     this.customAccents = new Set();
-    this.expand = null; // null | 'tempo' | 'meter'
+    this.expand = null;
+    this.rudimentId = 'single-paradiddle';
     const saved = store.get('grooveRud');
     this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
     this.meterId = (saved && saved.meterId) || '4/4';
@@ -138,8 +173,7 @@ export class RudimentsMode {
   }
 
   render() {
-    const rudId = this.rudimentId || 'paradiddle';
-    this.rudimentId = rudId;
+    const rud = this.currentRudiment();
     const meter = meterById(this.meterId);
     const groupings = Object.keys(meter.groupings);
     this.root.innerHTML = `
@@ -148,7 +182,9 @@ export class RudimentsMode {
       <div class="rud-controls">
         <div class="rud-picker">
           <select id="rud-pattern" aria-label="rudiment">
-            ${RUDIMENTS.map((r) => `<option value="${r.id}" ${r.id === rudId ? 'selected' : ''}>${r.name}</option>`).join('')}
+            ${CATEGORIES.map((c) => `<optgroup label="${c.label}">
+              ${RUDIMENTS.filter((r) => r.cat === c.id).map((r) => `<option value="${r.id}" ${r.id === rud.id ? 'selected' : ''}>${r.num}. ${r.name}</option>`).join('')}
+            </optgroup>`).join('')}
           </select>
         </div>
         <div class="param-grid">
@@ -173,11 +209,13 @@ export class RudimentsMode {
             ${groupings.length > 1 ? `<span class="expand-sep"></span>
               ${groupings.map((g) => `<button class="pill ${g === this.grouping ? 'on' : ''}" data-grouping="${g}">${g}</button>`).join('')}` : ''}
           </div>` : ''}
-        <div class="expand-row accents-row">
-          <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
-          ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
-        </div>
-        <div id="rud-accent-editor" class="accent-editor"></div>
+        ${rud.editable ? `
+          <div class="expand-row accents-row">
+            <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
+            ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
+          </div>
+          <div id="rud-accent-editor" class="accent-editor"></div>`
+    : `<div class="rud-sticking">${this.stickingLine(rud)}</div>`}
       </div>
 
       <div class="highway-panel">
@@ -212,12 +250,13 @@ export class RudimentsMode {
     this.root.querySelector('#rud-pattern').addEventListener('change', (e) => {
       this.rudimentId = e.target.value;
       this.customAccents.clear();
-      this.renderAccentEditor();
+      this.render();
     });
     this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
       this.lead = this.lead === 'R' ? 'L' : 'R';
       e.currentTarget.textContent = this.lead;
-      this.renderAccentEditor();
+      if (this.currentRudiment().editable) this.renderAccentEditor();
+      else this.render();
     });
     this.root.querySelector('#rud-bars').addEventListener('click', (e) => {
       this.bars = BARS_CYCLE[(BARS_CYCLE.indexOf(this.bars) + 1) % BARS_CYCLE.length];
@@ -259,7 +298,7 @@ export class RudimentsMode {
         this.grouping = defaultGrouping(meterById(this.meterId));
         this.saveGroove();
         this.render();
-        this.expandKeep('meter');
+        this.expand = 'meter';
       });
     });
     this.root.querySelectorAll('[data-grouping]').forEach((b) => {
@@ -273,13 +312,23 @@ export class RudimentsMode {
       b.addEventListener('click', () => this.setAccentMode(b.dataset.am));
     });
     this.root.querySelector('#rud-go').addEventListener('click', () => this.toggle());
-    this.renderAccentEditor();
+    if (rud.editable) this.renderAccentEditor();
   }
 
-  expandKeep(which) { this.expand = which; }
-
   currentRudiment() {
-    return RUDIMENTS.find((r) => r.id === this.rudimentId);
+    return rudimentById(this.rudimentId);
+  }
+
+  // one-line sticking readout for non-editable rudiments (flams/drags marked)
+  stickingLine(rud) {
+    return rud.notes.map((n) => {
+      let g = '';
+      if (n.grace === 1) g = '<i class="gr">fl</i>';
+      else if (n.grace === 2) g = '<i class="gr">dr</i>';
+      else if (n.buzz) g = '<i class="gr">bz</i>';
+      const cls = `stk ${n.hand === 'R' ? 'r' : 'l'}${n.accent ? ' acc' : ''}`;
+      return `<span class="${cls}">${g}${n.hand}</span>`;
+    }).join('');
   }
 
   accentValue() {
@@ -290,9 +339,7 @@ export class RudimentsMode {
     this.accentMode = mode;
     if (mode === 'custom' && this.customAccents.size === 0) {
       const rud = this.currentRudiment();
-      for (let s = 0; s < rud.steps.length; s++) {
-        if (accentFor(rud, { mode: 'pattern', custom: [] }, s)) this.customAccents.add(s);
-      }
+      rud.notes.forEach((n, i) => { if (n.accent) this.customAccents.add(i); });
     }
     this.root.querySelectorAll('[data-am]')
       .forEach((b) => b.classList.toggle('on', b.dataset.am === mode));
@@ -301,27 +348,24 @@ export class RudimentsMode {
 
   renderAccentEditor() {
     const el = this.root.querySelector('#rud-accent-editor');
+    if (!el) return;
     const rud = this.currentRudiment();
     const accent = this.accentValue();
-    const pucks = [];
-    for (let s = 0; s < rud.steps.length; s++) {
-      let ch = rud.steps[s];
-      if (this.lead === 'L') ch = swapLead(ch);
-      const on = accentFor(rud, accent, s);
-      const hand = ch.toUpperCase();
-      pucks.push(`<button class="accent-puck ${hand === 'R' ? 'r' : 'l'} ${on ? 'on' : ''} ${s % rud.sub === 0 ? 'pulse-start' : ''}"
-        data-step="${s}" aria-pressed="${on}">${hand}</button>`);
-    }
+    const pucks = rud.notes.map((n, i) => {
+      let hand = n.hand;
+      if (this.lead === 'L') hand = swapLead(hand);
+      const on = accentForNote(rud, accent, { ...n, phrasePos: i });
+      return `<button class="accent-puck ${hand === 'R' ? 'r' : 'l'} ${on ? 'on' : ''} ${n.slot % rud.grid === 0 ? 'pulse-start' : ''}"
+        data-step="${i}" aria-pressed="${on}">${hand}</button>`;
+    });
     el.innerHTML = pucks.join('')
-      + `<span class="accent-note">${this.accentMode === 'moving' ? 'shifts one step each time through' : 'tap notes to place accents'}</span>`;
+      + '<span class="accent-note">tap notes to place accents</span>';
     el.querySelectorAll('.accent-puck').forEach((p) => {
       p.addEventListener('click', () => {
         const step = +p.dataset.step;
         if (this.accentMode !== 'custom') {
           this.customAccents = new Set();
-          for (let s = 0; s < rud.steps.length; s++) {
-            if (accentFor(rud, this.accentValue(), s)) this.customAccents.add(s);
-          }
+          rud.notes.forEach((n, i) => { if (accentForNote(rud, this.accentValue(), { ...n, phrasePos: i })) this.customAccents.add(i); });
           this.accentMode = 'custom';
           this.root.querySelectorAll('[data-am]')
             .forEach((b) => b.classList.toggle('on', b.dataset.am === 'custom'));
@@ -346,9 +390,7 @@ export class RudimentsMode {
 
     const pulseDur = 60 / groove.bpm;
     const countIn = [];
-    for (let p = 0; p < groove.meter.pulses; p++) {
-      countIn.push({ offset: p * pulseDur, accent: p === 0 });
-    }
+    for (let p = 0; p < groove.meter.pulses; p++) countIn.push({ offset: p * pulseDur, accent: p === 0 });
     const countInDur = groove.meter.pulses * pulseDur;
     const clicks = [
       ...countIn,
@@ -377,8 +419,7 @@ export class RudimentsMode {
       el.textContent = 'run invalidated: microphone lost — reconnect and play it again.';
     };
     this.mic.addEventListener('lost', this._lostHandler);
-    const go = this.root.querySelector('#rud-go');
-    go.innerHTML = 'STOP';
+    this.root.querySelector('#rud-go').innerHTML = 'STOP';
     const runSecs = countInDur + this.chart.total + 1;
     this._endTimer = setTimeout(() => this.stop(false), (runSecs + 0.4) * 1000);
   }
@@ -451,14 +492,13 @@ export class RudimentsMode {
     const chip = this.root.querySelector('#rud-judge-chip');
     const num = this.root.querySelector('#rud-judge-num');
     const cap = this.root.querySelector('#rud-judge-cap');
-    num.textContent = judge === 'miss' ? '&#10007;'.replace('&#10007;', '✗') : `${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}`;
+    num.textContent = judge === 'miss' ? '✗' : `${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}`;
     cap.textContent = judge === 'miss' ? 'MISS' : `${judge.toUpperCase()}·MS`;
     chip.className = `judge-chip ${judge}`;
     this.root.querySelector('#rud-combo').textContent = String(this.combo);
     const hits = this.judged.filter((j) => j.judge !== 'miss').length;
     const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
     if (seen) this.root.querySelector('#rud-acc').textContent = `${((100 * hits) / seen).toFixed(0)}%`;
-    // needle: rolling mean of the last few hits
     const mean = this.recentDevs.reduce((a, b) => a + b, 0) / this.recentDevs.length;
     const needle = this.root.querySelector('#jb-needle');
     if (needle) needle.style.left = `${50 + Math.max(-42, Math.min(42, (mean / 60) * 42))}%`;
@@ -493,9 +533,6 @@ export class RudimentsMode {
     }
     const now = this.mic.now();
     const cal = (store.get('calibrationMs') || 0) / 1000;
-    // a note only misses once it's past its OWN accept window plus delivery
-    // slack — tied to the same window onHit uses, so a hit and its note can
-    // never both be penalised for one late tap
     for (const n of this.chart.notes) {
       if (n.state !== 'coming') continue;
       const deadline = matchWindowMs(n.step) / 1000 + MISS_SLACK_MS / 1000;
@@ -504,15 +541,15 @@ export class RudimentsMode {
         this.combo = 0;
       }
     }
-    // live tempo readout in the chip (matters during ramps)
     const rel = now - this.chartStart;
     const seg = rel >= 0 ? segmentAt(this.chart.segments, rel) : this.chart.segments[0];
     const chipEl = this.root.querySelector('#rud-tempo-chip');
     if (chipEl && this.running) chipEl.textContent = seg.bpm;
 
-    const xOf = (t) => nowX + (t - now) * pxPerSec;
+    const xOf = (tt) => nowX + (tt - now) * pxPerSec;
+    const midY = h / 2;
 
-    // bar lines: dotted verticals
+    // bar lines
     ctx.strokeStyle = 'rgba(20,18,16,.25)';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 5]);
@@ -526,19 +563,30 @@ export class RudimentsMode {
     }
     ctx.setLineDash([]);
 
-    const midY = h / 2;
     for (const n of this.chart.notes) {
-      const t = this.chartStart + n.offset;
-      const x = xOf(t);
-      if (x < -60 || x > w + 60) continue;
+      const x = xOf(this.chartStart + n.offset);
+      if (x < -70 || x > w + 70) continue;
+      // grace notes (flam/drag) — small, drawn just before the primary
+      for (const gt of n.graceTimes) {
+        const gx = xOf(this.chartStart + gt);
+        ctx.globalAlpha = n.state === 'miss' ? 0.3 : 0.85;
+        ctx.fillStyle = n.stick === 'R' ? T.pink : T.blue;
+        ctx.beginPath();
+        ctx.arc(gx, midY - 20, 11, 0, 7);
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = T.ink;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       const r = n.accent ? 56 : 48;
       const isR = n.stick === 'R';
       const base = isR ? T.pink : T.blue;
-      let alpha = 1;
       let ring = null;
+      let alpha = 1;
       if (n.state === 'hit-perfect' || n.state === 'hit-good') ring = T.green;
       else if (n.state === 'hit-ok') ring = '#b5891f';
-      else if (n.state === 'miss') { alpha = 0.35; }
+      else if (n.state === 'miss') alpha = 0.35;
       ctx.globalAlpha = alpha;
       ctx.fillStyle = base;
       ctx.beginPath();
@@ -547,12 +595,21 @@ export class RudimentsMode {
       ctx.lineWidth = 4;
       ctx.strokeStyle = T.ink;
       ctx.stroke();
-      if (n.accent) { // double ring for accents
+      if (n.accent) {
         ctx.beginPath();
         ctx.arc(x, midY, r / 2 + 6, 0, 7);
         ctx.lineWidth = 5;
         ctx.strokeStyle = T.ink;
         ctx.stroke();
+      }
+      if (n.buzz) { // multiple-bounce: dashed halo
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(x, midY, r / 2 + 10, 0, 7);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = T.ink;
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       if (ring) {
         ctx.beginPath();
@@ -585,7 +642,7 @@ export class RudimentsMode {
       ctx.fillStyle = T.ink;
       ctx.font = "110px 'Anton', system-ui";
       ctx.textAlign = 'center';
-      ctx.fillText(String(pulsesLeft), w / 2, h / 2 + 38);
+      ctx.fillText(String(pulsesLeft), w / 2, midY + 38);
     }
   }
 
@@ -599,14 +656,20 @@ export class RudimentsMode {
 
     const rud = this.rudiment;
     const glyph = unitGlyph(this.grooveUsed.meter);
+    const perPhrase = rud.notes.length;
 
+    // per-position: which stroke of the phrase rushes/drags?
     const perStep = [];
-    for (let p = 0; p < rud.steps.length; p++) {
-      const stepDevs = this.judged
-        .filter((j) => j.judge !== 'miss' && j.note.index % rud.steps.length === p)
+    for (let p = 0; p < perPhrase; p++) {
+      const sd = this.judged
+        .filter((j) => j.judge !== 'miss' && j.note.phrasePos === p)
         .map((j) => j.devMs);
-      const ss = summarize(stepDevs);
-      if (ss && ss.n >= 3) perStep.push(`${rud.steps[p].toUpperCase()}${p + 1}: ${ss.mean >= 0 ? '+' : ''}${ss.mean.toFixed(1)}`);
+      const ss = summarize(sd);
+      if (ss && ss.n >= 3) {
+        let hand = rud.notes[p].hand;
+        if (this.lead === 'L') hand = swapLead(hand);
+        perStep.push(`${hand}${p + 1}: ${ss.mean >= 0 ? '+' : ''}${ss.mean.toFixed(1)}`);
+      }
     }
 
     let accentLine = '';
@@ -617,15 +680,10 @@ export class RudimentsMode {
         const sorted = arr.map((j) => j.level).sort((a, b) => a - b);
         return sorted[Math.floor(sorted.length / 2)];
       };
-      const accMed = med(accHits);
-      const tapMed = med(tapHits);
-      const db = 20 * Math.log10(accMed / Math.max(tapMed, 1e-9));
-      const silent = accHits.filter((j) => j.level < tapMed).length;
-      const sAcc = summarize(accHits.map((j) => j.devMs));
-      const sTap = summarize(tapHits.map((j) => j.devMs));
+      const db = 20 * Math.log10(med(accHits) / Math.max(med(tapHits), 1e-9));
+      const silent = accHits.filter((j) => j.level < med(tapHits)).length;
       accentLine = `accents: ${accHits.length} played · level ${db >= 0 ? '+' : ''}${db.toFixed(1)} dB vs taps`
-        + (silent ? ` · ${silent} did not speak (at tap level)` : '')
-        + ` · timing acc ${sAcc.mean >= 0 ? '+' : ''}${sAcc.mean.toFixed(1)}ms / taps ${sTap.mean >= 0 ? '+' : ''}${sTap.mean.toFixed(1)}ms<br>`;
+        + (silent ? ` · ${silent} did not speak (at tap level)` : '') + '<br>';
       this._accentDb = +db.toFixed(1);
     } else {
       this._accentDb = null;
@@ -642,10 +700,6 @@ export class RudimentsMode {
       if (ss) perTempo.push(`${glyph}${seg.bpm}: ±${ss.sd.toFixed(1)}ms${segMiss ? ` (${segMiss} missed)` : ''}`);
     }
 
-    // A big but CONSISTENT offset (tight spread, mean far from zero) is not
-    // rushing or dragging — it's uncalibrated system latency shifting every
-    // hit the same way. Say so plainly instead of blaming the player, since
-    // that offset is exactly what pushes in-pocket hits past the miss window.
     const cal = store.get('calibrationMs');
     let offsetHint = '';
     if (s.n >= 8 && Math.abs(s.mean) > 25 && s.sd < Math.abs(s.mean)) {
@@ -653,19 +707,19 @@ export class RudimentsMode {
     }
     const bleedNote = this.bleed.warning();
     el.innerHTML = `
-      <b>${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
+      <b>${rud.name} · ${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
       ${bleedNote ? `<span class="sub">NOTE: ${bleedNote}</span><br>` : ''}
       mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
       ${offsetHint}
       ${accentLine}
       ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}
-      <span class="sub">per step (mean ms): ${perStep.join(' · ') || 'not enough hits per step'}</span><br>
+      <span class="sub">per stroke (mean ms): ${perStep.join(' · ') || 'not enough hits per stroke'}</span><br>
       <span class="sub">negative = early. The judgement is yours; these are just the facts.</span>`;
 
     const segs = this.chart.segments;
     store.addRun({
       kind: 'rudiment',
-      label: `${rud.name} (${this.lead}-lead${this.accentUsed.mode !== 'pattern' ? `, ${this.accentUsed.mode} accents` : ''})`,
+      label: `${rud.name} (${this.lead}-lead)`,
       accentDb: this._accentDb,
       meter: `${this.grooveUsed.meter.label} ${this.grooveUsed.grouping}`,
       bpmStart: segs[0].bpm,

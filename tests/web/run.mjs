@@ -123,8 +123,22 @@ await page.click('[data-mode="fund"]');
 // ---------------------------------------------------------------- rudiments
 await nav('rudiments');
 check('rud-controls', await page.locator('.param-box').count() === 4);
-check('rud-accent-pills', await page.locator('[data-am]').count() === 5);
+// all 40 essential rudiments, grouped by PAS category
+check('rud-40-options', await page.locator('#rud-pattern option').count() === 40,
+  `${await page.locator('#rud-pattern option').count()} options`);
+check('rud-4-categories', await page.locator('#rud-pattern optgroup').count() === 4);
+check('rud-data-integrity', (await page.evaluate(() => window.__rhythmChecker.rudimentErrors)).length === 0,
+  (await page.evaluate(() => window.__rhythmChecker.rudimentErrors)).join('; '));
+// default (single paradiddle) is editable: 4 accent modes, 8 pucks
+check('rud-accent-pills', await page.locator('[data-am]').count() === 4);
 check('rud-accent-pucks', await page.locator('.accent-puck').count() === 8);
+// a flam rudiment shows a sticking line instead of the accent editor
+await page.selectOption('#rud-pattern', 'flam-accent');
+await page.waitForTimeout(80);
+check('rud-flam-sticking', await page.locator('.rud-sticking').count() === 1
+  && await page.locator('.accent-puck').count() === 0);
+await page.selectOption('#rud-pattern', 'single-paradiddle');
+await page.waitForTimeout(80);
 // tapping a puck flips into custom accent mode
 await page.click('.accent-puck[data-step="1"]');
 await page.waitForTimeout(80);
