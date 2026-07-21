@@ -36,7 +36,7 @@ export class ArmedSession extends EventTarget {
       this.dispatchEvent(new CustomEvent('miclost'));
     };
     this.mic.addEventListener('lost', this._lostHandler);
-    this.mic.lockDetector(this, { refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.mic.lockDetector(this, { refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     this.mic.addEventListener('onset', this._onOnset);
     wakeLock.acquire();
     this.metro.start();

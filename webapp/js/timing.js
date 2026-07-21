@@ -29,7 +29,7 @@ export class TimingSession extends EventTarget {
     this.bleed = new BleedGuard();
     this._lostHandler = () => this.abort('microphone lost — reconnect and run it again');
     this.mic.addEventListener('lost', this._lostHandler);
-    this.mic.lockDetector(this, { refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.mic.lockDetector(this, { refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     this.mic.addEventListener('onset', this._onOnset);
     wakeLock.acquire();
     this.metro.start();
@@ -121,7 +121,7 @@ export class TimingMode {
   }
 
   activate() {
-    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
   }
 
   render() {

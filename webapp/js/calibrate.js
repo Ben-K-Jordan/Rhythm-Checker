@@ -25,7 +25,7 @@ export class CalibrateMode {
   }
 
   activate() {
-    this.mic.setDetectorOptions({ refractory: 0.15, threshold: 4, minLevel: 0.01 });
+    this.mic.setDetectorOptions({ refractory: 0.15, threshold: 2.5, minLevel: 0.01 });
     if (!this._meterT) this._meterT = setInterval(() => this.drawMeter(), 90);
   }
 

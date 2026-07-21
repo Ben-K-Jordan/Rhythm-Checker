@@ -183,7 +183,7 @@ export class RudimentsMode {
   }
 
   activate() {
-    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     if (!this._raf) this.loop();
   }
 
@@ -443,7 +443,7 @@ export class RudimentsMode {
     this._clickPtr = 0;
     this.root.querySelector('#rud-summary').classList.add('hidden');
     this.running = true;
-    this.mic.lockDetector(this, { refractory: 0.03, threshold: 4, minLevel: 0.01 });
+    this.mic.lockDetector(this, { refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     wakeLock.acquire();
     this._lostHandler = () => {
       this.stop(true);

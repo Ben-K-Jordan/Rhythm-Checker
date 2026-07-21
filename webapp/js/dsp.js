@@ -168,7 +168,12 @@ export class OnsetDetector {
   // made earlier versions go deaf to 16ths and ghost notes) keeps equal and
   // softer hits detectable at any practice tempo without retriggering on
   // ringy drums.
-  constructor(sampleRate, { refractory = 0.03, threshold = 4, minLevel = 0.01 } = {}) {
+  // threshold: a hit must be this many times the noise floor. Kept modest (not
+  // high) on purpose — a high multiplier silently drops QUIET hits when the
+  // room floor is up (hum, monitor bleed, the metronome the mic hears), so the
+  // same rhythm scored perfectly on a loud pad spot and all-missed on a quiet
+  // one. The rise gate (fast >= 2x recent) and minLevel reject noise instead.
+  constructor(sampleRate, { refractory = 0.03, threshold = 2.5, minLevel = 0.01 } = {}) {
     this.sampleRate = sampleRate;
     this.refractory = refractory;
     this.threshold = threshold;
@@ -432,6 +437,22 @@ export function selftest() {
     const tone = new Float32Array(2 * sr);
     for (let i = 0; i < tone.length; i++) tone[i] = 0.3 * Math.sin((2 * Math.PI * 220 * i) / sr);
     check('onset-no-first-block-phantom', detect(tone).length === 0);
+
+    // QUIET hits over an elevated floor (room noise + 60 Hz hum + monitor/click
+    // bleed) must still register. A too-high threshold used to drop them, so the
+    // same rhythm scored all-correct on a loud pad spot and all-miss on a quiet
+    // one. 16 modest hits (0.08) over a ~0.013 RMS floor: nearly all must land.
+    {
+      const bpm = 120; const sx = 60 / bpm / 4; const t0 = 0.6; const N = 16;
+      const q = new Float32Array(Math.floor((t0 + N * sx + 0.4) * sr));
+      let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5;
+      for (let i = 0; i < q.length; i++) q[i] = 0.04 * rnd() + 0.01 * Math.sin((2 * Math.PI * 60 * i) / sr);
+      for (let k = 0; k < N; k++) {
+        const st = Math.floor((t0 + k * sx) * sr); const dec = 0.006 * sr;
+        for (let i = 0; i < Math.floor(0.05 * sr); i++) q[st + i] += 0.08 * Math.exp(-i / dec) * Math.sin((2 * Math.PI * 480 * i) / sr);
+      }
+      check('onset-quiet-over-noisy-floor', detect(q).length >= 14);
+    }
     check('summarize-median-even-n', summarize([1, 2, 3, 10]).median === 2.5);
   }
 
