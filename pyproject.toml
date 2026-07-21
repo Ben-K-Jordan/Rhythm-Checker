@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Honest timing analysis for drum practice recordings: every hit measured against the metronome grid."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
 authors = [{ name = "Ben Jordan" }]
 dependencies = ["numpy>=1.22"]
 
