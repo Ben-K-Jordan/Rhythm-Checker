@@ -145,6 +145,24 @@ await page.waitForTimeout(80);
 // editable patterns show notation AND the accent editor; 8 notes, no graces
 check('rud-notation-editable', await page.locator('.rud-notation-svg').count() === 1
   && await page.locator('.rud-notation-svg ellipse').count() === 8);
+// notation reads tuplets correctly: a sextuplet-grid beat with 3 evenly-spaced
+// notes is a TRIPLET (3), not a sextuplet (6); a real sextuplet is 6; a note
+// that fills a triplet beat is a plain quarter (0 beams, no dot), no bracket.
+const nota = await page.evaluate(() => {
+  const m = window.__rhythmChecker.notation;
+  const ddt = m('double-drag-tap')[0];       // grid6, 3 notes -> triplet
+  const dp = m('double-paradiddle')[0];       // grid6, 6 notes -> sextuplet
+  const tr = m('triple-ratamacue');           // resolves to a whole-beat quarter
+  const qb = tr.find((b) => !b.rest && b.notes.length === 1);
+  return {
+    ddtTuplet: ddt.tuplet, dpTuplet: dp.tuplet,
+    quarter: qb.notes[0].beams === 0 && qb.notes[0].dot === false && qb.tuplet === null,
+    singleHasRest: m('single-ratamacue').some((b) => b.rest),
+  };
+});
+check('rud-notation-tuplet-triplet', nota.ddtTuplet === 3, `double-drag-tap tuplet ${nota.ddtTuplet}`);
+check('rud-notation-tuplet-sextuplet', nota.dpTuplet === 6, `double-paradiddle tuplet ${nota.dpTuplet}`);
+check('rud-notation-whole-beat-quarter', nota.quarter && nota.singleHasRest);
 // tapping a puck flips into custom accent mode
 await page.click('.accent-puck[data-step="1"]');
 await page.waitForTimeout(80);

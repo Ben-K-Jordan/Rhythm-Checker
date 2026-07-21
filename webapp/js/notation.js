@@ -9,15 +9,66 @@
 // four notes and a pile of rests. Pure: (rudiment) -> SVG string. Inline SVG
 // inherits the page's CSS variables, so it themes itself.
 
-// span (in grid cells) -> [beams removed by halving, dotted?]. Covers every
-// span the 40 rudiments actually produce: {1,2,3,4,6,8}.
-const SPAN = { 1: [0, false], 2: [1, false], 4: [2, false], 8: [3, false], 3: [1, true], 6: [2, true] };
-// beams for a single grid cell: 8th-triplet=1, 16th=2, 16th-sextuplet=2, 32nd=3
-const CELL_BEAMS = { 3: 1, 4: 2, 6: 2, 8: 3 };
+function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+
+// Written value of a note from the fraction of a beat it lasts (span / grid),
+// reduced — so it's correct in BOTH binary grids (4, 8) and tuplet grids
+// (3, 6). Keyed num/den: a whole triplet beat is a plain quarter (3/3 -> 1/1),
+// not a dotted quarter; a 2/3 note is a quarter-note triplet, and so on.
+// [beams (flags), dotted].
+const VALUE = {
+  '1/1': [0, false],  // quarter
+  '1/2': [1, false],  // 8th
+  '1/4': [2, false],  // 16th
+  '1/8': [3, false],  // 32nd
+  '1/3': [1, false],  // 8th-note triplet
+  '1/6': [2, false],  // 16th-note sextuplet
+  '2/3': [0, false],  // quarter-note triplet
+  '3/4': [1, true],   // dotted 8th
+  '3/8': [2, true],   // dotted 16th
+  '3/16': [3, true],  // dotted 32nd
+};
 
 function valueOf(span, grid) {
-  const [halved, dot] = SPAN[span] || [0, false];
-  return { beams: Math.max(0, (CELL_BEAMS[grid] || 2) - halved), dot };
+  const g = gcd(span, grid);
+  const [beams, dot] = VALUE[`${span / g}/${grid / g}`] || [0, false];
+  return { beams, dot };
+}
+
+// A beat's real tuplet number: how many equal parts the notes actually divide
+// it into. Three evenly-spaced notes in a sextuplet grid are a triplet (3),
+// not a sextuplet (6); a single note filling the beat is no tuplet at all.
+function tupletOf(grid, sibs) {
+  let g = grid;
+  for (const s of sibs) if (s) g = gcd(g, s);
+  const eff = grid / g;
+  return eff === 3 || eff === 6 ? eff : null;
+}
+
+// Pure musical interpretation of a rudiment, independent of any drawing: the
+// beats, each a list of notes with their written duration (beams + dot),
+// grace/buzz/accent, or a rest. Exposed so it can be audited directly.
+export function notationModel(rud, opts = {}) {
+  const accentOf = opts.accentOf || ((n) => n.accent);
+  const { grid, beats } = rud;
+  const perBeat = Array.from({ length: beats }, () => []);
+  rud.notes.forEach((n, idx) => {
+    perBeat[Math.floor(n.slot / grid)].push({ ...n, idx, sib: n.slot % grid });
+  });
+  return perBeat.map((raw, b) => {
+    const ns = raw.sort((a, z) => a.sib - z.sib);
+    if (!ns.length) return { beat: b, rest: true, notes: [] };
+    const notes = ns.map((n, k) => {
+      const nextSib = k + 1 < ns.length ? ns[k + 1].sib : grid;
+      const v = valueOf(nextSib - n.sib, grid);
+      return {
+        idx: n.idx, sib: n.sib, span: nextSib - n.sib, hand: n.hand,
+        beams: v.beams, dot: v.dot, grace: n.grace, buzz: n.buzz,
+        accent: !!accentOf(n, n.idx),
+      };
+    });
+    return { beat: b, rest: false, tuplet: tupletOf(grid, ns.map((n) => n.sib)), notes };
+  });
 }
 
 const LY = 46;        // staff line / notehead centre
@@ -39,11 +90,7 @@ export function rudimentNotationSVG(rud, opts = {}) {
   const noteX = (b, s) => beatX(b) + (s / grid) * beatW + 6;
   const stemX = (x) => x - 5.2;
 
-  // group notes by beat, in order
-  const perBeat = Array.from({ length: beats }, () => []);
-  rud.notes.forEach((n, idx) => {
-    perBeat[Math.floor(n.slot / grid)].push({ ...n, idx, sib: n.slot % grid });
-  });
+  const model = notationModel(rud, { accentOf });
 
   const p = [];
   // staff line
@@ -53,23 +100,16 @@ export function rudimentNotationSVG(rud, opts = {}) {
     p.push(`<line x1="${beatX(b)}" y1="${LY - 15}" x2="${beatX(b)}" y2="${LY + 15}" stroke="var(--line)" stroke-width="1"/>`);
   }
 
-  for (let b = 0; b < beats; b++) {
-    const ns = perBeat[b].sort((a, z) => a.sib - z.sib);
-    if (!ns.length) { // a beat with no onset reads as a quarter rest
+  for (const beat of model) {
+    const b = beat.beat;
+    if (beat.rest) { // a beat with no onset reads as a quarter rest
       const cx = beatX(b) + beatW * 0.5;
       p.push(`<path d="M ${cx - 3} ${LY - 13} L ${cx + 3} ${LY - 6} L ${cx - 3} ${LY - 1} L ${cx + 4} ${LY + 7}" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`);
       continue;
     }
-    for (let k = 0; k < ns.length; k++) {
-      const nextSib = k + 1 < ns.length ? ns[k + 1].sib : grid;
-      const v = valueOf(nextSib - ns[k].sib, grid);
-      ns[k].beams = v.beams;
-      ns[k].dot = v.dot;
-      ns[k].x = noteX(b, ns[k].sib);
-    }
-    // tuplet number over triplet/sextuplet beats
-    if ((grid === 3 || grid === 6) && ns.length) {
-      p.push(`<text x="${beatX(b) + beatW * 0.5}" y="${LY - 25}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--dim)">${grid}</text>`);
+    const ns = beat.notes.map((n) => ({ ...n, x: noteX(b, n.sib) }));
+    if (beat.tuplet) {
+      p.push(`<text x="${beatX(b) + beatW * 0.5}" y="${LY - 25}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--dim)">${beat.tuplet}</text>`);
     }
     for (const n of ns) {
       const { x } = n;
@@ -83,7 +123,7 @@ export function rudimentNotationSVG(rud, opts = {}) {
           p.push(`<line x1="${sx - 4}" y1="${yy + 2}" x2="${sx + 4}" y2="${yy - 2}" stroke="var(--ink)" stroke-width="1.5"/>`);
         }
       }
-      if (accentOf(n, n.idx)) {
+      if (n.accent) {
         p.push(`<path d="M ${x - 6} ${LY - 16} L ${x + 4} ${LY - 12.5} L ${x - 6} ${LY - 9}" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
       }
       for (let g = 0; g < n.grace; g++) {

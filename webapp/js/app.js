@@ -10,7 +10,8 @@ import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
 import { RudimentsMode, matchWindowMs, highwayPxPerSec, puckRadius } from './rudiments.js';
-import { validateRudiments } from './rudiment-data.js';
+import { validateRudiments, rudimentById } from './rudiment-data.js';
+import { notationModel } from './notation.js';
 import { PreshowMode, ArmedMode, VerdictMode } from './showflow.js';
 import { CalibrateMode } from './calibrate.js';
 import { HistoryMode } from './history.js';
@@ -264,6 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.__rhythmChecker = {
     selftest: st, version: '2.2.0', nav: (n) => nav(n), matchWindowMs,
     highwayPxPerSec, puckRadius,
+    notation: (id) => notationModel(rudimentById(id)),
     rudimentErrors: validateRudiments(),
   };
   if (st.passed) {
