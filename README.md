@@ -86,10 +86,13 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
 * **Calibrate**: measures your device's fixed audio latency by tapping along
   with clicks, then subtracts it from every score. Run it once per device.
 
-The look is a xerox gig flyer: paper, ink, one red. The titles sway, screens
-slap on like fresh flyers, and stamps hit the page. All of it runs as
-GPU-composited stop motion that costs the audio thread nothing, and every
-animation switches off for users with Reduce Motion enabled.
+The look is a xerox gig flyer: paper, ink, one red. Motion follows one rule:
+things move when they arrive, then hold still so you can read them. Titles
+swing in like they were just stapled up, screens slap on like fresh flyers,
+stamps hit the page, and the only things that never stop moving are the VU
+bars and the hazard stripe. All of it runs as GPU-composited stop motion that
+costs the audio thread nothing, and every animation switches off for users
+with Reduce Motion enabled.
 
 ## The deep analyzer
 

@@ -37,8 +37,17 @@ function nav(name) {
   const mh = $('#masthead');
   if (TITLES[name]) {
     mh.classList.remove('hidden');
-    mh.querySelector('h1').textContent = TITLES[name][0];
-    mh.querySelector('span').textContent = TITLES[name][1];
+    const h1 = mh.querySelector('h1');
+    const strap = mh.querySelector('span');
+    h1.textContent = TITLES[name][0];
+    strap.textContent = TITLES[name][1];
+    // replay the one-shot swing-in for each screen's title (the masthead
+    // element persists across navs, so the CSS animation won't restart itself)
+    for (const el of [h1, strap]) {
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = '';
+    }
   } else mh.classList.add('hidden');
   const mode = modes[name];
   if (mode && mode.activate) mode.activate();
