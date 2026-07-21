@@ -253,6 +253,9 @@ export class TunerMode {
     saveBtn.disabled = !this.drumId || (!this.lastHz && !this.lugTaps.length);
     if (this.lastHz === null) return;
     hzEl.textContent = `${this.lastHz.toFixed(1)} Hz`;
+    hzEl.classList.remove('pop');
+    void hzEl.offsetWidth; // restart the pop from frame one on every tap
+    hzEl.classList.add('pop');
     const target = this.targetHz();
     if (target) {
       const cents = centsBetween(this.lastHz, target);
