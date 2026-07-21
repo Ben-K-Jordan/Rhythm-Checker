@@ -391,10 +391,10 @@ const tone = await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
   const kit = store.get('kit');
   const hz = (word) => kit.find((d) => d.name.includes(word)).targetHz;
-  // punk, size-aware: snare14=230, tom8=200, tom10=165, tom12=135,
-  // floor16s=92, kick22=63
-  return { ok: hz('5.5x14') === 230 && hz('8x10') === 165 && hz('9x12') === 135
-    && hz('7x8') === 200 && hz('14x16') === 92 && hz('16x16') === 92 && hz('18x22') === 63 };
+  // punk = Barker: snare14=300, tom8=210, tom10=175, tom12=145,
+  // floor16s=95, kick22=65
+  return { ok: hz('5.5x14') === 300 && hz('8x10') === 175 && hz('9x12') === 145
+    && hz('7x8') === 210 && hz('14x16') === 95 && hz('16x16') === 95 && hz('18x22') === 65 };
 });
 check('tone-preset', tone.ok);
 await page.evaluate(async () => { const { store } = await import('./js/store.js'); store.reset(); });

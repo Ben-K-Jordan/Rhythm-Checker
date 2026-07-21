@@ -8,16 +8,20 @@ import { theme } from './theme.js';
 // Genre tone presets: ideal fundamentals (Hz) BY DRUM SIZE per genre.
 // Diameter parsed from the drum name ("8x10" = depth x diameter); values
 // interpolate between listed diameters. Launch points, not laws.
+// Each genre is anchored to a player's sound:
+//   ROCK  - Bonham: big, open, toms that sing, boomy 26" kick energy
+//   PUNK  - Barker: piccolo-crack snare way up high, tight fast toms
+//   METAL - Jordison: tight, hard, articulate, clicky kick
 const TONES = {
-  rock:  { label: 'ROCK',
-    tom: { 8: 180, 10: 150, 12: 120, 14: 95, 16: 80, 18: 70 },
-    snare: { 13: 210, 14: 190 },
-    kick: { 18: 62, 20: 58, 22: 55, 24: 50 } },
-  punk:  { label: 'PUNK',
-    tom: { 8: 200, 10: 165, 12: 135, 14: 105, 16: 92, 18: 78 },
-    snare: { 13: 250, 14: 230 },
-    kick: { 18: 70, 20: 66, 22: 63, 24: 58 } },
-  metal: { label: 'METAL',
+  rock:  { label: 'ROCK · Bonham',
+    tom: { 8: 190, 10: 160, 12: 130, 14: 105, 16: 85, 18: 72 },
+    snare: { 13: 235, 14: 215 },
+    kick: { 18: 58, 20: 55, 22: 52, 24: 48, 26: 45 } },
+  punk:  { label: 'PUNK · Barker',
+    tom: { 8: 210, 10: 175, 12: 145, 14: 112, 16: 95, 18: 80 },
+    snare: { 13: 320, 14: 300 },
+    kick: { 18: 72, 20: 68, 22: 65, 24: 60 } },
+  metal: { label: 'METAL · Jordison',
     tom: { 8: 220, 10: 185, 12: 155, 14: 120, 16: 105, 18: 88 },
     snare: { 13: 290, 14: 265 },
     kick: { 18: 75, 20: 71, 22: 68, 24: 62 } },
@@ -168,7 +172,7 @@ export class TunerMode {
         }
         this.render();
         this.flashStatus(hits
-          ? `${tone.label} tone set on ${hits} drums — starting points, tune to taste`
+          ? `${tone.label} set on ${hits} drums — his ballpark, your ears finish it`
           : 'no drums matched — name them snare / rack / floor / kick in settings');
       });
     });
