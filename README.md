@@ -32,9 +32,11 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
 cd webapp && python -m http.server 8000   # → http://localhost:8000
 ```
 
-For the iPhone: host `webapp/` on any static HTTPS host (GitHub Pages is free
-and sufficient — iOS requires HTTPS for mic access), open it in Safari, Share →
-**Add to Home Screen**. After the first visit it works fully offline.
+For the iPhone: open the live deployment at
+**<https://ben-k-jordan.github.io/Rhythm-Checker/>** in Safari, then Share →
+**Add to Home Screen**. After the first visit it works fully offline — iOS
+requires HTTPS for mic access, which GitHub Pages provides for free. (Pushes to
+`main` that touch `webapp/` redeploy it automatically.)
 
 - **Tuner** — tap the head, read the fundamental in Hz/note/cents. Lug mode
   logs a pass around the drum and marks the lugs that are off. Save the Hz you
