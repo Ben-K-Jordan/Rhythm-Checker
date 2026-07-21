@@ -177,10 +177,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // machine-checkable health: Playwright and the diagnostics footer read this
   const st = selftest();
   window.__rhythmChecker = { selftest: st, version: '2.0.0', nav: (n) => nav(n) };
-  $('#diag').textContent = st.passed
-    ? 'engine self-test: all passing'
-    : `ENGINE SELF-TEST FAILING: ${st.failures.join(', ')}`;
-  if (!st.passed) $('#diag').classList.add('warn-text');
+  if (st.passed) {
+    document.querySelector('footer').classList.add('hidden');
+  } else {
+    $('#diag').textContent = `ENGINE SELF-TEST FAILING: ${st.failures.join(', ')}`;
+    $('#diag').classList.add('warn-text');
+  }
 
   $('#start-btn').addEventListener('click', boot);
   $('#nav-back').addEventListener('click', () => nav('home'));

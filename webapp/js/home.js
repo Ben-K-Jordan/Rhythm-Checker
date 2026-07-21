@@ -92,10 +92,6 @@ export class HomeMode {
     }
     if (!facts.length) facts.push('no sessions yet — run anything and the facts land here');
 
-    const gaps = [];
-    if (cal === null) gaps.push({ label: 'UNCALIBRATED', nav: 'calibrate' });
-    if (!targets) gaps.push({ label: 'NO TUNING TARGETS', nav: 'tuner' });
-    if (!base) gaps.push({ label: 'NO BASELINE', nav: 'timing' });
 
     this.root.innerHTML = `
       <button id="arm-strip">
@@ -117,12 +113,6 @@ export class HomeMode {
         <button class="tile" data-i="06" data-nav="calibrate"><b>Calibrate</b><span>${cal === null ? 'not yet — run me' : `${cal.toFixed(0)} ms locked in`}</span></button>
       </nav>
 
-      <footer class="status-bar">
-        ${gaps.length
-          ? gaps.map((g) => `<button class="gap" data-nav="${g.nav}">▲ ${g.label}</button>`).join('')
-          : '<span class="ok">● calibrated · targets saved · baseline set</span>'}
-      </footer>
-      <p class="bill-row credo">Honest data · Human calls · No flattery</p>
 
       <div id="arm-sheet" class="sheet hidden">
         <h2 class="stamp">Arm show mode</h2>
