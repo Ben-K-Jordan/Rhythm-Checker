@@ -113,10 +113,15 @@ export class CalibrateMode {
       this.root.querySelector('#trig-mark').style.left = `${(f * 100).toFixed(1)}%`;
       this.root.querySelector('#trig-label').style.left = `${(f * 100).toFixed(1)}%`;
     };
-    let dragging = false;
-    track.addEventListener('pointerdown', (e) => { dragging = true; setTrig(e.clientX); });
-    window.addEventListener('pointermove', (e) => { if (dragging) setTrig(e.clientX); });
-    window.addEventListener('pointerup', () => { dragging = false; });
+    // render() reruns on every visit — window-level listeners must bind once
+    // or they accumulate and every old closure fires per drag
+    this._setTrig = setTrig;
+    track.addEventListener('pointerdown', (e) => { this._dragging = true; this._setTrig(e.clientX); });
+    if (!this._dragBound) {
+      this._dragBound = true;
+      window.addEventListener('pointermove', (e) => { if (this._dragging) this._setTrig(e.clientX); });
+      window.addEventListener('pointerup', () => { this._dragging = false; });
+    }
   }
 
   start() {

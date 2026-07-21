@@ -10,7 +10,7 @@ const DEFAULTS = {
   judgeMode: 'standard',        // 'standard' | 'pro'
   lugCount: 6,
   feel: null,                   // 'bonham' | 'barker' | 'jordison' | null — kit voicing preset
-  showMeta: { venue: '', setMin: 45, songs: 12 },
+  showMeta: { venue: '', setMin: 45, songs: 12, stage: '' },
   metronomeSound: 'woodblock',  // 'woodblock' | 'beep' | 'rim'
   showGrades: false,            // honest default: numbers, not grades
   clickAck: false,              // user confirmed the click routes to in-ears only
@@ -31,7 +31,6 @@ const DEFAULTS = {
   grooveRud: null,              // {bpm, meterId, grouping}
   grooveTiming: null,
   runs: [],                     // every completed session, append-only (capped)
-  show: null,                   // armed show ritual: {armedAt, stageTime, drums, hands}
 };
 
 const MAX_RUNS = 500;
@@ -58,6 +57,7 @@ function sanitize(data) {
       venue: typeof sm.venue === 'string' ? sm.venue.slice(0, 60) : '',
       setMin: num(sm.setMin) !== undefined ? sm.setMin : 45,
       songs: num(sm.songs) !== undefined ? sm.songs : 12,
+      stage: typeof sm.stage === 'string' && /^\d{2}:\d{2}$/.test(sm.stage) ? sm.stage : '',
     };
   }
   if (['woodblock', 'beep', 'rim'].includes(data.metronomeSound)) clean.metronomeSound = data.metronomeSound;
@@ -71,7 +71,9 @@ function sanitize(data) {
       && (d.targetHz === null || num(d.targetHz) !== undefined))
       .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz,
         resoHz: d.resoHz === null || num(d.resoHz) !== undefined ? (d.resoHz ?? null) : null }));
-    if (kit.length) clean.kit = kit;
+    // an explicitly empty kit is a choice and stays empty; an array whose
+    // entries were all garbage is corruption and degrades to defaults
+    if (kit.length || data.kit.length === 0) clean.kit = kit;
   }
   const b = data.baseline;
   if (b && typeof b === 'object'
@@ -86,15 +88,6 @@ function sanitize(data) {
     clean.runs = data.runs
       .filter((r) => r && typeof r === 'object' && num(r.sd) !== undefined && num(r.mean) !== undefined)
       .slice(-MAX_RUNS);
-  }
-  const s = data.show;
-  if (s && typeof s === 'object' && num(s.armedAt) !== undefined && num(s.stageTime) !== undefined) {
-    clean.show = {
-      armedAt: s.armedAt,
-      stageTime: s.stageTime,
-      drums: s.drums && typeof s.drums === 'object' ? s.drums : null,
-      hands: s.hands && typeof s.hands === 'object' ? s.hands : null,
-    };
   }
   return clean;
 }

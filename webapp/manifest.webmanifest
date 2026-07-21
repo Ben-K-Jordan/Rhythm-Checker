@@ -4,11 +4,24 @@
   "description": "Drum tuner, pre-show check, and rudiment trainer. All analysis on-device.",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f6f2e8",
-  "theme_color": "#f6f2e8",
+  "background_color": "#f2ecdd",
+  "theme_color": "#f2ecdd",
   "icons": [
-    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }

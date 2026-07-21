@@ -229,6 +229,38 @@ await page.click('#drawer-scrim', { position: { x: 12, y: 12 } });
 await page.waitForTimeout(200);
 check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1);
 
+// ---------------------------------------------- state persistence (sanitize)
+// A stage time set in pre-show and an intentionally emptied kit must both
+// survive sanitize() on load (regressions: sanitize() dropped
+// showMeta.stage, breaking the T-minus countdown; and reset an empty kit to
+// the 7-drum defaults). Fresh context whose init payload IS the tricky state,
+// then force a persist so the SANITIZED state is written back and read.
+{
+  const ctx2 = await browser.newContext({ permissions: ['microphone'], viewport: { width: 390, height: 760 } });
+  const p2 = await ctx2.newPage();
+  await p2.addInitScript(() => localStorage.setItem('rhythm-checker-v1', JSON.stringify({
+    showMeta: { venue: 'X', setMin: 45, songs: 12, stage: '21:30' },
+    kit: [],
+  })));
+  await p2.goto(`${base}/index.html`);
+  await p2.waitForFunction(() => window.__rhythmChecker);
+  await p2.click('#start-btn');
+  await p2.waitForSelector('#app:not(.hidden)');
+  // pocket window change goes through store.set -> persist(), writing sanitized state
+  await p2.click('#settings-btn');
+  await p2.waitForTimeout(200);
+  await p2.fill('#set-pocket', '11');
+  await p2.dispatchEvent('#set-pocket', 'change');
+  await p2.waitForTimeout(120);
+  const afterSanitize = await p2.evaluate(() => {
+    const raw = JSON.parse(localStorage.getItem('rhythm-checker-v1'));
+    return { stage: raw.showMeta && raw.showMeta.stage, kitLen: raw.kit.length };
+  });
+  check('persist-stage-time', afterSanitize.stage === '21:30', `stage=${afterSanitize.stage}`);
+  check('persist-empty-kit', afterSanitize.kitLen === 0, `kit had ${afterSanitize.kitLen} drums`);
+  await ctx2.close();
+}
+
 // ------------------------------------------------------- sw asset integrity
 const swSrc = await (await fetch(`${base}/sw.js`)).text();
 const assets = [...swSrc.matchAll(/'([^']+)'/g)].map((m) => m[1])

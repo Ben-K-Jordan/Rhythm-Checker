@@ -37,7 +37,13 @@ function chromeFor(name) {
 }
 
 function nav(name) {
-  if (name === 'settings') { openSettings(); return; }
+  if (name === 'settings') {
+    // a poster deep-link can land here before any screen is active — the
+    // drawer needs a real screen behind it, not a blank <main>
+    if (!document.querySelector('.mode.active')) nav('home');
+    openSettings();
+    return;
+  }
   const leaving = modes[currentScreen];
   if (leaving && leaving !== modes[name] && leaving.deactivate) leaving.deactivate();
   currentScreen = name;

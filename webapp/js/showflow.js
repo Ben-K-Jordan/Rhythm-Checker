@@ -187,6 +187,9 @@ export class ArmedMode {
   }
 
   begin({ bpm }) {
+    // clear any prior run's timers/loop before starting fresh — a re-arm
+    // without an intervening deactivate must never leak the old ones
+    this._teardownLoops();
     if (this.session) this.session.cancel();
     this.session = new ArmedSession(this.mic, { bpm });
     this.session.addEventListener('hit', () => this.updateLive());
@@ -206,10 +209,15 @@ export class ArmedMode {
     if (!this.session) this.render();
   }
 
-  disarm() {
+  _teardownLoops() {
     clearInterval(this._clock);
     clearInterval(this._wavT);
     cancelAnimationFrame(this._raf);
+    this._clock = this._wavT = this._raf = null;
+  }
+
+  disarm() {
+    this._teardownLoops();
     const result = this.session ? this.session.finish() : null;
     const meta = store.get('showMeta');
     this.session = null;
@@ -220,9 +228,7 @@ export class ArmedMode {
   deactivate() {
     // navigating away mid-set (programmatically) is a disarm without a verdict
     if (this.session) {
-      clearInterval(this._clock);
-      clearInterval(this._wavT);
-      cancelAnimationFrame(this._raf);
+      this._teardownLoops();
       this.session.cancel();
       this.session = null;
     }
@@ -265,6 +271,7 @@ export class ArmedMode {
   }
 
   drawWave() {
+    if (!this.session) return; // stop rescheduling once disarmed
     const bars = this.root.querySelectorAll('.wave i');
     bars.forEach((b, i) => {
       const lvl = this.levels[i] || 0.04;
