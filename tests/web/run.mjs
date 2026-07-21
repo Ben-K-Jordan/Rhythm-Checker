@@ -292,6 +292,13 @@ await nav('calibrate');
 check('cal-two-steps', await page.locator('.num-chip').count() === 2);
 check('cal-trig-mark', await page.locator('#trig-mark').count() === 1);
 check('cal-result-shown', (await page.locator('#cal-result').textContent()).includes('8'));
+// starting the test shows a 3-2-1 countdown before the clicks begin
+await page.click('#cal-go');
+await page.waitForTimeout(400);
+check('cal-countdown', /^[123]$/.test((await page.locator('#cal-pulse').textContent()).trim())
+  && await page.locator('#cal-pulse.counting').count() === 1);
+await page.click('#cal-stop').catch(() => {});
+await page.waitForTimeout(150);
 
 // ----------------------------------------------------------------- settings
 await page.click('#settings-btn');

@@ -11,7 +11,7 @@ import { store } from './store.js';
 const CLICKS = 10;        // total clicks in the test
 const IGNORE_FIRST = 2;   // warm-up clicks (find the beat) — not scored
 const CLICK_S = 0.6;      // 100 BPM: unhurried, unambiguous
-const LEAD_S = 0.9;       // silence before the first click
+const LEAD_S = 3.0;       // 3-2-1 countdown before the first click (get set)
 
 export class CalibrateMode {
   constructor(root, mic) {
@@ -195,10 +195,19 @@ export class CalibrateMode {
     if (pulse) {
       const rel = this.mic.now() - this.metro.startTime;
       if (rel < 0) {
-        pulse.style.transform = 'scale(0.72)';
-        pulse.style.opacity = '0.4';
-        if (phaseEl) phaseEl.textContent = 'GET READY…';
+        // 3-2-1 countdown: the number ticks and pops once per second, so you
+        // know exactly when the clicks (and your tapping) begin.
+        const n = Math.max(1, Math.ceil(-rel));
+        const into = -rel - Math.floor(-rel);      // seconds into this count
+        const pop = Math.exp(-into / 0.16);         // pop on each tick
+        pulse.textContent = String(n);
+        pulse.classList.add('counting');
+        pulse.classList.remove('lit');
+        pulse.style.transform = `scale(${(0.86 + 0.32 * pop).toFixed(3)})`;
+        pulse.style.opacity = (0.55 + 0.45 * pop).toFixed(3);
+        if (phaseEl) phaseEl.textContent = 'GET READY';
       } else {
+        if (pulse.textContent) { pulse.textContent = ''; pulse.classList.remove('counting'); }
         const idx = Math.floor(rel / CLICK_S);
         const since = rel - idx * CLICK_S;
         const flash = Math.exp(-since / 0.09); // quick attack-decay per click

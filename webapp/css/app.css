@@ -1140,7 +1140,10 @@ footer:has(.dim:empty) { display: none; }
   background: var(--paper); border: 4px solid var(--ink);
   box-shadow: 4px 4px 0 var(--ink);
   transition: none;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display-font); font-size: 48px; line-height: 1; color: var(--ink);
 }
+.cal-pulse.counting { background: var(--amber); }
 .cal-pulse.lit { background: var(--red); border-color: var(--ink); }
 .tap-dots { display: flex; justify-content: center; gap: 7px; margin: 10px 0 4px; flex-wrap: wrap; }
 .tap-dots i {
