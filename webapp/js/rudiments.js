@@ -8,7 +8,7 @@
 import { ChartPlayer } from './metronome.js';
 import { METERS, meterById, defaultGrouping, accentsFor, segmentAt, unitGlyph, TapTempo } from './meter.js';
 import { RUDIMENTS, CATEGORIES, rudimentById } from './rudiment-data.js';
-import { rudimentNotationSVG } from './notation.js';
+import { rudimentNotationSVG, notationModel } from './notation.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
@@ -105,6 +105,14 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
   }
   const total = t;
 
+  // per-phrase-position notation info (written value + tuplet), so the
+  // scrolling staff can draw the same durations/beams as the static one.
+  const model = notationModel(rud, { accentOf: (n, i) => accentForNote(rud, accent, { ...n, phrasePos: i }) });
+  const noteInfo = {};
+  model.forEach((beat) => beat.notes.forEach((mn) => {
+    noteInfo[mn.idx] = { beams: mn.beams, dot: mn.dot, tuplet: beat.tuplet };
+  }));
+
   const totalPulses = pulseStart.length;
   const phraseCount = Math.floor(totalPulses / rud.beats);
   const notes = [];
@@ -112,12 +120,14 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
   for (let ph = 0; ph < phraseCount; ph++) {
     for (let k = 0; k < rud.notes.length; k++) {
       const nd = rud.notes[k];
-      const gp = ph * rud.beats + Math.floor(nd.slot / rud.grid);
+      const beatInPhrase = Math.floor(nd.slot / rud.grid);
+      const gp = ph * rud.beats + beatInPhrase;
       if (gp >= totalPulses) continue;
       const sub = nd.slot % rud.grid;
       const offset = pulseStart[gp] + (sub * pulseDur[gp]) / rud.grid;
       let hand = nd.hand;
       if (lead === 'L') hand = swapLead(hand);
+      const info = noteInfo[k] || { beams: 0, dot: false, tuplet: null };
       const note = {
         index: idx++,
         phrasePos: k,
@@ -128,6 +138,10 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
         grace: nd.grace,
         buzz: nd.buzz,
         graceTimes: [],
+        beams: info.beams,
+        dot: info.dot,
+        tuplet: info.tuplet,
+        beatGroup: gp, // notes sharing a beat are beamed together on the staff
         state: 'coming',
         devMs: null,
       };
@@ -589,6 +603,9 @@ export class RudimentsMode {
       ctx.stroke();
     }
 
+    // scrolling notation staff across the top, in sync with the pucks below
+    this.drawStaff(ctx, w, h, xOf, T);
+
     for (const n of this.chart.notes) {
       const x = xOf(this.chartStart + n.offset);
       if (x < -70 || x > w + 70) continue;
@@ -673,6 +690,124 @@ export class RudimentsMode {
       ctx.font = "110px 'Anton', system-ui";
       ctx.textAlign = 'center';
       ctx.fillText(String(pulsesLeft), w / 2, midY + 38);
+    }
+  }
+
+  // The scrolling notation staff: the same notes the pucks show, drawn as real
+  // notation (noteheads, stems, beat-grouped beams, flams/drags, accents,
+  // tuplet numbers) riding the same timeline — so you read the rhythm as it
+  // flows toward the NOW line, then play it on the pucks below.
+  drawStaff(ctx, w, h, xOf, T) {
+    const sy = h * 0.2;              // staff line
+    const R = 5.2;                   // notehead radius
+    const stemBot = sy + 22;
+    const xAt = (n) => xOf(this.chartStart + n.offset);
+    const stemXOf = (n) => xAt(n) - (R - 0.6);
+    const vis = (n) => { const x = xAt(n); return x > -40 && x < w + 40; };
+
+    ctx.strokeStyle = T.ink;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(8, sy);
+    ctx.lineTo(w - 8, sy);
+    ctx.stroke();
+
+    const notes = this.chart.notes;
+    for (const n of notes) {
+      if (!vis(n)) continue;
+      const x = xAt(n);
+      const dim = n.state === 'miss';
+      ctx.globalAlpha = dim ? 0.32 : 1;
+      // grace notes (flam/drag), small, before the primary
+      for (const gt of n.graceTimes) {
+        const gx = xOf(this.chartStart + gt);
+        ctx.save(); ctx.translate(gx, sy - 1); ctx.rotate(-0.32);
+        ctx.fillStyle = T.ink; ctx.beginPath(); ctx.ellipse(0, 0, 3, 2.2, 0, 0, 7); ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = T.ink; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(gx + 2.4, sy - 2); ctx.lineTo(gx + 2.4, sy - 12); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(gx - 2, sy - 8); ctx.lineTo(gx + 6, sy - 12); ctx.stroke();
+      }
+      // notehead
+      ctx.save(); ctx.translate(x, sy); ctx.rotate(-0.32);
+      ctx.fillStyle = T.ink; ctx.beginPath(); ctx.ellipse(0, 0, R + 1.3, R - 1.1, 0, 0, 7); ctx.fill();
+      ctx.restore();
+      // stem
+      ctx.strokeStyle = T.ink; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(stemXOf(n), sy + 1); ctx.lineTo(stemXOf(n), stemBot); ctx.stroke();
+      if (n.dot) { ctx.fillStyle = T.ink; ctx.beginPath(); ctx.arc(x + 8, sy - 2, 1.6, 0, 7); ctx.fill(); }
+      if (n.buzz) {
+        for (let z = 0; z < 3; z++) {
+          const yy = sy + 8 + z * 4;
+          ctx.beginPath(); ctx.moveTo(stemXOf(n) - 4, yy + 2); ctx.lineTo(stemXOf(n) + 4, yy - 2); ctx.stroke();
+        }
+      }
+      if (n.accent) {
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(x - 6, sy - 14); ctx.lineTo(x + 4, sy - 11); ctx.lineTo(x - 6, sy - 8); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // beams + tuplet numbers, grouped by beat
+    let i = 0;
+    while (i < notes.length) {
+      let j = i;
+      while (j + 1 < notes.length && notes[j + 1].beatGroup === notes[i].beatGroup) j++;
+      const group = notes.slice(i, j + 1);
+      if (group.some(vis)) {
+        this.drawStaffBeams(ctx, group, stemXOf, stemBot, T);
+        if (group[0].tuplet) {
+          const xs = group.map(xAt);
+          ctx.fillStyle = T.dim;
+          ctx.font = "11px 'Space Mono', monospace";
+          ctx.textAlign = 'center';
+          ctx.fillText(String(group[0].tuplet), (Math.min(...xs) + Math.max(...xs)) / 2, sy - 20);
+        }
+      }
+      i = j + 1;
+    }
+  }
+
+  // beam-by-level for one beat's notes on the scrolling staff (mirrors the
+  // static staff): the 8th-beam spans the whole run, faster levels span the
+  // sub-runs quick enough, with stubs for a lone fast note.
+  drawStaffBeams(ctx, group, stemXOf, stemBot, T) {
+    const gap = 4;
+    ctx.strokeStyle = T.ink;
+    ctx.lineWidth = 3;
+    let a = 0;
+    while (a < group.length) {
+      if (group[a].beams < 1) { a++; continue; }
+      let b = a;
+      while (b + 1 < group.length && group[b + 1].beams >= 1) b++;
+      const run = group.slice(a, b + 1);
+      if (run.length === 1) {
+        const n = run[0];
+        for (let L = 1; L <= n.beams; L++) {
+          const y = stemBot - (L - 1) * gap;
+          ctx.beginPath(); ctx.moveTo(stemXOf(n), y); ctx.lineTo(stemXOf(n) + 7, y - 3); ctx.stroke();
+        }
+      } else {
+        const maxB = Math.max(...run.map((n) => n.beams));
+        for (let L = 1; L <= maxB; L++) {
+          const y = stemBot - (L - 1) * gap;
+          let c = 0;
+          while (c < run.length) {
+            if (run[c].beams < L) { c++; continue; }
+            let d = c;
+            while (d + 1 < run.length && run[d + 1].beams >= L) d++;
+            if (d > c) {
+              ctx.beginPath(); ctx.moveTo(stemXOf(run[c]), y); ctx.lineTo(stemXOf(run[d]), y); ctx.stroke();
+            } else {
+              const dir = c > 0 && run[c - 1].beams >= L ? -1 : 1;
+              ctx.beginPath(); ctx.moveTo(stemXOf(run[c]), y); ctx.lineTo(stemXOf(run[c]) + dir * 7, y); ctx.stroke();
+            }
+            c = d + 1;
+          }
+        }
+      }
+      a = b + 1;
     }
   }
 

@@ -93,7 +93,7 @@ const RAW = [
   [35, 'single-dragadiddle', 'Single Dragadiddle', 'drag', 4, 'R! dR L R L! dL R L'],
   [36, 'drag-paradiddle-1', 'Drag Paradiddle #1', 'drag', 4, 'R! dL R R L! dR L L'],
   [37, 'drag-paradiddle-2', 'Drag Paradiddle #2', 'drag', 4, 'R! dL R L R R L! dR L R L L'],
-  [38, 'single-ratamacue', 'Single Ratamacue', 'drag', 3, 'dR L R! . . . dL R L! . . .'],
+  [38, 'single-ratamacue', 'Single Ratamacue', 'drag', 3, 'dR L R! dL R L!'],
   [39, 'double-ratamacue', 'Double Ratamacue', 'drag', 3, 'dR L dR L R! . dL R dL R L! .'],
   [40, 'triple-ratamacue', 'Triple Ratamacue', 'drag', 3,
     'dR L dR L dR L R! . . dL R dL R dL R L! . .'],

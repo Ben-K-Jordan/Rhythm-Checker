@@ -157,12 +157,13 @@ const nota = await page.evaluate(() => {
   return {
     ddtTuplet: ddt.tuplet, dpTuplet: dp.tuplet,
     quarter: qb.notes[0].beams === 0 && qb.notes[0].dot === false && qb.tuplet === null,
-    singleHasRest: m('single-ratamacue').some((b) => b.rest),
+    singleContinuous: m('single-ratamacue').every((b) => !b.rest), // continuous, no rest beat
   };
 });
 check('rud-notation-tuplet-triplet', nota.ddtTuplet === 3, `double-drag-tap tuplet ${nota.ddtTuplet}`);
 check('rud-notation-tuplet-sextuplet', nota.dpTuplet === 6, `double-paradiddle tuplet ${nota.dpTuplet}`);
-check('rud-notation-whole-beat-quarter', nota.quarter && nota.singleHasRest);
+check('rud-notation-whole-beat-quarter', nota.quarter);
+check('rud-single-ratamacue-continuous', nota.singleContinuous);
 // tapping a puck flips into custom accent mode
 await page.click('.accent-puck[data-step="1"]');
 await page.waitForTimeout(80);
