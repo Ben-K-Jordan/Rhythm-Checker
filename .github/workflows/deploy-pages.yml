@@ -2,9 +2,9 @@
 # which iOS requires for microphone access). Open the Pages URL in Safari,
 # Share -> Add to Home Screen — installed, offline, $0.
 #
-# configure-pages enablement:true creates the Pages site on first run; if the
-# token can't (403), do it once by hand: Settings -> Pages -> Source: "GitHub
-# Actions".
+# Pages serves from the gh-pages branch (auto-enabled by the first push of that
+# branch — no Settings visit needed). This workflow regenerates gh-pages from
+# webapp/ on every main push; the branch is a build artifact, so force-push.
 
 name: Deploy webapp to GitHub Pages
 
@@ -15,9 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -26,16 +24,17 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: webapp
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish webapp/ as the gh-pages branch
+        run: |
+          cd webapp
+          touch .nojekyll  # serve files verbatim, no Jekyll pass
+          git init -q -b gh-pages
+          git config user.name "Ben Jordan"
+          git config user.email "benj9swim@gmail.com"
+          git add -A
+          git commit -q -m "Deploy webapp @ ${GITHUB_SHA::7}"
+          git push --force \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
+            gh-pages
