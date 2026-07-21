@@ -12,13 +12,13 @@ const DEFAULTS = {
   kit: [
     // {id, name, targetHz|null} — Ben's kit (depth x diameter), targets set
     // for a tight high-crack snare pop (Cunningham/Jordison territory)
-    { id: 'snare', name: 'Snare 5.5x14', targetHz: 260 },
-    { id: 'rack10', name: 'Rack 8x10', targetHz: 165 },
-    { id: 'rack12', name: 'Rack 9x12', targetHz: 135 },
-    { id: 'floor16', name: 'Floor 14x16', targetHz: 90 },
-    { id: 'kick22', name: 'Kick 18x22', targetHz: 60 },
-    { id: 'rack8', name: 'Rack 7x8 (sometimes)', targetHz: 195 },
-    { id: 'floor16b', name: 'Floor 16x16 (sometimes)', targetHz: 82 },
+    { id: 'snare', name: 'Snare 5.5x14', targetHz: 260, resoHz: 390 },
+    { id: 'rack10', name: 'Rack 8x10', targetHz: 165, resoHz: 196 },
+    { id: 'rack12', name: 'Rack 9x12', targetHz: 135, resoHz: 161 },
+    { id: 'floor16', name: 'Floor 14x16', targetHz: 90, resoHz: 107 },
+    { id: 'kick22', name: 'Kick 18x22', targetHz: 60, resoHz: 63 },
+    { id: 'rack8', name: 'Rack 7x8 (sometimes)', targetHz: 195, resoHz: 232 },
+    { id: 'floor16b', name: 'Floor 16x16 (sometimes)', targetHz: 82, resoHz: 98 },
   ],
   baseline: null,               // {bpm, subdivision, mean, sd, pocketPct, date}
   preferredBpm: 120,
@@ -49,7 +49,8 @@ function sanitize(data) {
     const kit = data.kit.filter((d) => d && typeof d === 'object'
       && typeof d.id === 'string' && typeof d.name === 'string'
       && (d.targetHz === null || num(d.targetHz) !== undefined))
-      .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz }));
+      .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz,
+        resoHz: d.resoHz === null || num(d.resoHz) !== undefined ? (d.resoHz ?? null) : null }));
     if (kit.length) clean.kit = kit;
   }
   const b = data.baseline;
@@ -134,7 +135,10 @@ export const store = {
       if (!d || typeof d.name !== 'string'
         || (d.targetHz !== null && typeof d.targetHz !== 'number')) continue;
       const mine = state.kit.find((x) => x.name.toLowerCase() === d.name.toLowerCase());
-      if (mine) mine.targetHz = d.targetHz;
+      if (mine) {
+        mine.targetHz = d.targetHz;
+        if (d.resoHz === null || typeof d.resoHz === 'number') mine.resoHz = d.resoHz;
+      }
       else {
         state.kit = [...state.kit,
           { id: `drum-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: d.name, targetHz: d.targetHz }];

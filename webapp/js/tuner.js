@@ -43,6 +43,15 @@ function diameterOf(name) {
 
 const ROLE_DEFAULT_DIA = { tom: 12, snare: 14, kick: 22 };
 
+// reso-over-batter ratio per genre: matched heads sustain longest (Bonham),
+// reso ~3 semitones up gives the tight controlled bend (Barker/Jordison),
+// snare-side heads run much tighter, kick fronts just above the batter
+const RESO_FACTOR = {
+  rock:  { tom: 1.06, snare: 1.42, kick: 1.02 },
+  punk:  { tom: 1.19, snare: 1.50, kick: 1.05 },
+  metal: { tom: 1.19, snare: 1.50, kick: 1.08 },
+};
+
 function toneHz(tone, role, dia) {
   const curve = tone[role];
   const keys = Object.keys(curve).map(Number).sort((a, b) => a - b);
@@ -64,6 +73,8 @@ export class TunerMode {
     this.root = root;
     this.mic = mic;
     this.mode = 'fundamental';
+    this.head = 'batter';
+    this.heads = {}; // per-drum measured {batter, reso} this session
     this.drumId = null;
     this.lastHz = null;
     this.smoothHz = null;
@@ -95,6 +106,8 @@ export class TunerMode {
         return;
       }
       this.lastHz = hz;
+      const key = this.drumId || 'free';
+      this.heads[key] = { ...(this.heads[key] || {}), [this.head]: hz };
       this.smoothHz = this.smoothHz === null ? hz
         : Math.abs(centsBetween(hz, this.smoothHz)) > 80 ? hz
         : 0.6 * this.smoothHz + 0.4 * hz;
@@ -108,7 +121,8 @@ export class TunerMode {
 
   targetHz() {
     const drum = store.get('kit').find((d) => d.id === this.drumId);
-    return drum ? drum.targetHz : null;
+    if (!drum) return null;
+    return this.head === 'reso' ? (drum.resoHz ?? null) : drum.targetHz;
   }
 
   render() {
@@ -125,6 +139,10 @@ export class TunerMode {
           <button data-m="fundamental" class="${this.mode === 'fundamental' ? 'on' : ''}">Fundamental</button>
           <button data-m="lug" class="${this.mode === 'lug' ? 'on' : ''}">Lug match</button>
         </div>
+        <div class="seg" id="head-seg" role="tablist">
+          <button data-h="batter" class="on">Batter</button>
+          <button data-h="reso">Reso</button>
+        </div>
         <select id="tuner-drum">
           <option value="">(no drum selected)</option>
           ${kit.map((d) => `<option value="${d.id}" ${d.id === this.drumId ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
@@ -138,6 +156,7 @@ export class TunerMode {
         <div id="tuner-hz" class="huge">—</div>
         <div id="tuner-note" class="mid">tap the head</div>
         <canvas id="tuner-needle" width="640" height="120"></canvas>
+        <div id="tuner-heads" class="mid"></div>
         <div id="tuner-status" class="status"></div>
       </div>
       <div id="tuner-lugs" class="lug-panel ${this.mode === 'lug' ? '' : 'hidden'}">
@@ -159,6 +178,13 @@ export class TunerMode {
         this.updateReadout();
       });
     });
+    this.root.querySelectorAll('#head-seg button').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.head = b.dataset.h;
+        this.root.querySelectorAll('#head-seg button').forEach((x) => x.classList.toggle('on', x === b));
+        this.updateReadout();
+      });
+    });
     this.root.querySelectorAll('[data-tone]').forEach((b) => {
       b.addEventListener('click', () => {
         const tone = TONES[b.dataset.tone];
@@ -167,7 +193,11 @@ export class TunerMode {
           const role = roleOf(d.name);
           if (!role) continue;
           const dia = diameterOf(d.name) || ROLE_DEFAULT_DIA[role];
-          store.updateDrum(d.id, { targetHz: toneHz(tone, role, dia) });
+          const batter = toneHz(tone, role, dia);
+          store.updateDrum(d.id, {
+            targetHz: batter,
+            resoHz: Math.round(batter * RESO_FACTOR[b.dataset.tone][role]),
+          });
           hits++;
         }
         this.render();
@@ -184,8 +214,11 @@ export class TunerMode {
       const drum = store.get('kit').find((d) => d.id === this.drumId);
       const hz = this.mode === 'lug' && this.lugTaps.length ? median(this.lugTaps) : this.lastHz;
       if (drum && hz) {
-        store.updateDrum(drum.id, { targetHz: Math.round(hz * 10) / 10 });
-        this.flashStatus(`saved ${hz.toFixed(1)} Hz as target for ${drum.name}`);
+        const patch = this.head === 'reso'
+          ? { resoHz: Math.round(hz * 10) / 10 }
+          : { targetHz: Math.round(hz * 10) / 10 };
+        store.updateDrum(drum.id, patch);
+        this.flashStatus(`saved ${hz.toFixed(1)} Hz as ${this.head} target for ${drum.name}`);
       }
     });
     this.root.querySelector('#lug-clear').addEventListener('click', () => {
@@ -212,13 +245,35 @@ export class TunerMode {
     const target = this.targetHz();
     if (target) {
       const cents = centsBetween(this.lastHz, target);
-      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs target ${target} Hz`;
+      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs ${this.head} target ${target} Hz`;
       this.drawNeedle(cents);
     } else {
       noteEl.textContent = `~${hzToNote(this.lastHz)} (no target saved)`;
       this.drawNeedle(null);
     }
     if (this.mode === 'lug') this.renderLugs();
+    this.renderHeads();
+  }
+
+  // the drum's voice is the RELATIONSHIP between its two heads — say it plainly
+  renderHeads() {
+    const el = this.root.querySelector('#tuner-heads');
+    if (!el) return;
+    const m = this.heads[this.drumId || 'free'] || {};
+    if (!m.batter || !m.reso) {
+      el.textContent = this.head === 'batter'
+        ? 'now tap the reso head (flip or reach under) to see the pair'
+        : 'tap the batter head too to see the pair';
+      if (!m.batter && !m.reso) el.textContent = '';
+      return;
+    }
+    const st = 12 * Math.log2(m.reso / m.batter);
+    const feel = Math.abs(st) < 0.3
+      ? 'matched — longest, purest sustain'
+      : st > 0
+        ? 'reso above — pitch bends down, tighter and more controlled'
+        : 'reso below — fatter, shorter, deader';
+    el.textContent = `batter ${m.batter.toFixed(1)} Hz · reso ${m.reso.toFixed(1)} Hz · ${st >= 0 ? '+' : ''}${st.toFixed(1)} semitones (${feel})`;
   }
 
   renderLugs() {

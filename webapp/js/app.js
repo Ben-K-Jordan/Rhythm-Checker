@@ -79,7 +79,7 @@ function renderSettings() {
       ${kit.map((d) => `
         <div class="kit-row" data-id="${escText(d.id)}">
           <input class="kit-name" value="${escText(d.name).replaceAll('"', '&quot;')}">
-          <span>${d.targetHz ? `${d.targetHz} Hz` : 'no target'}</span>
+          <span>B ${d.targetHz ?? '—'} / R ${d.resoHz ?? '—'} Hz</span>
           <button class="kit-del" title="remove">✕</button>
         </div>`).join('')}
     </div>

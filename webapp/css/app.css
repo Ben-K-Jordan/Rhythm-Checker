@@ -112,7 +112,7 @@ main { flex: 1; padding: 1.2rem 1rem 2rem; max-width: 60rem; width: 100%; margin
 .mode-head { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .7rem .8rem; align-items: end; margin-bottom: 1.1rem; }
 .mode-head > select, .mode-head > button, .mode-head > .seg { width: 100%; min-height: 52px; }
-.mode-head > button.primary, #rud-pattern { grid-column: 1 / -1; }
+.mode-head > button.primary, #rud-pattern, #tuner-drum { grid-column: 1 / -1; }
 .mode-head label {
   display: flex; flex-direction: column; align-items: stretch; gap: .3rem;
   color: var(--dim); font-family: var(--mono-font); font-size: .66rem;
