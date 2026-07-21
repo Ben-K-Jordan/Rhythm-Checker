@@ -1,5 +1,14 @@
 # Rhythm Checker
 
+<p align="center">
+  <img src="docs/media/home.png" width="30%" alt="Practice home">
+  <img src="docs/media/dialed.png" width="30%" alt="DIALED verdict">
+  <img src="docs/media/armed.png" width="30%" alt="Armed show ritual">
+</p>
+<p align="center">
+  <img src="docs/media/highway.gif" width="60%" alt="Rudiment highway in motion">
+</p>
+
 Every drummer believes they have good timing until they hear a recording of
 themselves. Behind the kit a fill feels locked in; on the recording, it rushed.
 Rhythm Checker closes that gap — and gets you **dialed before a show**: tuning
@@ -145,7 +154,7 @@ flagged. Multiple drums in one recording cluster into separate groups.
 
 ## Watch weeks, not sessions
 
-Every analysis is appended to `~/.rhythm-checker/sessions.jsonl` (override
+Every analysis is inserted into a SQLite database at `~/.rhythm-checker/sessions.db` (plain SQL — inspect it with any sqlite client; override
 with `--store` or `$RHYTHM_CHECKER_STORE`):
 
 ```bash

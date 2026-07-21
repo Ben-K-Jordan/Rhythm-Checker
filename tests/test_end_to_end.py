@@ -318,7 +318,7 @@ def test_cli_full_run(tmp_path):
     assert out.returncode == 0, out.stderr
     assert "RHYTHM CHECKER" in out.stdout
     assert html.exists()
-    assert (store / "sessions.jsonl").exists()
+    assert (store / "sessions.db").exists()
 
     hist = subprocess.run(
         [sys.executable, "-m", "rhythm_checker", "history", "--store", str(store)],

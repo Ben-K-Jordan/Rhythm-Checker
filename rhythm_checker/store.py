@@ -1,10 +1,12 @@
-"""Session history: one JSON line per analyzed session, so weeks of practice
-add up to a picture no single recording can give."""
+"""Session history in SQLite (stdlib sqlite3): one row per analyzed session,
+so weeks of practice add up to a picture no single recording can give.
+Legacy JSONL stores migrate automatically on first read."""
 
 from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -63,12 +65,67 @@ class SessionRecord:
         return dict(self.__dict__)
 
 
-def save_record(record: SessionRecord, store_dir: Path | None = None) -> Path:
+_COLS = ["date", "name", "file", "bpm", "subdivision", "duration_s", "n_hits",
+         "anchored", "mean_ms", "sd_ms", "pct_in_pocket", "drift_ms_per_min",
+         "dense_mean_ms", "sparse_mean_ms"]
+
+
+def _connect(store_dir: Path | None) -> tuple[sqlite3.Connection, Path]:
     store = store_dir or default_store_dir()
     store.mkdir(parents=True, exist_ok=True)
-    path = store / "sessions.jsonl"
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record.to_dict()) + "\n")
+    path = store / "sessions.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS sessions ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  date TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL,"
+        "  bpm REAL NOT NULL, subdivision INTEGER NOT NULL,"
+        "  duration_s REAL NOT NULL, n_hits INTEGER NOT NULL,"
+        "  anchored INTEGER NOT NULL, mean_ms REAL NOT NULL, sd_ms REAL NOT NULL,"
+        "  pct_in_pocket REAL NOT NULL, drift_ms_per_min REAL,"
+        "  dense_mean_ms REAL, sparse_mean_ms REAL)"
+    )
+    _migrate_legacy_jsonl(conn, store)
+    return conn, path
+
+
+def _migrate_legacy_jsonl(conn: sqlite3.Connection, store: Path) -> None:
+    legacy = store / "sessions.jsonl"
+    if not legacy.exists():
+        return
+    skipped = 0
+    with legacy.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = _coerce(json.loads(line))
+                _insert(conn, rec)
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+                skipped += 1
+    conn.commit()
+    legacy.rename(store / "sessions.jsonl.migrated")
+    if skipped:
+        print(f"warning: skipped {skipped} unreadable line(s) migrating {legacy}",
+              file=sys.stderr)
+
+
+def _insert(conn: sqlite3.Connection, record: SessionRecord) -> None:
+    values = [getattr(record, c) for c in _COLS]
+    values[_COLS.index("anchored")] = int(record.anchored)
+    conn.execute(
+        f"INSERT INTO sessions ({', '.join(_COLS)}) "
+        f"VALUES ({', '.join('?' * len(_COLS))})",
+        values,
+    )
+
+
+def save_record(record: SessionRecord, store_dir: Path | None = None) -> Path:
+    conn, path = _connect(store_dir)
+    with conn:
+        _insert(conn, record)
+    conn.close()
     return path
 
 
@@ -98,25 +155,22 @@ def _coerce(data: dict[str, Any]) -> SessionRecord:
 
 
 def load_records(store_dir: Path | None = None) -> list[SessionRecord]:
-    path = (store_dir or default_store_dir()) / "sessions.jsonl"
-    if not path.exists():
+    store = store_dir or default_store_dir()
+    if not (store / "sessions.db").exists() and not (store / "sessions.jsonl").exists():
         return []
+    conn, _ = _connect(store_dir)
+    rows = conn.execute(
+        f"SELECT {', '.join(_COLS)} FROM sessions ORDER BY id"
+    ).fetchall()
+    conn.close()
     records: list[SessionRecord] = []
-    skipped = 0
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(_coerce(json.loads(line)))
-            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
-                skipped += 1  # a hand-edited or older-format line; skip, don't crash
-    if skipped:
-        print(
-            f"warning: skipped {skipped} unreadable line(s) in {path}",
-            file=sys.stderr,
-        )
+    for row in rows:
+        data = dict(zip(_COLS, row))
+        data["anchored"] = bool(data["anchored"])
+        try:
+            records.append(_coerce(data))
+        except (TypeError, ValueError, KeyError):
+            continue  # a hand-edited row; skip, don't crash
     return records
 
 

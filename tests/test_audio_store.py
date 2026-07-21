@@ -166,25 +166,26 @@ def _record(**over):
     return SessionRecord(**base)
 
 
-def test_store_roundtrip_and_corrupt_lines(tmp_path, capsys):
+def test_store_sqlite_roundtrip_and_jsonl_migration(tmp_path, capsys):
     import json as json_mod
 
-    save_record(_record(), tmp_path)
-    save_record(_record(name="doubles", sd_ms=7.1), tmp_path)
-    with (tmp_path / "sessions.jsonl").open("a") as fh:
+    # a legacy JSONL store with one good, one corrupt, one coercible line
+    with (tmp_path / "sessions.jsonl").open("w") as fh:
+        fh.write(json_mod.dumps(_record().to_dict()) + "\n")
         fh.write("{corrupt json\n")
-        # valid JSON, wrong-typed field: must be skipped, not crash `history`
-        bad = _record(name="hand-edited").to_dict()
-        bad["sd_ms"] = "oops"
-        fh.write(json_mod.dumps(bad) + "\n")
-        # numeric-as-string is coercible and must survive
         ok = _record(name="stringly", anchored=True).to_dict()
         ok["bpm"] = "90"
         fh.write(json_mod.dumps(ok) + "\n")
+    records = load_records(tmp_path)  # triggers migration into sessions.db
+    assert [r.name for r in records] == ["warmup", "stringly"]
+    assert records[1].bpm == 90.0
+    assert "skipped 1 unreadable" in capsys.readouterr().err
+    assert (tmp_path / "sessions.db").exists()
+    assert not (tmp_path / "sessions.jsonl").exists()  # renamed .migrated
+
+    save_record(_record(name="doubles", sd_ms=7.1), tmp_path)
     records = load_records(tmp_path)
-    assert [r.name for r in records] == ["warmup", "doubles", "stringly"]
-    assert records[2].bpm == 90.0
-    assert "skipped 2 unreadable" in capsys.readouterr().err
+    assert [r.name for r in records] == ["warmup", "stringly", "doubles"]
     summary = trend_summary(records)
     assert "warmup" in summary and "doubles" in summary
 
