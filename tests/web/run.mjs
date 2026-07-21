@@ -307,6 +307,7 @@ const headSeg = await page.evaluate(() => {
 });
 check('tuner-head-toggle-isolated', headSeg.resoOn && headSeg.fundStillOn);
 await page.evaluate(() => { document.querySelector('#head-seg button[data-h="batter"]').click(); });
+await page.evaluate(() => window.__rhythmChecker.nav('rudiments'));
 await page.click('#mode-rudiments #rud-accent-modes button[data-am="pattern"]');
 await page.click('#mode-rudiments [data-meter="7/8"]');
 const groupingShown = await page.$eval('#mode-rudiments .groove-groupings', (el) => !el.classList.contains('hidden'));
