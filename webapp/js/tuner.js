@@ -74,6 +74,11 @@ export class TunerMode {
           <button data-m="fundamental" class="${this.mode === 'fundamental' ? 'on' : ''}">Fundamental</button>
           <button data-m="lug" class="${this.mode === 'lug' ? 'on' : ''}">Lug match</button>
         </div>
+        <select id="tuner-ref" title="tune to a note">
+          <option value="">no note ref</option>
+          ${[28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57]
+            .map((m) => { const hz = 440 * 2 ** ((m - 69) / 12); return `<option value="${hz.toFixed(2)}">${hzToNote(hz)} · ${hz.toFixed(1)} Hz</option>`; }).join('')}
+        </select>
         <select id="tuner-drum">
           <option value="">(no drum selected)</option>
           ${kit.map((d) => `<option value="${d.id}" ${d.id === this.drumId ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
@@ -104,6 +109,10 @@ export class TunerMode {
         this.lugTaps = [];
         this.updateReadout();
       });
+    });
+    this.root.querySelector('#tuner-ref').addEventListener('change', (e) => {
+      this.refHz = e.target.value ? +e.target.value : null;
+      this.updateReadout();
     });
     this.root.querySelector('#tuner-drum').addEventListener('change', (e) => {
       this.drumId = e.target.value || null;
@@ -138,10 +147,12 @@ export class TunerMode {
     saveBtn.disabled = !this.drumId || (!this.lastHz && !this.lugTaps.length);
     if (this.lastHz === null) return;
     hzEl.textContent = `${this.lastHz.toFixed(1)} Hz`;
-    const target = this.targetHz();
+    const drumTarget = this.targetHz();
+    const target = drumTarget || this.refHz;
     if (target) {
       const cents = centsBetween(this.lastHz, target);
-      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs target ${target} Hz`;
+      const label = drumTarget ? `target ${drumTarget}` : `${hzToNote(target)} ref`;
+      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs ${label} Hz`;
       this.drawNeedle(cents);
     } else {
       noteEl.textContent = `~${hzToNote(this.lastHz)} (no target saved)`;

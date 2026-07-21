@@ -97,6 +97,11 @@ function renderSettings() {
       <button id="set-import">Import backup</button>
       <input id="set-import-file" type="file" accept="application/json" class="hidden">
     </div>
+    <div class="row">
+      <button id="set-share-kit">Share kit targets</button>
+      <button id="set-import-kit">Import kit targets</button>
+      <input id="set-import-kit-file" type="file" accept="application/json" class="hidden">
+    </div>
     <p class="dim">Everything lives on this device. Nothing is uploaded, ever.
     Calibration is per-device and never travels with a backup.</p>`;
 
@@ -125,6 +130,25 @@ function renderSettings() {
     a.href = URL.createObjectURL(blob);
     a.download = 'rhythm-checker-backup.json';
     a.click();
+  });
+  $('#set-share-kit').addEventListener('click', () => {
+    const blob = new Blob([store.exportKitJson()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'kit-targets.json';
+    a.click();
+  });
+  $('#set-import-kit').addEventListener('click', () => $('#set-import-kit-file').click());
+  $('#set-import-kit-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      store.importKitJson(await file.text());
+      renderSettings();
+      modes.tuner.render();
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    }
   });
   $('#set-import').addEventListener('click', () => $('#set-import-file').click());
   $('#set-import-file').addEventListener('change', async (e) => {

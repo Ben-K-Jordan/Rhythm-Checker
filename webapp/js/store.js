@@ -117,6 +117,28 @@ export const store = {
     if (state.runs.length > MAX_RUNS) state.runs = state.runs.slice(-MAX_RUNS);
     persist();
   },
+  exportKitJson() {
+    return JSON.stringify({ rhythmCheckerKit: state.kit }, null, 2);
+  },
+  // merge another player's targets by drum name; never touches baseline,
+  // history, or calibration — those are personal
+  importKitJson(text) {
+    const data = JSON.parse(text);
+    const kit = data.rhythmCheckerKit || data.kit;
+    if (!Array.isArray(kit)) throw new Error('not a kit-targets file');
+    for (const d of kit) {
+      if (!d || typeof d.name !== 'string'
+        || (d.targetHz !== null && typeof d.targetHz !== 'number')) continue;
+      const mine = state.kit.find((x) => x.name.toLowerCase() === d.name.toLowerCase());
+      if (mine) mine.targetHz = d.targetHz;
+      else {
+        state.kit = [...state.kit,
+          { id: `drum-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: d.name, targetHz: d.targetHz }];
+      }
+    }
+    state.kit = [...state.kit];
+    persist();
+  },
   exportJson() {
     return JSON.stringify(state, null, 2);
   },

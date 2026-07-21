@@ -358,6 +358,21 @@ const sanitizeCheck = await page.evaluate(async () => {
 });
 check('store-sanitizer', sanitizeCheck.ok, sanitizeCheck.why);
 
+// 6d2. kit-target sharing: merge by name, add unknowns, touch nothing personal
+const kitShare = await page.evaluate(async () => {
+  const { store } = await import('./js/store.js');
+  const before = store.get('kit').length;
+  const cal = store.get('calibrationMs');
+  store.importKitJson(JSON.stringify({ rhythmCheckerKit: [
+    { name: store.get('kit')[0].name, targetHz: 222 },
+    { name: 'Aux Tom', targetHz: 133 },
+  ] }));
+  const kit = store.get('kit');
+  return { ok: kit[0].targetHz === 222 && kit.length === before + 1
+    && kit.some((d) => d.name === 'Aux Tom') && store.get('calibrationMs') === cal };
+});
+check('kit-share-import', kitShare.ok);
+
 // 6e. mid-run tab switch cancels the timing session honestly
 await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
