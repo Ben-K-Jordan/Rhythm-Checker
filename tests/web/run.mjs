@@ -378,6 +378,17 @@ await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
   store.reset();
 });
+
+// 6e0. genre tone preset fills the whole default kit with ordered targets
+await page.evaluate(() => window.__rhythmChecker.nav('tuner'));
+await page.click('#mode-tuner [data-tone="punk"]');
+const tone = await page.evaluate(async () => {
+  const { store } = await import('./js/store.js');
+  const hz = Object.fromEntries(store.get('kit').map((d) => [d.name, d.targetHz]));
+  return { ok: hz.Snare === 230 && hz['Rack Tom'] === 130 && hz['Floor Tom'] === 92 && hz.Kick === 63 };
+});
+check('tone-preset', tone.ok);
+await page.evaluate(async () => { const { store } = await import('./js/store.js'); store.reset(); });
 await page.evaluate((n) => window.__rhythmChecker.nav(n), 'timing');
 await page.click('#tm-go');
 await page.waitForTimeout(600);

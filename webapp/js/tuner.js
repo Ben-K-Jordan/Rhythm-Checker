@@ -5,6 +5,23 @@ import { estimatePitch, hzToNote, centsBetween } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
 
+// Genre tone presets: common fundamental launch points (Hz) per drum role.
+// Starting points, not laws — the right pitch is the one you like.
+const TONES = {
+  rock:  { label: 'ROCK',  snare: 190, rack: 115, floor: 82,  kick: 58 },
+  punk:  { label: 'PUNK',  snare: 230, rack: 130, floor: 92,  kick: 63 },
+  metal: { label: 'METAL', snare: 265, rack: 155, floor: 105, kick: 68 },
+};
+
+function roleOf(name) {
+  const n = name.toLowerCase();
+  if (n.includes('snare')) return 'snare';
+  if (n.includes('kick') || n.includes('bass')) return 'kick';
+  if (n.includes('floor')) return 'floor';
+  if (n.includes('rack') || n.includes('tom')) return 'rack';
+  return null;
+}
+
 const TONE_SKIP = 0.025;
 const TONE_WINDOW = 0.35;
 
@@ -84,6 +101,10 @@ export class TunerMode {
           ${kit.map((d) => `<option value="${d.id}" ${d.id === this.drumId ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
         </select>
       </div>
+      <div class="row">
+        <span class="dim">tone</span>
+        ${Object.entries(TONES).map(([id, t]) => `<button class="chip" data-tone="${id}">${t.label}</button>`).join('')}
+      </div>
       <div class="big-read">
         <div id="tuner-hz" class="huge">—</div>
         <div id="tuner-note" class="mid">tap the head</div>
@@ -108,6 +129,20 @@ export class TunerMode {
         this.root.querySelector('#tuner-lugs').classList.toggle('hidden', this.mode !== 'lug');
         this.lugTaps = [];
         this.updateReadout();
+      });
+    });
+    this.root.querySelectorAll('[data-tone]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const tone = TONES[b.dataset.tone];
+        let hits = 0;
+        for (const d of store.get('kit')) {
+          const role = roleOf(d.name);
+          if (role && tone[role]) { store.updateDrum(d.id, { targetHz: tone[role] }); hits++; }
+        }
+        this.render();
+        this.flashStatus(hits
+          ? `${tone.label} tone set on ${hits} drums — starting points, tune to taste`
+          : 'no drums matched — name them snare / rack / floor / kick in settings');
       });
     });
     this.root.querySelector('#tuner-ref').addEventListener('change', (e) => {
