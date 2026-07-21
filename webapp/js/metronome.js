@@ -2,6 +2,48 @@
 // Clicks are placed on the audio clock ahead of time, so UI jank can never
 // move a beat. The schedule doubles as the scoring grid.
 
+import { store } from './store.js';
+
+// Click voices, synthesized — no samples to load, identical timing behavior.
+// 'woodblock': short resonant knock; 'beep': the plain sine; 'rim': a bright
+// noise tick that cuts through headphone bleed the least.
+export function playClick(ctx, time, accent, gain) {
+  const voice = store.get('metronomeSound') || 'beep';
+  const g = ctx.createGain();
+  g.connect(ctx.destination);
+  if (voice === 'rim') {
+    const len = Math.ceil(ctx.sampleRate * 0.03);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = accent ? 3800 : 2600;
+    g.gain.setValueAtTime(gain, time);
+    src.connect(hp).connect(g);
+    src.start(time);
+    return;
+  }
+  const osc = ctx.createOscillator();
+  if (voice === 'woodblock') {
+    osc.frequency.setValueAtTime(accent ? 1150 : 820, time);
+    osc.frequency.exponentialRampToValueAtTime(accent ? 780 : 560, time + 0.02);
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(gain * 1.2, time + 0.0008);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+  } else {
+    osc.frequency.value = accent ? 1318 : 880;
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(gain, time + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  }
+  osc.connect(g);
+  osc.start(time);
+  osc.stop(time + 0.06);
+}
+
 export class Metronome {
   constructor(ctx) {
     this.ctx = ctx;
@@ -59,15 +101,7 @@ export class Metronome {
   }
 
   _click(time, accent) {
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.frequency.value = accent ? 1318 : 880;
-    g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(this.gain, time + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
-    osc.connect(g).connect(this.ctx.destination);
-    osc.start(time);
-    osc.stop(time + 0.06);
+    playClick(this.ctx, time, accent, this.gain);
   }
 
   // Nearest grid line to an (already calibration-corrected) hit time.
@@ -131,14 +165,6 @@ export class ChartPlayer {
   }
 
   _click(time, accent) {
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.frequency.value = accent ? 1318 : 880;
-    g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(this.gain, time + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
-    osc.connect(g).connect(this.ctx.destination);
-    osc.start(time);
-    osc.stop(time + 0.06);
+    playClick(this.ctx, time, accent, this.gain);
   }
 }

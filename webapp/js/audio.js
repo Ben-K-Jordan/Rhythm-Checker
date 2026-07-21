@@ -128,7 +128,18 @@ export class MicEngine extends EventTarget {
     if (!this._detector) return;
     if (refractory !== undefined) this._detector.refractory = refractory;
     if (threshold !== undefined) this._detector.threshold = threshold;
-    if (minLevel !== undefined) this._detector.minLevel = minLevel;
+    // a user-set trigger floor (Calibrate, step 1) rides above every mode's
+    // own minLevel: room noise below the TRIG line never fires a hit
+    if (minLevel !== undefined) {
+      this._detector.minLevel = Math.max(minLevel, this.triggerFloor || 0);
+    }
+  }
+
+  setTriggerFloor(level) {
+    this.triggerFloor = level || 0;
+    if (this._detector) {
+      this._detector.minLevel = Math.max(this._detector.minLevel, this.triggerFloor);
+    }
   }
 
   _onBlock({ samples, startTime }, sr) {

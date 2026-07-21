@@ -1,56 +1,51 @@
 // App shell: hub-and-spoke navigation (HOME owns the screen; every tool is
-// one level deep with a hard BACK), mic bootstrap, settings, offline SW.
+// one level deep with a hard BACK), mic bootstrap, settings drawer, offline SW.
 
 import { MicEngine } from './audio.js';
 import { selftest } from './dsp.js';
 import { store } from './store.js';
+import { holdToConfirm } from './theme.js';
+import { FEELS } from './feel.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
 import { RudimentsMode } from './rudiments.js';
-import { PreshowMode } from './preshow.js';
+import { PreshowMode, ArmedMode, VerdictMode } from './showflow.js';
 import { CalibrateMode } from './calibrate.js';
 import { HistoryMode } from './history.js';
 
 const mic = new MicEngine();
 const modes = {};
 let currentScreen = 'home';
-
-const TITLES = {
-  home: null,
-  preshow: ['Pre-show', 'the walk-on double check'],
-  tuner: ['Tuner', 'tap the head · read the truth'],
-  rudiments: ['Rudiments', 'the highway · judged honest'],
-  timing: ['Timing', 'you vs the click'],
-  calibrate: ['Calibrate', "measure this phone's lag once"],
-  history: ['History', "weeks don't lie"],
-};
+let pendingNav = null; // set by poster lineup deep-links before mic boot
 
 function $(sel) { return document.querySelector(sel); }
 
+function chromeFor(name) {
+  const back = $('#nav-back');
+  const gearLeft = $('#chrome-gear-left');
+  back.classList.toggle('hidden', name === 'home');
+  gearLeft.classList.toggle('hidden', name !== 'home');
+  // armed screen swaps BACK for a red DISARM — leaving mid-set IS disarming
+  if (name === 'armed') {
+    back.innerHTML = '&#9632; DISARM';
+    back.classList.add('disarm');
+  } else {
+    back.innerHTML = '&#8592; HOME';
+    back.classList.remove('disarm');
+  }
+}
+
 function nav(name) {
+  if (name === 'settings') { openSettings(); return; }
   const leaving = modes[currentScreen];
   if (leaving && leaving !== modes[name] && leaving.deactivate) leaving.deactivate();
   currentScreen = name;
   document.querySelectorAll('.mode').forEach((m) => m.classList.toggle('active', m.id === `mode-${name}`));
-  $('#nav-back').classList.toggle('hidden', name === 'home');
-  const mh = $('#masthead');
-  if (TITLES[name]) {
-    mh.classList.remove('hidden');
-    const h1 = mh.querySelector('h1');
-    const strap = mh.querySelector('span');
-    h1.textContent = TITLES[name][0];
-    strap.textContent = TITLES[name][1];
-    // replay the one-shot swing-in for each screen's title (the masthead
-    // element persists across navs, so the CSS animation won't restart itself)
-    for (const el of [h1, strap]) {
-      el.style.animation = 'none';
-      void el.offsetWidth;
-      el.style.animation = '';
-    }
-  } else mh.classList.add('hidden');
+  chromeFor(name);
   const mode = modes[name];
   if (mode && mode.activate) mode.activate();
+  $('main').scrollTop = 0;
 }
 
 function escText(text) {
@@ -60,14 +55,15 @@ function escText(text) {
 }
 
 function initModes() {
-  modes.preshow = new PreshowMode($('#mode-preshow'), mic);
-  modes.preshow.navTo = nav;
   modes.tuner = new TunerMode($('#mode-tuner'), mic);
   modes.timing = new TimingMode($('#mode-timing'), mic);
   modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
   modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
   modes.history = new HistoryMode($('#mode-history'));
-  modes.home = new HomeMode($('#mode-home'), nav, { preshow: modes.preshow, rudiments: modes.rudiments });
+  modes.verdict = new VerdictMode($('#mode-verdict'), nav);
+  modes.armed = new ArmedMode($('#mode-armed'), mic, nav, modes.verdict);
+  modes.preshow = new PreshowMode($('#mode-preshow'), mic, nav, modes.armed);
+  modes.home = new HomeMode($('#mode-home'), nav);
 }
 
 function levelMeterLoop() {
@@ -80,59 +76,110 @@ function levelMeterLoop() {
   tick();
 }
 
+// ------------------------------------------------------------ settings drawer
+function openSettings() {
+  renderSettings();
+  $('#drawer-scrim').classList.remove('hidden');
+  $('#settings').classList.remove('hidden');
+}
+
+function closeSettings() {
+  $('#drawer-scrim').classList.add('hidden');
+  $('#settings').classList.add('hidden');
+  if (modes.home && currentScreen === 'home') modes.home.render();
+  if (modes.tuner) modes.tuner.render();
+}
+
 function renderSettings() {
   const kit = store.get('kit');
+  const feel = store.get('feel');
+  const cal = store.get('calibrationMs');
+  const runs = store.get('runs') || [];
   $('#settings-body').innerHTML = `
-    <h3>Kit</h3>
-    <div id="kit-list">
-      ${kit.map((d) => `
-        <div class="kit-row" data-id="${escText(d.id)}">
-          <input class="kit-name" value="${escText(d.name).replaceAll('"', '&quot;')}">
-          <span>B ${d.targetHz ?? '—'} / R ${d.resoHz ?? '—'} Hz</span>
-          <button class="kit-del" title="remove">✕</button>
-        </div>`).join('')}
+    <div class="set-group"><span class="chip-stamp">Audio</span>
+      <div class="set-row"><label>Latency offset</label>
+        <button id="set-cal" class="drop amber">${cal === null ? 'NOT SET · CALIBRATE' : `${cal >= 0 ? '−' : '+'}${Math.abs(cal).toFixed(0)} MS · CALIBRATE`} &#9656;</button></div>
+      <div class="set-row"><label>Metronome sound</label>
+        <select id="set-click" class="drop">
+          ${['woodblock', 'beep', 'rim'].map((s) => `<option value="${s}" ${store.get('metronomeSound') === s ? 'selected' : ''}>${s.toUpperCase()}</option>`).join('')}
+        </select></div>
     </div>
-    <button id="kit-add">+ add drum</button>
-    <h3>Scoring</h3>
-    <label>Pocket window ±<input id="set-pocket" type="number" min="3" max="40" value="${store.get('pocketMs')}"> ms</label>
-    <label>Tuning tolerance ±<input id="set-cents" type="number" min="3" max="50" value="${store.get('tuneToleranceCents')}"> cents</label>
-    <label>Judgement <select id="set-judge">
-      <option value="standard" ${store.get('judgeMode') === 'standard' ? 'selected' : ''}>standard (±20/40/60 ms)</option>
-      <option value="pro" ${store.get('judgeMode') === 'pro' ? 'selected' : ''}>pro (±12/25/40 ms)</option>
-    </select></label>
-    <h3>Data</h3>
-    <div class="row">
-      <button id="set-export">Export backup</button>
-      <button id="set-import">Import backup</button>
-      <input id="set-import-file" type="file" accept="application/json" class="hidden">
+    <div class="set-group"><span class="chip-stamp">Judging</span>
+      <div class="set-row"><label>Tolerance</label>
+        <select id="set-judge" class="drop">
+          <option value="standard" ${store.get('judgeMode') === 'standard' ? 'selected' : ''}>NORMAL · ±20/40/60 MS</option>
+          <option value="pro" ${store.get('judgeMode') === 'pro' ? 'selected' : ''}>PRO · ±12/25/40 MS</option>
+        </select></div>
+      <div class="set-row"><label>Pocket window ±</label>
+        <input id="set-pocket" type="number" min="3" max="40" value="${store.get('pocketMs')}" style="width:64px"></div>
+      <div class="set-row"><label>Tuning tolerance ±&cent;</label>
+        <input id="set-cents" type="number" min="3" max="50" value="${store.get('tuneToleranceCents')}" style="width:64px"></div>
+      <div class="set-row"><label>Show grades <span class="hint">&middot; not just numbers</span></label>
+        <button id="set-grades" class="switch ${store.get('showGrades') ? 'on' : ''}" role="switch" aria-checked="${store.get('showGrades')}"><i></i></button></div>
     </div>
-    <div class="row">
-      <button id="set-share-kit">Share kit targets</button>
-      <button id="set-import-kit">Import kit targets</button>
-      <input id="set-import-kit-file" type="file" accept="application/json" class="hidden">
+    <div class="set-group"><span class="chip-stamp">Feel</span>
+      <div class="set-row"><label>Default feel</label>
+        <select id="set-feel" class="drop ${feel ? 'red' : ''}">
+          <option value="">NONE</option>
+          ${Object.entries(FEELS).map(([id, f]) => `<option value="${id}" ${feel === id ? 'selected' : ''}>${f.label}</option>`).join('')}
+        </select></div>
     </div>
-    <p class="dim">Everything lives on this device. Nothing is uploaded, ever.
-    Calibration is per-device and never travels with a backup.</p>`;
+    <div class="set-group"><span class="chip-stamp">Kit</span>
+      <div id="kit-list">
+        ${kit.map((d) => `
+          <div class="kit-row" data-id="${escText(d.id)}">
+            <input class="kit-name" value="${escText(d.name).replaceAll('"', '&quot;')}">
+            <span>B ${d.targetHz ?? '—'} / R ${d.resoHz ?? '—'} Hz</span>
+            <button class="kit-del" title="remove">✕</button>
+          </div>`).join('')}
+      </div>
+      <button id="kit-add" class="pill">+ add drum</button>
+    </div>
+    <div class="set-group"><span class="chip-stamp">Data</span>
+      <div class="set-row"><label>Backup <span class="hint">&middot; never includes calibration</span></label>
+        <span style="display:flex;gap:6px">
+          <button id="set-export" class="pill">Export</button>
+          <button id="set-import" class="pill">Import</button>
+        </span>
+        <input id="set-import-file" type="file" accept="application/json" class="hidden"></div>
+      <div class="set-row"><label>Kit targets <span class="hint">&middot; share with the band</span></label>
+        <span style="display:flex;gap:6px">
+          <button id="set-share-kit" class="pill">Share</button>
+          <button id="set-import-kit" class="pill">Import</button>
+        </span>
+        <input id="set-import-kit-file" type="file" accept="application/json" class="hidden"></div>
+      <p class="hint" style="padding:8px 0 0">Everything lives on this device. Nothing is uploaded, ever.
+      Calibration is per-device and never travels with a backup.</p>
+    </div>
+    <div class="drawer-foot">
+      <span>v2.1.0 &middot; ${runs.length} sessions</span>
+      <button id="set-reset">RESET ALL</button>
+    </div>`;
 
+  $('#set-cal').addEventListener('click', () => { closeSettings(); nav('calibrate'); });
+  $('#set-click').addEventListener('change', (e) => store.set('metronomeSound', e.target.value));
+  $('#set-judge').addEventListener('change', (e) => store.set('judgeMode', e.target.value));
+  $('#set-pocket').addEventListener('change', (e) => store.set('pocketMs', +e.target.value || 10));
+  $('#set-cents').addEventListener('change', (e) => store.set('tuneToleranceCents', +e.target.value || 10));
+  $('#set-grades').addEventListener('click', (e) => {
+    store.set('showGrades', !store.get('showGrades'));
+    e.currentTarget.classList.toggle('on', store.get('showGrades'));
+    e.currentTarget.setAttribute('aria-checked', String(store.get('showGrades')));
+  });
+  $('#set-feel').addEventListener('change', (e) => store.set('feel', e.target.value || null));
   $('#kit-add').addEventListener('click', () => {
     store.addDrum(`Drum ${kit.length + 1}`);
     renderSettings();
-    modes.tuner.render();
   });
   document.querySelectorAll('.kit-row').forEach((row) => {
     row.querySelector('.kit-name').addEventListener('change', (e) => {
       store.updateDrum(row.dataset.id, { name: e.target.value });
-      modes.tuner.render();
     });
     row.querySelector('.kit-del').addEventListener('click', () => {
       store.removeDrum(row.dataset.id);
       renderSettings();
-      modes.tuner.render();
     });
   });
-  $('#set-pocket').addEventListener('change', (e) => store.set('pocketMs', +e.target.value || 10));
-  $('#set-cents').addEventListener('change', (e) => store.set('tuneToleranceCents', +e.target.value || 10));
-  $('#set-judge').addEventListener('change', (e) => store.set('judgeMode', e.target.value));
   $('#set-export').addEventListener('click', () => {
     const blob = new Blob([store.exportJson()], { type: 'application/json' });
     const a = document.createElement('a');
@@ -154,10 +201,7 @@ function renderSettings() {
     try {
       store.importKitJson(await file.text());
       renderSettings();
-      modes.tuner.render();
-    } catch (err) {
-      alert(`Import failed: ${err.message}`);
-    }
+    } catch (err) { alert(`Import failed: ${err.message}`); }
   });
   $('#set-import').addEventListener('click', () => $('#set-import-file').click());
   $('#set-import-file').addEventListener('change', async (e) => {
@@ -166,10 +210,11 @@ function renderSettings() {
     try {
       store.importJson(await file.text());
       renderSettings();
-      modes.tuner.render();
-    } catch (err) {
-      alert(`Import failed: ${err.message}`);
-    }
+    } catch (err) { alert(`Import failed: ${err.message}`); }
+  });
+  holdToConfirm($('#set-reset'), () => {
+    store.reset();
+    renderSettings();
   });
 }
 
@@ -180,15 +225,14 @@ async function boot() {
   } catch (err) {
     $('#start-overlay').classList.remove('hidden');
     $('#start-error').textContent = err.message;
+    pendingNav = null;
     return;
   }
   $('#app').classList.remove('hidden');
+  mic.setTriggerFloor(store.get('trigger') || 0);
   if (!Object.keys(modes).length) {
     initModes();
     levelMeterLoop();
-    renderSettings();
-    // iOS kills the mic on screen lock/calls; show a reconnect path instead
-    // of a dead-looking app
     mic.addEventListener('lost', (e) => {
       const overlay = $('#mic-lost');
       overlay.classList.remove('hidden');
@@ -203,27 +247,36 @@ async function boot() {
       }
     });
   }
-  nav('home');
+  nav(pendingNav || 'home');
+  pendingNav = null;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   // machine-checkable health: Playwright and the diagnostics footer read this
   const st = selftest();
-  window.__rhythmChecker = { selftest: st, version: '2.0.0', nav: (n) => nav(n) };
+  window.__rhythmChecker = { selftest: st, version: '2.1.0', nav: (n) => nav(n) };
   if (st.passed) {
     document.querySelector('footer').classList.add('hidden');
   } else {
     $('#diag').textContent = `ENGINE SELF-TEST FAILING: ${st.failures.join(', ')}`;
-    $('#diag').classList.add('warn-text');
   }
 
   $('#start-btn').addEventListener('click', boot);
-  $('#nav-back').addEventListener('click', () => nav('home'));
-  $('#settings-btn').addEventListener('click', () => $('#settings').classList.toggle('hidden'));
-  $('#settings-close').addEventListener('click', () => {
-    $('#settings').classList.add('hidden');
-    if (modes.home && currentScreen === 'home') modes.home.render();
+  document.querySelectorAll('#start-overlay [data-goto]').forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      pendingNav = el.dataset.goto;
+      boot();
+    });
   });
+  $('#nav-back').addEventListener('click', () => {
+    if (currentScreen === 'armed' && modes.armed && modes.armed.session) modes.armed.disarm();
+    else nav('home');
+  });
+  $('#settings-btn').addEventListener('click', openSettings);
+  $('#chrome-gear-left').addEventListener('click', openSettings);
+  $('#settings-close').addEventListener('click', closeSettings);
+  $('#drawer-scrim').addEventListener('click', closeSettings);
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => { /* offline still works after first visit */ });

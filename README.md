@@ -31,12 +31,9 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
     <td align="center"><img src="docs/media/history.gif" width="240" alt="History"><br><sub><b>History</b>: spread per session. Falling is winning.</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/media/preshow.gif" width="240" alt="Pre-show"><br><sub><b>Pre-show</b>: the walk-on double check.</sub></td>
-    <td align="center"><img src="docs/media/armed.gif" width="240" alt="Armed show mode"><br><sub><b>Show mode</b>: armed. One big button until stage time.</sub></td>
-    <td align="center"><img src="docs/media/calibrate.gif" width="240" alt="Calibrate"><br><sub><b>Calibrate</b>: measures this phone's audio lag once, subtracts it always.</sub></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="3"><img src="docs/media/dialed.png" width="240" alt="DIALED verdict"><br><sub><b>The verdict</b>: DIALED, in letters you can read from the drum riser.</sub></td>
+    <td align="center"><img src="docs/media/preshow.gif" width="240" alt="Pre-show"><br><sub><b>Pre-show</b>: real readiness checks, then ARM FOR SHOW.</sub></td>
+    <td align="center"><img src="docs/media/armed.gif" width="240" alt="Armed live monitor"><br><sub><b>Armed</b>: live listening for the whole set, judged against the click.</sub></td>
+    <td align="center"><img src="docs/media/calibrate.gif" width="240" alt="Calibrate"><br><sub><b>Calibrate</b>: trigger floor plus latency, measured once per phone.</sub></td>
   </tr>
 </table>
 
@@ -61,12 +58,16 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
   Travis Barker, metal at Joey Jordison. Lug mode logs a pass around the drum
   and marks the lugs that are off. A fold-out crib sheet on the page covers
   how to get a clean reading at soundcheck.
-* **Pre-show**: the "am I dialed" flow. Each drum vs its target, then 30 s of
-  hands vs your saved baseline, ending in a verdict you can read from across
-  the room. Works in a loud backstage with no wifi.
-* **Show mode**: arm it from the home screen on show day. The app becomes one
-  big button that walks the whole ritual and disarms automatically after
-  stage time.
+* **Pre-show**: the backstage pre-flight. Venue and set details, then a
+  readiness checklist where every row is a real check: mic calibrated, tuning
+  targets saved, hands baseline recorded, click confirmed in-ear only, free
+  storage. Then one glowing button: ARM FOR SHOW.
+* **Armed**: live monitoring for the whole set. The click runs in your
+  in-ears, the mic judges every hit against the grid, long silences split
+  songs, and the screen shows live BPM drift, a real input waveform, held
+  percentage, and set progress. Disarm stamps the verdict: a giant DIALED or
+  NOT YET with per-song drift bars and honest numbers underneath, saved to
+  history with one tap.
 * **Rudiments**: a falling-note highway (paradiddles, doubles, triplets, and
   more) synced to a sample-accurate metronome. Every hit is judged
   perfect, good, ok, or miss with its signed ms error, streaks, and an honest
@@ -86,13 +87,14 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
 * **Calibrate**: measures your device's fixed audio latency by tapping along
   with clicks, then subtracts it from every score. Run it once per device.
 
-The look is a xerox gig flyer: paper, ink, one red. Motion follows one rule:
-things move when they arrive, then hold still so you can read them. Titles
-swing in like they were just stapled up, screens slap on like fresh flyers,
-stamps hit the page, and the only things that never stop moving are the VU
-bars and the hazard stripe. All of it runs as GPU-composited stop motion that
-costs the audio thread nothing, and every animation switches off for users
-with Reduce Motion enabled.
+The look is a photocopied gig poster: cream newsprint, hard ink borders, one
+loud red, hazard stripes, offset shadows with zero blur, and newsprint grain
+over everything. Type is Anton for the shouting, Oswald for the labels, and
+Space Mono for every number. A four-bar VU meter bounces in the header, the
+hazard tape crawls, the tuner needle swings, and verdict stamps slam in. All
+of it is drawn in CSS and SVG with no raster assets, runs GPU-composited so
+the audio thread never feels it, and switches off for users with Reduce
+Motion enabled.
 
 ## The deep analyzer
 

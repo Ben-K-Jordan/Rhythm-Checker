@@ -1,12 +1,11 @@
-// Rudiment trainer: a falling-note highway synced to the audio clock.
-// Meter-aware (any time signature, odd groupings), lead-hand switchable,
-// with an optional tempo ramp — and per-tempo analysis, so the report shows
-// the exact BPM where a rudiment starts to fall apart.
+// Rudiment trainer — the hero screen. A horizontal scroll strip: R/L pucks
+// ride right-to-left past a fixed NOW read-head and are judged live as they
+// cross it. Meter-aware (odd groupings included), lead-hand switchable,
+// accent-placeable, optional tempo ramp with per-tempo analysis.
 // The mic hears WHEN, not WHICH HAND — sticking letters are guidance.
 
 import { ChartPlayer } from './metronome.js';
-import { buildChartTimes, segmentAt, unitGlyph } from './meter.js';
-import { GrooveBar } from './groove.js';
+import { METERS, meterById, defaultGrouping, accentsFor, buildChartTimes, segmentAt, unitGlyph, TapTempo } from './meter.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { theme } from './theme.js';
@@ -30,6 +29,7 @@ export const RAMPS = [
 ];
 
 const MATCH_WINDOW_MS = 90;
+const BARS_CYCLE = [8, 16, 32, 64];
 
 function swapLead(ch) {
   const map = { R: 'L', L: 'R', r: 'l', l: 'r' };
@@ -37,11 +37,11 @@ function swapLead(ch) {
 }
 
 export const ACCENT_MODES = [
-  { id: 'pattern', label: 'pattern' },   // the rudiment's own accents
-  { id: 'downbeats', label: 'pulses' },  // first note of every pulse
-  { id: 'moving', label: 'moving' },     // classic study: shifts one step per repetition
+  { id: 'pattern', label: 'pattern' },
+  { id: 'downbeats', label: 'pulses' },
+  { id: 'moving', label: 'moving' },
   { id: 'none', label: 'none' },
-  { id: 'custom', label: 'custom' },     // tap notes in the editor to place accents
+  { id: 'custom', label: 'custom' },
 ];
 
 export function accentFor(rudiment, accent, noteIndex) {
@@ -52,7 +52,7 @@ export function accentFor(rudiment, accent, noteIndex) {
     case 'downbeats': return noteIndex % rudiment.sub === 0;
     case 'moving': return step === Math.floor(noteIndex / len) % len;
     case 'custom': return accent.custom.includes(step);
-    default: { // 'pattern'
+    default: {
       const ch = rudiment.steps[step];
       return rudiment.accentUpper ? ch === ch.toUpperCase() : false;
     }
@@ -92,10 +92,19 @@ export class RudimentsMode {
     this.mic = mic;
     this.running = false;
     this.lead = 'R';
+    this.bars = 16;
+    this.rampId = 'off';
     this.accentMode = 'pattern';
     this.customAccents = new Set();
-    this.render();
+    this.expand = null; // null | 'tempo' | 'meter'
+    const saved = store.get('grooveRud');
+    this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
+    this.meterId = (saved && saved.meterId) || '4/4';
+    this.grouping = (saved && saved.grouping) || defaultGrouping(meterById('4/4'));
+    this.tap = new TapTempo();
+    this.recentDevs = [];
     this._raf = null;
+    this.render();
     mic.addEventListener('onset', (e) => this.onHit(e.detail));
   }
 
@@ -104,62 +113,163 @@ export class RudimentsMode {
     if (!this._raf) this.loop();
   }
 
+  grooveValue() {
+    const meter = meterById(this.meterId);
+    return {
+      bpm: this.bpm,
+      meter: { ...meter, accents: accentsFor(meter, this.grouping) },
+      grouping: this.grouping,
+    };
+  }
+
+  saveGroove() {
+    store.set('grooveRud', { bpm: this.bpm, meterId: this.meterId, grouping: this.grouping });
+    store.set('preferredBpm', this.bpm);
+  }
+
   render() {
+    const rudId = this.rudimentId || 'paradiddle';
+    this.rudimentId = rudId;
+    const meter = meterById(this.meterId);
+    const groupings = Object.keys(meter.groupings);
     this.root.innerHTML = `
-      <div class="mode-head">
-        <select id="rud-pattern">
-          ${RUDIMENTS.map((r) => `<option value="${r.id}">${r.name}</option>`).join('')}
-        </select>
-        <button id="rud-lead" title="lead hand">lead: R</button>
-        <label>Bars <select id="rud-bars">
-          <option value="8">8</option><option value="16" selected>16</option>
-          <option value="32">32</option><option value="64">64</option>
-        </select></label>
-        <label>Ramp <select id="rud-ramp">
-          ${RAMPS.map((r) => `<option value="${r.id}">${r.label}</option>`).join('')}
-        </select></label>
-        <button id="rud-go" class="primary">Play</button>
-      </div>
-      <div id="rud-groove"></div>
-      <div class="accent-panel">
-        <div class="row">
-          <span class="dim">accents</span>
-          <div class="seg" id="rud-accent-modes">
-            ${ACCENT_MODES.map((m) => `<button data-am="${m.id}" class="${m.id === this.accentMode ? 'on' : ''}">${m.label}</button>`).join('')}
-          </div>
+      <div class="title-stamp" style="font-size:36px">RUDIMENTS</div>
+
+      <div class="rud-controls">
+        <div class="rud-picker">
+          <select id="rud-pattern" aria-label="rudiment">
+            ${RUDIMENTS.map((r) => `<option value="${r.id}" ${r.id === rudId ? 'selected' : ''}>${r.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="param-grid">
+          <div class="param"><div class="param-cap">LEAD</div><button id="rud-lead" class="param-box">${this.lead}</button></div>
+          <div class="param"><div class="param-cap">BARS</div><button id="rud-bars" class="param-box">${this.bars}</button></div>
+          <div class="param"><div class="param-cap">TEMPO</div><button id="rud-tempo-chip" class="param-box ${this.expand === 'tempo' ? 'open' : ''}">${this.bpm}</button></div>
+          <div class="param"><div class="param-cap">METER</div><button id="rud-meter-chip" class="param-box ${this.expand === 'meter' ? 'open' : ''}">${meter.label}</button></div>
+        </div>
+        ${this.expand === 'tempo' ? `
+          <div class="expand-row">
+            <button class="pill" data-bpm="-5">&#8722;5</button>
+            <button class="pill" data-bpm="-1">&#8722;1</button>
+            <button class="pill" data-bpm="1">+1</button>
+            <button class="pill" data-bpm="5">+5</button>
+            <button class="pill" id="rud-tap">TAP</button>
+            <span class="expand-sep"></span>
+            ${RAMPS.map((r) => `<button class="pill ${this.rampId === r.id ? 'on' : ''}" data-ramp="${r.id}">${r.label}</button>`).join('')}
+          </div>` : ''}
+        ${this.expand === 'meter' ? `
+          <div class="expand-row">
+            ${METERS.map((m) => `<button class="pill ${m.id === this.meterId ? 'on' : ''}" data-meter="${m.id}">${m.label}</button>`).join('')}
+            ${groupings.length > 1 ? `<span class="expand-sep"></span>
+              ${groupings.map((g) => `<button class="pill ${g === this.grouping ? 'on' : ''}" data-grouping="${g}">${g}</button>`).join('')}` : ''}
+          </div>` : ''}
+        <div class="expand-row accents-row">
+          <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
+          ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
         </div>
         <div id="rud-accent-editor" class="accent-editor"></div>
       </div>
-      <div class="hud">
-        <div class="stat"><span id="rud-combo">0</span><label>streak</label></div>
-        <div class="stat"><span id="rud-acc">—</span><label>accuracy</label></div>
-        <div class="stat"><span id="rud-tempo">—</span><label>tempo</label></div>
-        <div class="stat"><span id="rud-judge" class="judge"></span><label></label></div>
+
+      <div class="highway-panel">
+        <div class="hw-hatch"></div>
+        <div class="hw-now"></div>
+        <canvas id="rud-highway" width="900" height="330"></canvas>
+        <div class="hw-frost"></div>
       </div>
-      <canvas id="rud-highway" width="900" height="440"></canvas>
-      <div id="rud-summary" class="verdict hidden"></div>`;
-    this.groove = new GrooveBar(this.root.querySelector('#rud-groove'), {
-      storeKey: 'grooveRud',
-      now: () => this.mic.now(),
-    });
-    this.root.querySelector('#rud-go').addEventListener('click', () => this.toggle());
-    this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
-      this.lead = this.lead === 'R' ? 'L' : 'R';
-      e.target.textContent = `lead: ${this.lead}`;
-      this.renderAccentEditor();
-    });
-    this.root.querySelector('#rud-pattern').addEventListener('change', () => {
+
+      <div class="judge-bar">
+        <div class="jb-gauge">
+          <div class="jb-labels"><span>&#9668; EARLY</span><span class="mid">0</span><span>LATE &#9658;</span></div>
+          <div class="jb-track">
+            <div class="jb-center"></div>
+            <div id="jb-needle" class="jb-needle"><div class="tri-up"></div></div>
+          </div>
+          <div class="jb-zones"><span>OK</span><span class="g">GOOD</span><span class="p">PERFECT</span><span class="g">GOOD</span><span>OK</span></div>
+        </div>
+        <div id="rud-judge-chip" class="judge-chip idle">
+          <div class="jc-num" id="rud-judge-num">&mdash;</div>
+          <div class="jc-cap" id="rud-judge-cap">WAITING</div>
+        </div>
+      </div>
+
+      <div class="rud-bottom">
+        <div class="statbox"><b id="rud-combo">0</b><span>Streak</span></div>
+        <div class="statbox"><b id="rud-acc">&mdash;</b><span>Accuracy</span></div>
+        <button id="rud-go" class="btn red rud-play">PLAY<span class="tri"></span></button>
+      </div>
+      <div id="rud-summary" class="rud-summary hidden"></div>`;
+
+    this.root.querySelector('#rud-pattern').addEventListener('change', (e) => {
+      this.rudimentId = e.target.value;
       this.customAccents.clear();
       this.renderAccentEditor();
     });
-    this.root.querySelectorAll('#rud-accent-modes button').forEach((b) => {
+    this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
+      this.lead = this.lead === 'R' ? 'L' : 'R';
+      e.currentTarget.textContent = this.lead;
+      this.renderAccentEditor();
+    });
+    this.root.querySelector('#rud-bars').addEventListener('click', (e) => {
+      this.bars = BARS_CYCLE[(BARS_CYCLE.indexOf(this.bars) + 1) % BARS_CYCLE.length];
+      e.currentTarget.textContent = this.bars;
+    });
+    this.root.querySelector('#rud-tempo-chip').addEventListener('click', () => {
+      this.expand = this.expand === 'tempo' ? null : 'tempo';
+      this.render();
+    });
+    this.root.querySelector('#rud-meter-chip').addEventListener('click', () => {
+      this.expand = this.expand === 'meter' ? null : 'meter';
+      this.render();
+    });
+    this.root.querySelectorAll('[data-bpm]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.bpm = Math.max(20, Math.min(400, this.bpm + +b.dataset.bpm));
+        this.saveGroove();
+        this.root.querySelector('#rud-tempo-chip').textContent = this.bpm;
+      });
+    });
+    const tapBtn = this.root.querySelector('#rud-tap');
+    if (tapBtn) tapBtn.addEventListener('click', () => {
+      const bpm = this.tap.tap(this.mic.now());
+      if (bpm) {
+        this.bpm = Math.max(20, Math.min(400, Math.round(bpm)));
+        this.saveGroove();
+        this.root.querySelector('#rud-tempo-chip').textContent = this.bpm;
+      }
+    });
+    this.root.querySelectorAll('[data-ramp]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.rampId = b.dataset.ramp;
+        this.root.querySelectorAll('[data-ramp]').forEach((x) => x.classList.toggle('on', x === b));
+      });
+    });
+    this.root.querySelectorAll('[data-meter]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.meterId = b.dataset.meter;
+        this.grouping = defaultGrouping(meterById(this.meterId));
+        this.saveGroove();
+        this.render();
+        this.expandKeep('meter');
+      });
+    });
+    this.root.querySelectorAll('[data-grouping]').forEach((b) => {
+      b.addEventListener('click', () => {
+        this.grouping = b.dataset.grouping;
+        this.saveGroove();
+        this.root.querySelectorAll('[data-grouping]').forEach((x) => x.classList.toggle('on', x === b));
+      });
+    });
+    this.root.querySelectorAll('[data-am]').forEach((b) => {
       b.addEventListener('click', () => this.setAccentMode(b.dataset.am));
     });
+    this.root.querySelector('#rud-go').addEventListener('click', () => this.toggle());
     this.renderAccentEditor();
   }
 
+  expandKeep(which) { this.expand = which; }
+
   currentRudiment() {
-    return RUDIMENTS.find((r) => r.id === this.root.querySelector('#rud-pattern').value);
+    return RUDIMENTS.find((r) => r.id === this.rudimentId);
   }
 
   accentValue() {
@@ -169,19 +279,16 @@ export class RudimentsMode {
   setAccentMode(mode) {
     this.accentMode = mode;
     if (mode === 'custom' && this.customAccents.size === 0) {
-      // seed custom from the pattern's own accents so editing starts from sense
       const rud = this.currentRudiment();
       for (let s = 0; s < rud.steps.length; s++) {
         if (accentFor(rud, { mode: 'pattern', custom: [] }, s)) this.customAccents.add(s);
       }
     }
-    this.root.querySelectorAll('#rud-accent-modes button')
+    this.root.querySelectorAll('[data-am]')
       .forEach((b) => b.classList.toggle('on', b.dataset.am === mode));
     this.renderAccentEditor();
   }
 
-  // One cycle of the pattern as tappable pucks; tapping any puck switches to
-  // custom mode with that accent toggled. 'moving' previews repetition 1.
   renderAccentEditor() {
     const el = this.root.querySelector('#rud-accent-editor');
     const rud = this.currentRudiment();
@@ -191,23 +298,22 @@ export class RudimentsMode {
       let ch = rud.steps[s];
       if (this.lead === 'L') ch = swapLead(ch);
       const on = accentFor(rud, accent, s);
-      const pulseStart = s % rud.sub === 0;
-      pucks.push(`<button class="accent-puck ${on ? 'on' : ''} ${pulseStart ? 'pulse-start' : ''}"
-        data-step="${s}" aria-pressed="${on}">${ch.toUpperCase()}</button>`);
+      const hand = ch.toUpperCase();
+      pucks.push(`<button class="accent-puck ${hand === 'R' ? 'r' : 'l'} ${on ? 'on' : ''} ${s % rud.sub === 0 ? 'pulse-start' : ''}"
+        data-step="${s}" aria-pressed="${on}">${hand}</button>`);
     }
     el.innerHTML = pucks.join('')
-      + `<span class="dim accent-note">${this.accentMode === 'moving' ? 'shifts one step each time through' : 'tap notes to place accents'}</span>`;
+      + `<span class="accent-note">${this.accentMode === 'moving' ? 'shifts one step each time through' : 'tap notes to place accents'}</span>`;
     el.querySelectorAll('.accent-puck').forEach((p) => {
       p.addEventListener('click', () => {
         const step = +p.dataset.step;
         if (this.accentMode !== 'custom') {
-          // adopt whatever is currently shown, then toggle the tapped step
           this.customAccents = new Set();
           for (let s = 0; s < rud.steps.length; s++) {
             if (accentFor(rud, this.accentValue(), s)) this.customAccents.add(s);
           }
           this.accentMode = 'custom';
-          this.root.querySelectorAll('#rud-accent-modes button')
+          this.root.querySelectorAll('[data-am]')
             .forEach((b) => b.classList.toggle('on', b.dataset.am === 'custom'));
         }
         if (this.customAccents.has(step)) this.customAccents.delete(step);
@@ -221,14 +327,13 @@ export class RudimentsMode {
     if (this.running) { this.stop(true); return; }
     const rud = this.currentRudiment();
     this.rudiment = rud;
-    const bars = +this.root.querySelector('#rud-bars').value;
-    const rampDef = RAMPS.find((r) => r.id === this.root.querySelector('#rud-ramp').value);
-    const groove = this.groove.value();
+    const rampDef = RAMPS.find((r) => r.id === this.rampId);
+    const groove = this.grooveValue();
     this.accentUsed = this.accentValue();
-    this.chart = buildChart(rud, groove, bars, rampDef.ramp, this.lead, this.accentUsed);
+    this.chart = buildChart(rud, groove, this.bars, rampDef.ramp, this.lead, this.accentUsed);
     this.grooveUsed = groove;
+    this.saveGroove();
 
-    // one count-in bar of plain pulses at the starting tempo, then the chart
     const pulseDur = 60 / groove.bpm;
     const countIn = [];
     for (let p = 0; p < groove.meter.pulses; p++) {
@@ -248,6 +353,7 @@ export class RudimentsMode {
     this.bestCombo = 0;
     this.strays = 0;
     this.judged = [];
+    this.recentDevs = [];
     this.bleed = new BleedGuard();
     this._clickPtr = 0;
     this.root.querySelector('#rud-summary').classList.add('hidden');
@@ -261,7 +367,8 @@ export class RudimentsMode {
       el.textContent = 'run invalidated: microphone lost — reconnect and play it again.';
     };
     this.mic.addEventListener('lost', this._lostHandler);
-    this.root.querySelector('#rud-go').textContent = 'Stop';
+    const go = this.root.querySelector('#rud-go');
+    go.innerHTML = 'STOP';
     const runSecs = countInDur + this.chart.total + 1;
     this._endTimer = setTimeout(() => this.stop(false), (runSecs + 0.4) * 1000);
   }
@@ -273,9 +380,9 @@ export class RudimentsMode {
     this.mic.unlockDetector(this);
     wakeLock.release();
     if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
-    this.root.querySelector('#rud-go').textContent = 'Play';
+    const go = this.root.querySelector('#rud-go');
+    if (go) go.innerHTML = 'PLAY<span class="tri"></span>';
     if (!cancelled) {
-      // every deadline has passed by now: anything still pending is a miss
       for (const n of this.chart.notes) if (n.state === 'coming') n.state = 'miss';
       this.showSummary();
     }
@@ -294,8 +401,7 @@ export class RudimentsMode {
     if (!this.running || !this.root.classList.contains('active')) return;
     const cal = (store.get('calibrationMs') || 0) / 1000;
     const t = onset.time - cal;
-    if (t < this.chartStart - 0.2) return; // count-in noodling is free
-    // quiet "hits" landing exactly on the app's own clicks are bleed, not play
+    if (t < this.chartStart - 0.2) return;
     const clicks = this.player.clicks;
     while (this._clickPtr + 1 < clicks.length
       && this.player.t0 + clicks[this._clickPtr + 1].offset < onset.time) this._clickPtr++;
@@ -310,11 +416,8 @@ export class RudimentsMode {
       if (n.state !== 'coming') continue;
       const dev = (t - (this.chartStart + n.offset)) * 1000;
       if (Math.abs(dev) < bestAbs) { bestAbs = Math.abs(dev); best = n; }
-      if (dev < -MATCH_WINDOW_MS) break; // notes are ordered; nothing closer ahead
+      if (dev < -MATCH_WINDOW_MS) break;
     }
-    // at fast tempos the fixed window would overlap the next note: cap the
-    // acceptance at 45% of the local note spacing so a hit can only ever
-    // claim the note it is genuinely nearest to
     const winMs = Math.min(MATCH_WINDOW_MS, 0.45 * (best ? best.step : 1) * 1000);
     if (!best || bestAbs > winMs) { this.strays++; return; }
     const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
@@ -329,20 +432,26 @@ export class RudimentsMode {
     } else {
       this.combo = 0;
     }
+    this.recentDevs.push(dev);
+    if (this.recentDevs.length > 8) this.recentDevs.shift();
     this.flashJudge(judge, dev);
   }
 
   flashJudge(judge, devMs) {
-    const el = this.root.querySelector('#rud-judge');
-    el.textContent = judge === 'miss' ? 'miss'
-      : `${judge} ${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}ms`;
-    el.className = `judge ${judge}`;
+    const chip = this.root.querySelector('#rud-judge-chip');
+    const num = this.root.querySelector('#rud-judge-num');
+    const cap = this.root.querySelector('#rud-judge-cap');
+    num.textContent = judge === 'miss' ? '&#10007;'.replace('&#10007;', '✗') : `${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}`;
+    cap.textContent = judge === 'miss' ? 'MISS' : `${judge.toUpperCase()}·MS`;
+    chip.className = `judge-chip ${judge}`;
     this.root.querySelector('#rud-combo').textContent = String(this.combo);
     const hits = this.judged.filter((j) => j.judge !== 'miss').length;
-    // note states already include judged misses — adding judged.length back
-    // in would double-count them
     const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
     if (seen) this.root.querySelector('#rud-acc').textContent = `${((100 * hits) / seen).toFixed(0)}%`;
+    // needle: rolling mean of the last few hits
+    const mean = this.recentDevs.reduce((a, b) => a + b, 0) / this.recentDevs.length;
+    const needle = this.root.querySelector('#jb-needle');
+    if (needle) needle.style.left = `${50 + Math.max(-42, Math.min(42, (mean / 60) * 42))}%`;
   }
 
   loop() {
@@ -358,53 +467,21 @@ export class RudimentsMode {
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    const strikeY = h - 70;
-    const pxPerSec = 260;
-
     const T = theme();
-    ctx.fillStyle = T.panel;
-    ctx.fillRect(w / 2 - 130, 0, 260, h);
-    // hatched shoulders, like the printed edge of a ticket
-    ctx.strokeStyle = T.line;
-    ctx.lineWidth = 1;
-    for (const [x0, x1] of [[0, w / 2 - 150], [w / 2 + 150, w]]) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x0, 0, x1 - x0, h);
-      ctx.clip();
-      for (let x = x0 - h; x < x1; x += 14) {
-        ctx.beginPath();
-        ctx.moveTo(x, h);
-        ctx.lineTo(x + h, 0);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-    ctx.strokeStyle = T.ink;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(w / 2 - 130, 0, 260, h);
-    ctx.strokeStyle = T.pink;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(w / 2 - 150, strikeY);
-    ctx.lineTo(w / 2 + 150, strikeY);
-    ctx.stroke();
+    const nowX = 0.42 * w;
+    const pxPerSec = 300;
 
     if (!this.running) {
       ctx.textAlign = 'center';
       ctx.fillStyle = T.ink;
-      ctx.font = "64px 'Anton', system-ui";
-      ctx.fillText('LOAD IN', w / 2, h / 2 - 18);
+      ctx.font = "68px 'Anton', system-ui";
+      ctx.fillText('LOAD IN', w / 2, h / 2 - 8);
       ctx.fillStyle = T.dim;
-      ctx.font = '14px ' + T.mono;
-      ctx.fillText('pick a rudiment · dial the groove bar · hit play', w / 2, h / 2 + 22);
-      ctx.fillText('one bar of count-in, then the notes come down', w / 2, h / 2 + 44);
+      ctx.font = "22px 'Space Mono', monospace";
+      ctx.fillText('dial it in above · hit PLAY · one bar of count-in', w / 2, h / 2 + 34);
       return;
     }
     const now = this.mic.now();
-
-    // sweep on the CALIBRATED clock (as onHit scores) plus delivery slack —
-    // otherwise a device's fixed latency eats into the late judgement window
     const cal = (store.get('calibrationMs') || 0) / 1000;
     const deadline = MATCH_WINDOW_MS / 1000 + 0.05;
     for (const n of this.chart.notes) {
@@ -413,51 +490,88 @@ export class RudimentsMode {
         this.combo = 0;
       }
     }
-
-    // live tempo readout (matters during ramps)
+    // live tempo readout in the chip (matters during ramps)
     const rel = now - this.chartStart;
     const seg = rel >= 0 ? segmentAt(this.chart.segments, rel) : this.chart.segments[0];
-    this.root.querySelector('#rud-tempo').textContent =
-      `${unitGlyph(this.grooveUsed.meter)}=${seg.bpm}`;
+    const chipEl = this.root.querySelector('#rud-tempo-chip');
+    if (chipEl && this.running) chipEl.textContent = seg.bpm;
 
-    // bar lines
-    ctx.strokeStyle = T.line;
-    ctx.lineWidth = 1;
+    const xOf = (t) => nowX + (t - now) * pxPerSec;
+
+    // bar lines: dotted verticals
+    ctx.strokeStyle = 'rgba(20,18,16,.25)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 5]);
     for (const b of this.chart.barOffsets) {
-      const y = strikeY - (this.chartStart + b - now) * pxPerSec;
-      if (y < -10 || y > h + 10) continue;
+      const x = xOf(this.chartStart + b);
+      if (x < -10 || x > w + 10) continue;
       ctx.beginPath();
-      ctx.moveTo(w / 2 - 130, y);
-      ctx.lineTo(w / 2 + 130, y);
+      ctx.moveTo(x, h * 0.12);
+      ctx.lineTo(x, h * 0.88);
       ctx.stroke();
     }
+    ctx.setLineDash([]);
 
-    ctx.textAlign = 'center';
-    const colors = {
-      'coming': T.blue, 'hit-perfect': T.green, 'hit-good': '#4f8a10',
-      'hit-ok': '#f5c518', 'miss': T.pink,
-    };
+    const midY = h / 2;
     for (const n of this.chart.notes) {
       const t = this.chartStart + n.offset;
-      const y = strikeY - (t - now) * pxPerSec;
-      if (y < -30 || y > h + 30) continue;
-      const r = n.accent ? 22 : 15;
-      ctx.globalAlpha = n.state === 'coming' ? 1 : 0.45;
-      ctx.fillStyle = colors[n.state];
+      const x = xOf(t);
+      if (x < -60 || x > w + 60) continue;
+      const r = n.accent ? 56 : 48;
+      const isR = n.stick === 'R';
+      const base = isR ? T.pink : T.blue;
+      let alpha = 1;
+      let ring = null;
+      if (n.state === 'hit-perfect' || n.state === 'hit-good') ring = T.green;
+      else if (n.state === 'hit-ok') ring = '#b5891f';
+      else if (n.state === 'miss') { alpha = 0.35; }
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = base;
       ctx.beginPath();
-      ctx.arc(w / 2, y, r, 0, 7);
+      ctx.arc(x, midY, r / 2, 0, 7);
       ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = T.ink;
+      ctx.stroke();
+      if (n.accent) { // double ring for accents
+        ctx.beginPath();
+        ctx.arc(x, midY, r / 2 + 6, 0, 7);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = T.ink;
+        ctx.stroke();
+      }
+      if (ring) {
+        ctx.beginPath();
+        ctx.arc(x, midY, r / 2 + (n.accent ? 12 : 8), 0, 7);
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = ring;
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#fff';
+      ctx.font = `${n.accent ? 42 : 36}px 'Anton', system-ui`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.stick, x, midY + (n.accent ? 15 : 13));
+      if (n.state === 'miss') {
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = T.pink;
+        ctx.lineWidth = 5;
+        const d = r / 2 - 6;
+        ctx.beginPath();
+        ctx.moveTo(x - d, midY - d);
+        ctx.lineTo(x + d, midY + d);
+        ctx.moveTo(x + d, midY - d);
+        ctx.lineTo(x - d, midY + d);
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
-      ctx.fillStyle = T.paper;
-      ctx.font = `bold ${n.accent ? 18 : 13}px system-ui`;
-      ctx.fillText(n.stick, w / 2, y + 5);
     }
 
     if (now < this.chartStart) {
       const pulsesLeft = Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses));
       ctx.fillStyle = T.ink;
-      ctx.font = "72px 'Anton', system-ui";
-      ctx.fillText(String(pulsesLeft), w / 2, h / 2);
+      ctx.font = "110px 'Anton', system-ui";
+      ctx.textAlign = 'center';
+      ctx.fillText(String(pulsesLeft), w / 2, h / 2 + 38);
     }
   }
 
@@ -472,7 +586,6 @@ export class RudimentsMode {
     const rud = this.rudiment;
     const glyph = unitGlyph(this.grooveUsed.meter);
 
-    // per-step: does step 3 of the paradiddle rush?
     const perStep = [];
     for (let p = 0; p < rud.steps.length; p++) {
       const stepDevs = this.judged
@@ -482,15 +595,13 @@ export class RudimentsMode {
       if (ss && ss.n >= 3) perStep.push(`${rud.steps[p].toUpperCase()}${p + 1}: ${ss.mean >= 0 ? '+' : ''}${ss.mean.toFixed(1)}`);
     }
 
-    // accents: did the marked notes actually speak, and does either class
-    // rush? Level is as heard by this mic position — relative, not absolute.
     let accentLine = '';
     const accHits = this.judged.filter((j) => j.judge !== 'miss' && j.note.accent && j.level > 0);
     const tapHits = this.judged.filter((j) => j.judge !== 'miss' && !j.note.accent && j.level > 0);
     if (accHits.length >= 3 && tapHits.length >= 3) {
       const med = (arr) => {
-        const s = arr.map((j) => j.level).sort((a, b) => a - b);
-        return s[Math.floor(s.length / 2)];
+        const sorted = arr.map((j) => j.level).sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)];
       };
       const accMed = med(accHits);
       const tapMed = med(tapHits);
@@ -506,7 +617,6 @@ export class RudimentsMode {
       this._accentDb = null;
     }
 
-    // per-tempo: where does it fall apart? (the ramp's whole point)
     const perTempo = [];
     for (const seg of this.chart.segments) {
       const segDevs = this.judged
@@ -521,12 +631,12 @@ export class RudimentsMode {
     const bleedNote = this.bleed.warning();
     el.innerHTML = `
       <b>${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
-      ${bleedNote ? `<span class="dim">NOTE: ${bleedNote}</span><br>` : ''}
+      ${bleedNote ? `<span class="sub">NOTE: ${bleedNote}</span><br>` : ''}
       mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
       ${accentLine}
       ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}
-      <span class="dim">per step (mean ms): ${perStep.join(' · ') || 'not enough hits per step'}</span><br>
-      <span class="dim">negative = early. The judgement is yours; these are just the facts.</span>`;
+      <span class="sub">per step (mean ms): ${perStep.join(' · ') || 'not enough hits per step'}</span><br>
+      <span class="sub">negative = early. The judgement is yours; these are just the facts.</span>`;
 
     const segs = this.chart.segments;
     store.addRun({
