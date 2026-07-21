@@ -109,12 +109,12 @@ export class HomeMode {
       </section>
 
       <nav class="tile-grid">
-        <button class="tile" data-nav="tuner"><b>Tuner</b><span>${targets}/${kit.length} targets saved</span></button>
-        <button class="tile" data-nav="rudiments"><b>Rudiments</b><span>highway trainer</span></button>
-        <button class="tile" data-nav="timing"><b>Timing</b><span>${base ? `baseline ${base.sd.toFixed(1)} ms` : 'no baseline yet'}</span></button>
-        <button class="tile" data-nav="history"><b>History</b><span>${runs.length} sessions</span></button>
-        <button class="tile" data-nav="preshow"><b>Dry run</b><span>full pre-show check</span></button>
-        <button class="tile" data-nav="calibrate"><b>Calibrate</b><span>${cal === null ? 'not yet — run me' : `${cal.toFixed(0)} ms locked in`}</span></button>
+        <button class="tile" data-i="01" data-nav="tuner"><b>Tuner</b><span>${targets}/${kit.length} targets saved</span></button>
+        <button class="tile" data-i="02" data-nav="rudiments"><b>Rudiments</b><span>highway trainer</span></button>
+        <button class="tile" data-i="03" data-nav="timing"><b>Timing</b><span>${base ? `baseline ${base.sd.toFixed(1)} ms` : 'no baseline yet'}</span></button>
+        <button class="tile" data-i="04" data-nav="history"><b>History</b><span>${runs.length} sessions</span></button>
+        <button class="tile" data-i="05" data-nav="preshow"><b>Dry run</b><span>full pre-show check</span></button>
+        <button class="tile" data-i="06" data-nav="calibrate"><b>Calibrate</b><span>${cal === null ? 'not yet — run me' : `${cal.toFixed(0)} ms locked in`}</span></button>
       </nav>
 
       <footer class="status-bar">
@@ -122,6 +122,7 @@ export class HomeMode {
           ? gaps.map((g) => `<button class="gap" data-nav="${g.nav}">▲ ${g.label}</button>`).join('')
           : '<span class="ok">● calibrated · targets saved · baseline set</span>'}
       </footer>
+      <p class="bill-row credo">Honest data · Human calls · No flattery</p>
 
       <div id="arm-sheet" class="sheet hidden">
         <h2 class="stamp">Arm show mode</h2>

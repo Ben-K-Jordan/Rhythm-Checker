@@ -84,6 +84,7 @@ export class TunerMode {
         <div id="tuner-note" class="mid">tap the head</div>
         <canvas id="tuner-needle" width="640" height="120"></canvas>
         <div id="tuner-status" class="status"></div>
+        <div class="range-bill">Typical fundamentals — kick 50–70 · floor 70–110 · rack 100–180 · snare 150–250 Hz</div>
       </div>
       <div id="tuner-lugs" class="lug-panel ${this.mode === 'lug' ? '' : 'hidden'}">
         <div class="lug-row" id="lug-list"></div>

@@ -432,3 +432,29 @@ body::before { /* photocopier grain */
 /* stamps wobble like they were hit twice */
 .stamp { transform: rotate(-1.6deg); }
 section .stamp:nth-of-type(even), .armed-context { transform: rotate(1deg); }
+
+
+/* ------------------------------------------------- screen mastheads & fill */
+.masthead {
+  display: flex; align-items: baseline; gap: .9rem;
+  border-bottom: 3px solid var(--ink); margin-bottom: 1.1rem; padding-bottom: .35rem;
+}
+.masthead h1 { font-size: 2.3rem; line-height: 1; transform: rotate(-1deg); }
+.masthead span {
+  font-family: var(--mono-font); font-size: .74rem; color: var(--pink);
+  letter-spacing: .14em; text-transform: uppercase; font-weight: 700;
+}
+.tile { position: relative; }
+.tile::after {
+  content: attr(data-i); position: absolute; top: .5rem; right: .6rem;
+  font-family: var(--mono-font); font-size: .68rem; color: var(--dim);
+  letter-spacing: .1em;
+}
+.range-bill {
+  font-family: var(--mono-font); font-size: .7rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--dim); margin-top: .6rem;
+  border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+  padding: .3rem .5rem; display: inline-block;
+}
+.bill-row.credo { margin: 1.2rem auto 0; display: block; }
+@media (max-width: 389px) { .masthead h1 { font-size: 1.9rem; } }

@@ -358,6 +358,25 @@ export class RudimentsMode {
     const T = theme();
     ctx.fillStyle = T.panel;
     ctx.fillRect(w / 2 - 130, 0, 260, h);
+    // hatched shoulders, like the printed edge of a ticket
+    ctx.strokeStyle = T.line;
+    ctx.lineWidth = 1;
+    for (const [x0, x1] of [[0, w / 2 - 150], [w / 2 + 150, w]]) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0, 0, x1 - x0, h);
+      ctx.clip();
+      for (let x = x0 - h; x < x1; x += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x, h);
+        ctx.lineTo(x + h, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = T.ink;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(w / 2 - 130, 0, 260, h);
     ctx.strokeStyle = T.pink;
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -366,10 +385,14 @@ export class RudimentsMode {
     ctx.stroke();
 
     if (!this.running) {
-      ctx.fillStyle = T.dim;
-      ctx.font = '15px ' + T.mono;
       ctx.textAlign = 'center';
-      ctx.fillText('pick a rudiment, dial the groove bar, hit Play — one bar count-in', w / 2, h / 2);
+      ctx.fillStyle = T.ink;
+      ctx.font = "64px 'Anton', system-ui";
+      ctx.fillText('LOAD IN', w / 2, h / 2 - 18);
+      ctx.fillStyle = T.dim;
+      ctx.font = '14px ' + T.mono;
+      ctx.fillText('pick a rudiment · dial the groove bar · hit play', w / 2, h / 2 + 22);
+      ctx.fillText('one bar of count-in, then the notes come down', w / 2, h / 2 + 44);
       return;
     }
     const now = this.mic.now();

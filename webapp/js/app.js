@@ -17,8 +17,13 @@ const modes = {};
 let currentScreen = 'home';
 
 const TITLES = {
-  home: '', tuner: 'Tuner', rudiments: 'Rudiments', timing: 'Timing',
-  preshow: 'Pre-show', calibrate: 'Calibrate', history: 'History',
+  home: null,
+  preshow: ['Pre-show', 'the walk-on double check'],
+  tuner: ['Tuner', 'tap the head · read the truth'],
+  rudiments: ['Rudiments', 'the highway · judged honest'],
+  timing: ['Timing', 'you vs the click'],
+  calibrate: ['Calibrate', "measure this phone's lag once"],
+  history: ['History', "weeks don't lie"],
 };
 
 function $(sel) { return document.querySelector(sel); }
@@ -29,7 +34,12 @@ function nav(name) {
   currentScreen = name;
   document.querySelectorAll('.mode').forEach((m) => m.classList.toggle('active', m.id === `mode-${name}`));
   $('#nav-back').classList.toggle('hidden', name === 'home');
-  $('#screen-title').textContent = TITLES[name] || '';
+  const mh = $('#masthead');
+  if (TITLES[name]) {
+    mh.classList.remove('hidden');
+    mh.querySelector('h1').textContent = TITLES[name][0];
+    mh.querySelector('span').textContent = TITLES[name][1];
+  } else mh.classList.add('hidden');
   const mode = modes[name];
   if (mode && mode.activate) mode.activate();
 }
