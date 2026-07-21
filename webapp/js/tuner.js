@@ -168,7 +168,18 @@ export class TunerMode {
       </div>
       <div class="row">
         <button id="tuner-save" disabled>Save as target for selected drum</button>
-      </div>`;
+      </div>
+      <details class="crib">
+        <summary>HOW TO GET A READING</summary>
+        <ul>
+          <li>Phone within arm's reach, mic toward the drum. Kill fans and house music — the tuner refuses hum instead of guessing.</li>
+          <li>One stick tap, then <b>let it ring</b>. Don't press the head. Leave about a second between taps.</li>
+          <li><b>Fundamental:</b> tap dead center. That's the drum's voice.</li>
+          <li><b>Lug match:</b> tap one to two inches in front of each lug and work around the head — the table marks the odd lug out.</li>
+          <li><b>Reso head:</b> flip the drum or reach under, and rest a hand or towel lightly on the batter so only the reso speaks. Snare: throw the wires off first.</li>
+          <li>"No clear pitch" means it heard no clean ring — honesty, not failure. Damp less, tap softer, and move off center for lug reads.</li>
+        </ul>
+      </details>`;
     this.root.querySelectorAll('.seg button[data-m]').forEach((b) => {
       b.addEventListener('click', () => {
         this.mode = b.dataset.m;

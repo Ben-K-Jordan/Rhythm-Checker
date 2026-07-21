@@ -289,6 +289,19 @@ canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 .lug.warn { border-color: var(--acid-bg); background: #fdf6dd; }
 .lug.bad { border-color: var(--pink); background: #fbe3de; }
 
+/* fold-out crib sheet: field instructions without eating screen space */
+.crib { border: 2px solid var(--ink); background: var(--panel); margin: 1rem 0; }
+.crib summary {
+  cursor: pointer; padding: .7rem .9rem; font-family: var(--mono-font);
+  font-size: .8rem; font-weight: 700; letter-spacing: .12em; list-style: none;
+}
+.crib summary::-webkit-details-marker { display: none; }
+.crib summary::before { content: '+ '; }
+.crib[open] summary::before { content: '– '; }
+.crib ul { margin: 0; padding: 0 1rem 1rem 2rem; }
+.crib li { margin-bottom: .5rem; font-size: .9rem; line-height: 1.45; }
+.crib li:last-child { margin-bottom: 0; }
+
 /* ---------------------------------------------------------- accent editor */
 .accent-panel { margin: 0 0 1rem; }
 .accent-editor { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-top: .5rem; }
