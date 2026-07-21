@@ -70,10 +70,12 @@ export function buildChart(rudiment, groove, bars, ramp, lead = 'R',
     ramp,
   });
   const notes = steps.map((offset, i) => {
+    const step = i + 1 < steps.length ? steps[i + 1] - offset : offset - steps[i - 1];
     let ch = rudiment.steps[i % rudiment.steps.length];
     if (lead === 'L') ch = swapLead(ch);
     return {
       index: i,
+      step,
       stick: ch.toUpperCase(),
       accent: accentFor(rudiment, accent, i),
       offset,
@@ -310,7 +312,11 @@ export class RudimentsMode {
       if (Math.abs(dev) < bestAbs) { bestAbs = Math.abs(dev); best = n; }
       if (dev < -MATCH_WINDOW_MS) break; // notes are ordered; nothing closer ahead
     }
-    if (!best || bestAbs > MATCH_WINDOW_MS) { this.strays++; return; }
+    // at fast tempos the fixed window would overlap the next note: cap the
+    // acceptance at 45% of the local note spacing so a hit can only ever
+    // claim the note it is genuinely nearest to
+    const winMs = Math.min(MATCH_WINDOW_MS, 0.45 * (best ? best.step : 1) * 1000);
+    if (!best || bestAbs > winMs) { this.strays++; return; }
     const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
     const dev = (t - (this.chartStart + best.offset)) * 1000;
     const judge = judgeHit(dev, windows);

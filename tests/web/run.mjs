@@ -236,6 +236,16 @@ const meterCheck = await page.evaluate(async () => {
     const none = R.buildChart(singles, g, 1, null, 'R', { mode: 'none', custom: [] });
     if (none.notes.some((n) => n.accent)) why.push('none accents');
   }
+  { // 200 BPM 16ths: per-note spacing recorded so the match window can cap
+    const R = await import('./js/rudiments.js');
+    const fast = R.buildChart(
+      R.RUDIMENTS.find((r) => r.id === 'sixteenths'),
+      { bpm: 200, meter: M.meterById('4/4'), grouping: '4' }, 4, null, 'R',
+    );
+    const step = fast.notes[0].step;
+    if (Math.abs(step - 60 / 200 / 4) > 1e-9) why.push(`fast step ${step}`);
+    if (Math.min(90, 0.45 * step * 1000) >= step * 1000 / 2) why.push('window overlaps neighbor');
+  }
   return { ok: why.length === 0, why: why.join('; ') };
 });
 check('meter-and-ramps', meterCheck.ok, meterCheck.why);
