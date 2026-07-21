@@ -408,6 +408,7 @@ export function selftest() {
     );
     const regimes = [
       ['16ths@200', synth(grid(200, 4, 32), 0.005, 3.2), 32],
+      ['16ths@300', synth(grid(300, 4, 32), 0.005, 2.6), 32],
       ['ring-16ths@120', synth(grid(120, 4, 32), 0.05, 4.6), 32],
       ['accents+taps@160', synth(grid(160, 4, 24, (i) => (i % 4 === 0 ? 0.9 : 0.3)), 0.005, 3), 24],
       ['ghosts-after-accents', synth(
