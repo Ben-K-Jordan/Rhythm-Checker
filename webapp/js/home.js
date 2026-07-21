@@ -72,7 +72,7 @@ export class HomeMode {
     const targets = kit.filter((d) => d.targetHz !== null).length;
     const base = store.get('baseline');
     const cal = store.get('calibrationMs');
-    const runs = store.get('runs') || [];
+    const runs = (store.get('runs') || []).filter((r) => r.kind !== 'show');
     const last = runs[runs.length - 1];
 
     const facts = [];

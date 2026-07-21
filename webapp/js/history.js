@@ -44,7 +44,7 @@ export class HistoryMode {
           ${runs.slice(-60).reverse().map((r) => `
             <div class="hist-row">
               <span>${r.date.slice(5, 10)} ${r.date.slice(11, 16)}</span>
-              <span>${r.label}</span>
+              <span>${(r.label || '').replace(/</g, '&lt;')}</span>
               <span>${r.meter || '4/4'}</span>
               <span>${r.bpmStart}${r.bpmEnd !== r.bpmStart ? '→' + r.bpmEnd : ''}</span>
               <span>${r.n}</span>
@@ -64,7 +64,7 @@ export class HistoryMode {
     });
     const csvBtn = this.root.querySelector('#hist-csv');
     if (csvBtn) csvBtn.addEventListener('click', () => this.exportCsv());
-    if (runs.length) this.drawTrend(runs);
+    if (runs.some((r) => r.kind !== 'show')) this.drawTrend(runs);
   }
 
   drawTrend(runs) {
@@ -73,7 +73,7 @@ export class HistoryMode {
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    const recent = runs.slice(-40);
+    const recent = runs.filter((r) => r.kind !== 'show').slice(-40);
     const maxSd = Math.max(12, ...recent.map((r) => r.sd));
     const x = (i) => 30 + (i / Math.max(1, recent.length - 1)) * (w - 60);
     const y = (sd) => h - 20 - (sd / maxSd) * (h - 40);
