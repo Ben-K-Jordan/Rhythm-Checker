@@ -12,6 +12,8 @@ htmlcov/
 # analysis output you probably don't want committed
 *.html
 !docs/**/*.html
+# the web app IS the deliverable — never ignore its HTML
+!webapp/*.html
 .rhythm-checker/
 
 # native shell
