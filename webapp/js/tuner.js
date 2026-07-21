@@ -91,11 +91,6 @@ export class TunerMode {
           <button data-m="fundamental" class="${this.mode === 'fundamental' ? 'on' : ''}">Fundamental</button>
           <button data-m="lug" class="${this.mode === 'lug' ? 'on' : ''}">Lug match</button>
         </div>
-        <select id="tuner-ref" title="tune to a note">
-          <option value="">no note ref</option>
-          ${[28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57]
-            .map((m) => { const hz = 440 * 2 ** ((m - 69) / 12); return `<option value="${hz.toFixed(2)}">${hzToNote(hz)} · ${hz.toFixed(1)} Hz</option>`; }).join('')}
-        </select>
         <select id="tuner-drum">
           <option value="">(no drum selected)</option>
           ${kit.map((d) => `<option value="${d.id}" ${d.id === this.drumId ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
@@ -110,7 +105,6 @@ export class TunerMode {
         <div id="tuner-note" class="mid">tap the head</div>
         <canvas id="tuner-needle" width="640" height="120"></canvas>
         <div id="tuner-status" class="status"></div>
-        <div class="range-bill">Typical fundamentals — kick 50–70 · floor 70–110 · rack 100–180 · snare 150–250 Hz</div>
       </div>
       <div id="tuner-lugs" class="lug-panel ${this.mode === 'lug' ? '' : 'hidden'}">
         <div class="lug-row" id="lug-list"></div>
@@ -145,10 +139,6 @@ export class TunerMode {
           : 'no drums matched — name them snare / rack / floor / kick in settings');
       });
     });
-    this.root.querySelector('#tuner-ref').addEventListener('change', (e) => {
-      this.refHz = e.target.value ? +e.target.value : null;
-      this.updateReadout();
-    });
     this.root.querySelector('#tuner-drum').addEventListener('change', (e) => {
       this.drumId = e.target.value || null;
       this.updateReadout();
@@ -182,12 +172,10 @@ export class TunerMode {
     saveBtn.disabled = !this.drumId || (!this.lastHz && !this.lugTaps.length);
     if (this.lastHz === null) return;
     hzEl.textContent = `${this.lastHz.toFixed(1)} Hz`;
-    const drumTarget = this.targetHz();
-    const target = drumTarget || this.refHz;
+    const target = this.targetHz();
     if (target) {
       const cents = centsBetween(this.lastHz, target);
-      const label = drumTarget ? `target ${drumTarget}` : `${hzToNote(target)} ref`;
-      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs ${label} Hz`;
+      noteEl.textContent = `${hzToNote(this.lastHz)} · ${cents >= 0 ? '+' : ''}${cents.toFixed(0)} cents vs target ${target} Hz`;
       this.drawNeedle(cents);
     } else {
       noteEl.textContent = `~${hzToNote(this.lastHz)} (no target saved)`;
