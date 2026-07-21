@@ -116,6 +116,18 @@ main { flex: 1; padding: 1.2rem 1rem 2rem; max-width: 60rem; width: 100%; margin
    (and the buttons that share their row) always get the full row */
 .mode-head > button.primary, .mode-head > .seg, #hist-csv,
 #rud-pattern, #tuner-drum { grid-column: 1 / -1; }
+/* ...except pairs that fit: short seg + select share a line in the tuner,
+   the history filter shares its line with a compact CSV button */
+#head-seg, #tuner-drum, #mode-history .mode-head > .seg { grid-column: auto; }
+#mode-history .mode-head { grid-template-columns: minmax(0, 1fr) auto; }
+#mode-history .mode-head #hist-csv { grid-column: auto; }
+#mode-history .seg button { padding: .55rem .4rem; font-size: .92rem; }
+/* rudiments: lead, bars, and ramp ride one line as thirds */
+#mode-rudiments .mode-head { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+#mode-rudiments .mode-head > #rud-lead,
+#mode-rudiments .mode-head > label { grid-column: span 2; }
+#mode-rudiments .mode-head > #rud-pattern,
+#mode-rudiments .mode-head > #rud-go { grid-column: 1 / -1; }
 .mode-head label {
   display: flex; flex-direction: column; align-items: stretch; gap: .3rem;
   color: var(--dim); font-family: var(--mono-font); font-size: .66rem;
@@ -260,10 +272,12 @@ button.big { font-size: 1.4rem; padding: .9rem 1.8rem; }
 .status { min-height: 1.4rem; color: var(--acid); margin-top: .5rem; font-family: var(--mono-font); font-size: .85rem; }
 canvas { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 
-.stat-row, .hud { display: flex; gap: .8rem; margin: 1rem 0; flex-wrap: wrap; }
+/* one row, always: four equal boxes that shrink together instead of wrapping */
+.stat-row, .hud { display: flex; gap: .8rem; margin: 1rem 0; }
 .stat {
   background: var(--paper); border: 2px solid var(--ink);
-  padding: .6rem 1rem; text-align: center; min-width: 6rem; box-shadow: 3px 3px 0 var(--line);
+  padding: .6rem .4rem; text-align: center; flex: 1 1 0; min-width: 0;
+  box-shadow: 3px 3px 0 var(--line);
 }
 .stat span { font-family: var(--display-font); font-size: 1.7rem; display: block; font-variant-numeric: tabular-nums; }
 .stat label { font-family: var(--mono-font); font-size: .68rem; color: var(--dim); letter-spacing: .12em; text-transform: uppercase; }
@@ -410,8 +424,9 @@ main {
   .tempo-btn, .tempo-tap { width: 54px; height: 54px; font-size: 1.6rem; }
   .tempo-tap { width: auto; padding: 0 .9rem; }
   .tempo-bpm { font-size: 2.2rem; }
-  .stat { min-width: 5rem; padding: .5rem .7rem; }
+  .stat { padding: .5rem .25rem; }
   .stat span { font-size: 1.4rem; }
+  .stat label { font-size: .58rem; letter-spacing: .07em; }
   .accent-puck { width: 40px; height: 40px; font-size: .9rem; }
   .armed-bar button { min-height: 52px; font-size: .9rem; }
 }

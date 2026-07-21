@@ -31,7 +31,7 @@ export class HistoryMode {
           <button data-f="rudiment" class="${this.filter === 'rudiment' ? 'on' : ''}">Rudiments</button>
           <button data-f="timing" class="${this.filter === 'timing' ? 'on' : ''}">Timing</button>
         </div>
-        <button id="hist-csv" ${runs.length ? '' : 'disabled'}>Export CSV</button>
+        <button id="hist-csv" title="export CSV" ${runs.length ? '' : 'disabled'}>CSV ↓</button>
       </div>
       ${runs.length ? `
         <canvas id="hist-trend" width="900" height="160"></canvas>
