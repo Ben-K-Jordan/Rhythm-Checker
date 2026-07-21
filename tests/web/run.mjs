@@ -384,8 +384,10 @@ await page.evaluate(() => window.__rhythmChecker.nav('tuner'));
 await page.click('#mode-tuner [data-tone="punk"]');
 const tone = await page.evaluate(async () => {
   const { store } = await import('./js/store.js');
-  const hz = Object.fromEntries(store.get('kit').map((d) => [d.name, d.targetHz]));
-  return { ok: hz.Snare === 230 && hz['Rack Tom'] === 130 && hz['Floor Tom'] === 92 && hz.Kick === 63 };
+  const kit = store.get('kit');
+  const all = (word, hz) => kit.filter((d) => d.name.toLowerCase().includes(word))
+    .every((d) => d.targetHz === hz);
+  return { ok: all('snare', 230) && all('rack', 130) && all('floor', 92) && all('kick', 63) };
 });
 check('tone-preset', tone.ok);
 await page.evaluate(async () => { const { store } = await import('./js/store.js'); store.reset(); });

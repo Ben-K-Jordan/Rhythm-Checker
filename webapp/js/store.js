@@ -10,11 +10,15 @@ const DEFAULTS = {
   judgeMode: 'standard',        // 'standard' | 'pro'
   lugCount: 6,
   kit: [
-    // {id, name, targetHz|null}
-    { id: 'snare', name: 'Snare', targetHz: null },
-    { id: 'tom1', name: 'Rack Tom', targetHz: null },
-    { id: 'floor', name: 'Floor Tom', targetHz: null },
-    { id: 'kick', name: 'Kick', targetHz: null },
+    // {id, name, targetHz|null} — Ben's kit (depth x diameter), targets set
+    // for a tight high-crack snare pop (Cunningham/Jordison territory)
+    { id: 'snare', name: 'Snare 5.5x14', targetHz: 260 },
+    { id: 'rack10', name: 'Rack 8x10', targetHz: 165 },
+    { id: 'rack12', name: 'Rack 9x12', targetHz: 135 },
+    { id: 'floor16', name: 'Floor 14x16', targetHz: 90 },
+    { id: 'kick22', name: 'Kick 18x22', targetHz: 60 },
+    { id: 'rack8', name: 'Rack 7x8 (sometimes)', targetHz: 195 },
+    { id: 'floor16b', name: 'Floor 16x16 (sometimes)', targetHz: 82 },
   ],
   baseline: null,               // {bpm, subdivision, mean, sd, pocketPct, date}
   preferredBpm: 120,
