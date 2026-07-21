@@ -169,10 +169,10 @@ export class TunerMode {
       <div class="row">
         <button id="tuner-save" disabled>Save as target for selected drum</button>
       </div>`;
-    this.root.querySelectorAll('.seg button').forEach((b) => {
+    this.root.querySelectorAll('.seg button[data-m]').forEach((b) => {
       b.addEventListener('click', () => {
         this.mode = b.dataset.m;
-        this.root.querySelectorAll('.seg button').forEach((x) => x.classList.toggle('on', x === b));
+        this.root.querySelectorAll('.seg button[data-m]').forEach((x) => x.classList.toggle('on', x === b));
         this.root.querySelector('#tuner-lugs').classList.toggle('hidden', this.mode !== 'lug');
         this.lugTaps = [];
         this.updateReadout();

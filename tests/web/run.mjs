@@ -295,6 +295,18 @@ const accentUi = await page.evaluate(() => {
   return { ok: after === !wasOn && customOn, why: `toggle ${wasOn}->${after} custom ${customOn}` };
 });
 check('accent-editor', accentUi.ok, accentUi.why);
+
+// head toggle must not clobber the fundamental/lug mode seg
+const headSeg = await page.evaluate(() => {
+  window.__rhythmChecker.nav('tuner');
+  document.querySelector('#head-seg button[data-h="reso"]').click();
+  return {
+    resoOn: document.querySelector('#head-seg button[data-h="reso"]').classList.contains('on'),
+    fundStillOn: document.querySelector('#mode-tuner .seg button[data-m="fundamental"]').classList.contains('on'),
+  };
+});
+check('tuner-head-toggle-isolated', headSeg.resoOn && headSeg.fundStillOn);
+await page.evaluate(() => { document.querySelector('#head-seg button[data-h="batter"]').click(); });
 await page.click('#mode-rudiments #rud-accent-modes button[data-am="pattern"]');
 await page.click('#mode-rudiments [data-meter="7/8"]');
 const groupingShown = await page.$eval('#mode-rudiments .groove-groupings', (el) => !el.classList.contains('hidden'));
