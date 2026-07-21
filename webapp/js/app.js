@@ -9,7 +9,7 @@ import { FEELS } from './feel.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
-import { RudimentsMode } from './rudiments.js';
+import { RudimentsMode, matchWindowMs } from './rudiments.js';
 import { PreshowMode, ArmedMode, VerdictMode } from './showflow.js';
 import { CalibrateMode } from './calibrate.js';
 import { HistoryMode } from './history.js';
@@ -260,7 +260,7 @@ async function boot() {
 document.addEventListener('DOMContentLoaded', () => {
   // machine-checkable health: Playwright and the diagnostics footer read this
   const st = selftest();
-  window.__rhythmChecker = { selftest: st, version: '2.1.0', nav: (n) => nav(n) };
+  window.__rhythmChecker = { selftest: st, version: '2.1.0', nav: (n) => nav(n), matchWindowMs };
   if (st.passed) {
     document.querySelector('footer').classList.add('hidden');
   } else {

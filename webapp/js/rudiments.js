@@ -28,8 +28,18 @@ export const RAMPS = [
   { id: 'r5x8', label: '+5 / 8 bars', ramp: { addBpm: 5, everyBars: 8 } },
 ];
 
-const MATCH_WINDOW_MS = 90;
+const MATCH_WINDOW_MS = 90;   // absolute accept cap (slow tempos)
+const MISS_SLACK_MS = 55;     // grace past the accept window before a miss,
+                              // covering onset-delivery jitter
 const BARS_CYCLE = [8, 16, 32, 64];
+
+// Half the local note spacing: every hit maps to its NEAREST note, so there
+// is no dead zone between notes (which used to make an in-pocket hit both a
+// stray AND leave its note to age into a miss). Capped so a slow tempo can't
+// accept a wild hit. Used by both the accept test and the miss deadline.
+export function matchWindowMs(stepSec) {
+  return Math.min(MATCH_WINDOW_MS, 0.5 * stepSec * 1000);
+}
 
 function swapLead(ch) {
   const map = { R: 'L', L: 'R', r: 'l', l: 'r' };
@@ -418,7 +428,7 @@ export class RudimentsMode {
       if (Math.abs(dev) < bestAbs) { bestAbs = Math.abs(dev); best = n; }
       if (dev < -MATCH_WINDOW_MS) break;
     }
-    const winMs = Math.min(MATCH_WINDOW_MS, 0.45 * (best ? best.step : 1) * 1000);
+    const winMs = matchWindowMs(best ? best.step : 1);
     if (!best || bestAbs > winMs) { this.strays++; return; }
     const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
     const dev = (t - (this.chartStart + best.offset)) * 1000;
@@ -483,9 +493,13 @@ export class RudimentsMode {
     }
     const now = this.mic.now();
     const cal = (store.get('calibrationMs') || 0) / 1000;
-    const deadline = MATCH_WINDOW_MS / 1000 + 0.05;
+    // a note only misses once it's past its OWN accept window plus delivery
+    // slack — tied to the same window onHit uses, so a hit and its note can
+    // never both be penalised for one late tap
     for (const n of this.chart.notes) {
-      if (n.state === 'coming' && now - cal - (this.chartStart + n.offset) > deadline) {
+      if (n.state !== 'coming') continue;
+      const deadline = matchWindowMs(n.step) / 1000 + MISS_SLACK_MS / 1000;
+      if (now - cal - (this.chartStart + n.offset) > deadline) {
         n.state = 'miss';
         this.combo = 0;
       }
@@ -628,11 +642,21 @@ export class RudimentsMode {
       if (ss) perTempo.push(`${glyph}${seg.bpm}: ±${ss.sd.toFixed(1)}ms${segMiss ? ` (${segMiss} missed)` : ''}`);
     }
 
+    // A big but CONSISTENT offset (tight spread, mean far from zero) is not
+    // rushing or dragging — it's uncalibrated system latency shifting every
+    // hit the same way. Say so plainly instead of blaming the player, since
+    // that offset is exactly what pushes in-pocket hits past the miss window.
+    const cal = store.get('calibrationMs');
+    let offsetHint = '';
+    if (s.n >= 8 && Math.abs(s.mean) > 25 && s.sd < Math.abs(s.mean)) {
+      offsetHint = `<span class="sub">These are tight (±${s.sd.toFixed(0)} ms) but sit ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(0)} ms as a group — a steady offset, not rushing or dragging. That's almost always system latency${cal === null ? " (you haven't calibrated this phone yet)" : ''}. Run Calibrate and these line up.</span><br>`;
+    }
     const bleedNote = this.bleed.warning();
     el.innerHTML = `
       <b>${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
       ${bleedNote ? `<span class="sub">NOTE: ${bleedNote}</span><br>` : ''}
       mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
+      ${offsetHint}
       ${accentLine}
       ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}
       <span class="sub">per step (mean ms): ${perStep.join(' · ') || 'not enough hits per step'}</span><br>

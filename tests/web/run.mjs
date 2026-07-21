@@ -155,6 +155,25 @@ await page.click('#rud-go');
 await page.waitForTimeout(200);
 check('rud-run-stops', (await page.locator('#rud-go').textContent()).includes('PLAY'));
 
+// -------------------------------------------- rudiments judging geometry
+// The accept window must reach at least the "ok" judge tier (60 ms) whenever
+// the note spacing physically allows it, and must equal half the spacing on
+// dense patterns (nearest-note, no dead zone). Regression: it used to be
+// 0.45*step, collapsing to 56 ms on paradiddles — below the 60 ms ok tier —
+// so in-pocket hits fell in a dead band and were both a stray AND a miss.
+const geom = await page.evaluate(() => {
+  const w = window.__rhythmChecker.matchWindowMs;
+  const stepFor = (bpm, sub) => 60 / bpm / sub; // seconds between notes
+  return {
+    para120: w(stepFor(120, 4)),   // paradiddle @120: half-step 62.5, covers ok
+    trip120: w(stepFor(120, 3)),   // triplets @120: half-step 83.3
+    singles120: w(stepFor(120, 2)), // capped at 90
+  };
+});
+check('rud-window-covers-ok-tier', geom.para120 >= 60, `paradiddle@120 window ${geom.para120.toFixed(1)}ms < 60ms ok tier`);
+check('rud-window-half-spacing', Math.abs(geom.para120 - 62.5) < 0.1 && Math.abs(geom.trip120 - 83.33) < 0.1);
+check('rud-window-capped', geom.singles120 === 90);
+
 // ------------------------------------------------------------------- timing
 await nav('timing');
 check('tm-controls', await page.locator('.tc-card').count() === 3);
