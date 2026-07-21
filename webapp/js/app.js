@@ -9,7 +9,7 @@ import { FEELS } from './feel.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
-import { RudimentsMode, matchWindowMs } from './rudiments.js';
+import { RudimentsMode, matchWindowMs, highwayPxPerSec, puckRadius } from './rudiments.js';
 import { validateRudiments } from './rudiment-data.js';
 import { PreshowMode, ArmedMode, VerdictMode } from './showflow.js';
 import { CalibrateMode } from './calibrate.js';
@@ -263,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const st = selftest();
   window.__rhythmChecker = {
     selftest: st, version: '2.2.0', nav: (n) => nav(n), matchWindowMs,
+    highwayPxPerSec, puckRadius,
     rudimentErrors: validateRudiments(),
   };
   if (st.passed) {

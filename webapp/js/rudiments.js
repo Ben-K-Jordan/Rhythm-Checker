@@ -43,6 +43,20 @@ export function matchWindowMs(stepSec) {
   return Math.min(MATCH_WINDOW_MS, 0.5 * stepSec * 1000);
 }
 
+// Horizontal zoom for the highway. Dense rudiments (sextuplet rolls, drags)
+// pack their notes tightly; scale so the TIGHTEST gap stays legible without
+// flying by so fast you can't read ahead. Floor keeps sparse charts calm.
+export function highwayPxPerSec(minStep) {
+  return Math.max(240, Math.min(440, 46 / (minStep || 0.2)));
+}
+
+// Puck radius that never lets two neighbouring notes overlap: at 0.46 of the
+// gap each, two adjacent pucks span 0.92 of the gap — a hair of daylight
+// between them — and full size (capped) once notes are comfortably spread.
+export function puckRadius(stepSec, pxPerSec, accent) {
+  return Math.max(14, Math.min(accent ? 27 : 23, 0.46 * stepSec * pxPerSec));
+}
+
 function swapLead(ch) {
   const map = { R: 'L', L: 'R' };
   return map[ch] || ch;
@@ -519,7 +533,13 @@ export class RudimentsMode {
     ctx.clearRect(0, 0, w, h);
     const T = theme();
     const nowX = 0.42 * w;
-    const pxPerSec = 300;
+    // Adaptive horizontal zoom. Dense rudiments (sextuplet rolls, drags) pack
+    // their notes tightly; at a fixed scale the pucks would overlap into an
+    // unreadable smear. Zoom so the TIGHTEST gap in this chart stays legible,
+    // without flying by so fast you can't read ahead.
+    const steps = this.chart ? this.chart.notes.map((n) => n.step).filter((s) => s > 0) : [];
+    const minStep = steps.length ? Math.min(...steps) : 0.2;
+    const pxPerSec = highwayPxPerSec(minStep);
 
     if (!this.running) {
       ctx.textAlign = 'center';
@@ -549,39 +569,44 @@ export class RudimentsMode {
     const xOf = (tt) => nowX + (tt - now) * pxPerSec;
     const midY = h / 2;
 
-    // bar lines
-    ctx.strokeStyle = 'rgba(20,18,16,.25)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 5]);
-    for (const b of this.chart.barOffsets) {
-      const x = xOf(this.chartStart + b);
-      if (x < -10 || x > w + 10) continue;
+    // beat grid: a line on EVERY pulse so the beat is always visible, with the
+    // downbeat (bar start) emphasized in red. The on-beat notes ride these
+    // lines, and each line falls exactly when its click sounds — so you can
+    // both see and hear where the beat is.
+    for (const c of this.chart.clicks) {
+      const x = xOf(this.chartStart + c.offset);
+      if (x < -4 || x > w + 4) continue;
+      ctx.strokeStyle = c.accent ? 'rgba(224,48,30,.55)' : 'rgba(20,18,16,.3)';
+      ctx.lineWidth = c.accent ? 3 : 2;
       ctx.beginPath();
-      ctx.moveTo(x, h * 0.12);
-      ctx.lineTo(x, h * 0.88);
+      ctx.moveTo(x, h * (c.accent ? 0.1 : 0.18));
+      ctx.lineTo(x, h * (c.accent ? 0.9 : 0.82));
       ctx.stroke();
     }
-    ctx.setLineDash([]);
 
     for (const n of this.chart.notes) {
       const x = xOf(this.chartStart + n.offset);
       if (x < -70 || x > w + 70) continue;
-      // grace notes (flam/drag) — small, drawn just before the primary
+      // radius rides the local spacing: full-size when notes are far apart,
+      // tucked down to fit when they're tight (sextuplets, drags) so two pucks
+      // never overlap — 0.46 of the gap each leaves a hair of daylight between.
+      const rad = puckRadius(n.step, pxPerSec, n.accent);
+      const isR = n.stick === 'R';
+      const base = isR ? T.pink : T.blue;
+      // grace notes (flam/drag) — small, above and just before the primary
+      const graceR = Math.max(6, rad * 0.4);
       for (const gt of n.graceTimes) {
         const gx = xOf(this.chartStart + gt);
         ctx.globalAlpha = n.state === 'miss' ? 0.3 : 0.85;
-        ctx.fillStyle = n.stick === 'R' ? T.pink : T.blue;
+        ctx.fillStyle = base;
         ctx.beginPath();
-        ctx.arc(gx, midY - 20, 11, 0, 7);
+        ctx.arc(gx, midY - rad - graceR - 2, graceR, 0, 7);
         ctx.fill();
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 2;
         ctx.strokeStyle = T.ink;
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      const r = n.accent ? 56 : 48;
-      const isR = n.stick === 'R';
-      const base = isR ? T.pink : T.blue;
       let ring = null;
       let alpha = 1;
       if (n.state === 'hit-perfect' || n.state === 'hit-good') ring = T.green;
@@ -590,22 +615,22 @@ export class RudimentsMode {
       ctx.globalAlpha = alpha;
       ctx.fillStyle = base;
       ctx.beginPath();
-      ctx.arc(x, midY, r / 2, 0, 7);
+      ctx.arc(x, midY, rad, 0, 7);
       ctx.fill();
-      ctx.lineWidth = 4;
+      ctx.lineWidth = Math.max(2.5, rad * 0.16);
       ctx.strokeStyle = T.ink;
       ctx.stroke();
       if (n.accent) {
         ctx.beginPath();
-        ctx.arc(x, midY, r / 2 + 6, 0, 7);
-        ctx.lineWidth = 5;
+        ctx.arc(x, midY, rad + 5, 0, 7);
+        ctx.lineWidth = 4;
         ctx.strokeStyle = T.ink;
         ctx.stroke();
       }
       if (n.buzz) { // multiple-bounce: dashed halo
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
-        ctx.arc(x, midY, r / 2 + 10, 0, 7);
+        ctx.arc(x, midY, rad + 8, 0, 7);
         ctx.lineWidth = 3;
         ctx.strokeStyle = T.ink;
         ctx.stroke();
@@ -613,20 +638,20 @@ export class RudimentsMode {
       }
       if (ring) {
         ctx.beginPath();
-        ctx.arc(x, midY, r / 2 + (n.accent ? 12 : 8), 0, 7);
-        ctx.lineWidth = 5;
+        ctx.arc(x, midY, rad + (n.accent ? 10 : 7), 0, 7);
+        ctx.lineWidth = 4;
         ctx.strokeStyle = ring;
         ctx.stroke();
       }
       ctx.fillStyle = '#fff';
-      ctx.font = `${n.accent ? 42 : 36}px 'Anton', system-ui`;
+      ctx.font = `${Math.round(rad * 1.5)}px 'Anton', system-ui`;
       ctx.textAlign = 'center';
-      ctx.fillText(n.stick, x, midY + (n.accent ? 15 : 13));
+      ctx.fillText(n.stick, x, midY + rad * 0.55);
       if (n.state === 'miss') {
         ctx.globalAlpha = 0.9;
         ctx.strokeStyle = T.pink;
-        ctx.lineWidth = 5;
-        const d = r / 2 - 6;
+        ctx.lineWidth = Math.max(3, rad * 0.18);
+        const d = rad - 4;
         ctx.beginPath();
         ctx.moveTo(x - d, midY - d);
         ctx.lineTo(x + d, midY + d);

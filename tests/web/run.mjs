@@ -188,6 +188,29 @@ check('rud-window-covers-ok-tier', geom.para120 >= 60, `paradiddle@120 window ${
 check('rud-window-half-spacing', Math.abs(geom.para120 - 62.5) < 0.1 && Math.abs(geom.trip120 - 83.33) < 0.1);
 check('rud-window-capped', geom.singles120 === 90);
 
+// -------------------------------------------- highway readability geometry
+// Dense rudiments (sextuplets, drags) used to draw fixed 48 px pucks a few px
+// apart, overlapping into an unreadable smear that hid where the beat was.
+// The zoom tightens dense charts and pucks never span more than their gap.
+const hw = await page.evaluate(() => {
+  const px = window.__rhythmChecker.highwayPxPerSec;
+  const rad = window.__rhythmChecker.puckRadius;
+  const stepFor = (bpm, sub) => 60 / bpm / sub;
+  const sext = stepFor(120, 6); // sextuplet double-paradiddle @120: tightest
+  const p = px(sext);
+  return {
+    sextScale: p, floor: px(0.5), capped: px(0.02),
+    // two adjacent pucks (2*radius) must fit inside the gap between them
+    sextSpanFits: 2 * rad(sext, p, false) <= sext * p + 0.01,
+    accentSpanFits: 2 * rad(sext, p, true) <= sext * p + 0.01,
+    sparseFull: rad(0.5, px(0.5), false) === 23, // sparse notes keep full size
+  };
+});
+check('hw-scale-adapts', hw.sextScale > hw.floor && hw.floor === 240 && hw.capped === 440,
+  `sext ${hw.sextScale.toFixed(0)} floor ${hw.floor} cap ${hw.capped}`);
+check('hw-no-overlap', hw.sextSpanFits && hw.accentSpanFits);
+check('hw-sparse-full-size', hw.sparseFull);
+
 // ------------------------------------------------------------------- timing
 await nav('timing');
 check('tm-controls', await page.locator('.tc-card').count() === 3);
