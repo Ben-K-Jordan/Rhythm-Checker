@@ -3,11 +3,13 @@
 ## The free path (recommended): installed PWA, no Apple fee
 
 `.github/workflows/deploy-pages.yml` publishes `webapp/` to GitHub Pages on
-every push to `main`. One-time: repo **Settings → Pages → Source: GitHub
-Actions**. Then on any iPhone: open the Pages URL in Safari → Share → **Add
-to Home Screen**. Full-screen, offline after first visit, updates picked up
-automatically on the next online launch. Cost: **$0, forever.** Bandmates
-install it from the same URL in thirty seconds.
+every push to `main` (it regenerates the `gh-pages` branch, which Pages
+serves — already enabled, no settings to touch). The app is live at
+<https://ben-k-jordan.github.io/Rhythm-Checker/>. On any iPhone: open that
+URL in Safari → Share → **Add to Home Screen**. Full-screen, offline after
+first visit, updates picked up automatically on the next online launch.
+Cost: **$0, forever.** Bandmates install it from the same URL in thirty
+seconds.
 
 Trade-offs vs TestFlight, honestly: no TestFlight-style install invitations
 (you share a URL instead), and Safari is the runtime (which this app is built
