@@ -9,7 +9,7 @@ import { FEELS } from './feel.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
-import { RudimentsMode, matchWindowMs, highwayPxPerSec, puckRadius, buildChart } from './rudiments.js';
+import { RudimentsMode, matchWindowMs, highwayPxPerSec, puckRadius, buildChart, clusterPrimaryDev } from './rudiments.js';
 import { meterById, accentsFor, defaultGrouping } from './meter.js';
 import { validateRudiments, rudimentById } from './rudiment-data.js';
 import { notationModel } from './notation.js';
@@ -265,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const st = selftest();
   window.__rhythmChecker = {
     selftest: st, version: '2.2.0', nav: (n) => nav(n), matchWindowMs,
-    highwayPxPerSec, puckRadius,
+    highwayPxPerSec, puckRadius, clusterPrimaryDev,
     notation: (id) => notationModel(rudimentById(id)),
     rudGaps: (id) => {
       const meter = meterById('4/4');

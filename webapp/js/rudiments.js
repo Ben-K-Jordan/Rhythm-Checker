@@ -35,6 +35,8 @@ export const ACCENT_MODES = [
 const MATCH_WINDOW_MS = 90;   // absolute accept cap (slow tempos)
 const MISS_SLACK_MS = 55;     // grace past the accept window before a miss
 const GRACE_GAP_S = 0.045;    // visual lead of a flam/drag grace before its primary
+const GRACE_MIN_EARLY_MS = 8; // an onset earlier than this, before a grace note, may be a grace
+const GRACE_LEAD_MS = 18;     // typical grace lead added back when a grace merges into its primary
 const BARS_CYCLE = [8, 16, 32, 64];
 
 // Half a gap between notes, capped at 90 ms. Used per-side for the asymmetric
@@ -44,6 +46,20 @@ const BARS_CYCLE = [8, 16, 32, 64];
 // as a stray rather than a graded miss — deliberate wild-hit rejection.
 export function matchWindowMs(gapSec) {
   return Math.min(MATCH_WINDOW_MS, 0.5 * gapSec * 1000);
+}
+
+// A flam/drag onset cluster resolves to its PRIMARY: the loudest stroke (graces
+// are soft). If the grace merged into a single onset, add back a typical grace
+// lead per grace so a clean flam reads on-time, not early. Pure + exported so
+// the geometry is machine-checked.
+export function clusterPrimaryDev(cluster, grace) {
+  let prim = cluster[0];
+  for (const e of cluster) if (e.level > prim.level) prim = e;
+  let dev = prim.dev;
+  if (cluster.length === 1 && dev < -GRACE_MIN_EARLY_MS) {
+    dev = Math.min(0, dev + GRACE_LEAD_MS * grace);
+  }
+  return { dev, level: prim.level };
 }
 
 // Horizontal zoom for the highway. Dense rudiments (sextuplet rolls, drags)
@@ -480,7 +496,11 @@ export class RudimentsMode {
     const go = this.root.querySelector('#rud-go');
     if (go) go.innerHTML = 'PLAY<span class="tri"></span>';
     if (!cancelled) {
-      for (const n of this.chart.notes) if (n.state === 'coming') n.state = 'miss';
+      for (const n of this.chart.notes) {
+        if (n.state !== 'coming') continue;
+        if (n._cluster && n._cluster.length) this.finalizeCluster(n); // a flam/drag hit at the very end
+        else n.state = 'miss';
+      }
       this.showSummary();
     }
   }
@@ -527,12 +547,24 @@ export class RudimentsMode {
     const earlyMs = matchWindowMs(best ? best.gapPrev : 0);
     const lateMs = matchWindowMs(best ? best.gapNext : 0);
     if (!best || bestDev < -earlyMs || bestDev > lateMs) { this.strays++; return; }
+    if (best.grace > 0) {
+      // Flam/drag: soft grace note(s) land just before the loud primary. Collect
+      // the whole cluster and judge it once the late window closes (in draw),
+      // taking the LOUDEST onset as the primary — so the graces aren't scored
+      // as early hits or strays. (draw's finalizeCluster does the judging.)
+      (best._cluster || (best._cluster = [])).push({ dev: bestDev, level: onset.level || 0 });
+      return;
+    }
+    this.commitHit(best, bestDev, onset.level || 0);
+  }
+
+  // score one primary against the beat: grade, streak, needle, per-stroke stat
+  commitHit(note, dev, level) {
     const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
-    const dev = bestDev;
     const judge = judgeHit(dev, windows);
-    best.state = judge === 'miss' ? 'miss' : `hit-${judge}`;
-    best.devMs = dev;
-    this.judged.push({ note: best, judge, devMs: dev, level: onset.level || 0 });
+    note.state = judge === 'miss' ? 'miss' : `hit-${judge}`;
+    note.devMs = dev;
+    this.judged.push({ note, judge, devMs: dev, level });
     if (judge === 'perfect' || judge === 'good') {
       this.combo++;
       this.bestCombo = Math.max(this.bestCombo, this.combo);
@@ -542,6 +574,14 @@ export class RudimentsMode {
     this.recentDevs.push(dev);
     if (this.recentDevs.length > 8) this.recentDevs.shift();
     this.flashJudge(judge, dev);
+  }
+
+  // A flam/drag cluster is done (its late window has passed): the LOUDEST onset
+  // is the primary; the soft ones were the graces. If the grace merged into a
+  // single onset, add back a typical grace lead so a clean flam reads on-time.
+  finalizeCluster(note) {
+    const { dev, level } = clusterPrimaryDev(note._cluster, note.grace);
+    this.commitHit(note, dev, level);
   }
 
   flashJudge(judge, devMs) {
@@ -597,8 +637,12 @@ export class RudimentsMode {
     const cal = (store.get('calibrationMs') || 0) / 1000;
     for (const n of this.chart.notes) {
       if (n.state !== 'coming') continue;
-      const deadline = matchWindowMs(n.gapNext) / 1000 + MISS_SLACK_MS / 1000;
-      if (now - cal - (this.chartStart + n.offset) > deadline) {
+      const past = now - cal - (this.chartStart + n.offset);
+      const lateSec = matchWindowMs(n.gapNext) / 1000;
+      // a flam/drag cluster whose late window has closed: judge it now (loudest
+      // = primary), rather than missing a note the drummer actually hit.
+      if (n._cluster && n._cluster.length && past > lateSec) { this.finalizeCluster(n); continue; }
+      if (past > lateSec + MISS_SLACK_MS / 1000) {
         n.state = 'miss';
         this.combo = 0;
       }

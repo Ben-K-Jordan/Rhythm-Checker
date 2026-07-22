@@ -223,6 +223,18 @@ const asym = await page.evaluate(() => {
 });
 check('rud-window-asymmetric', asym.early === 90 && asym.late < 40 && asym.early > 2 * asym.late,
   `early ${asym.early} late ${asym.late}`);
+// grace-aware scoring: a flam/drag cluster resolves to its LOUDEST stroke (the
+// primary), and a merged single onset gets its grace lead added back.
+const grace = await page.evaluate(() => {
+  const f = window.__rhythmChecker.clusterPrimaryDev;
+  return {
+    drag: f([{ dev: -55, level: 0.2 }, { dev: 0, level: 0.7 }], 2).dev,   // loud primary at 0
+    flamMerged: f([{ dev: -22, level: 0.7 }], 1).dev,                     // -22 + 18 lead
+    flamLate: f([{ dev: 6, level: 0.7 }], 1).dev,                         // late: no compensation
+  };
+});
+check('rud-grace-primary', grace.drag === 0 && grace.flamMerged === -4 && grace.flamLate === 6,
+  `drag ${grace.drag} merged ${grace.flamMerged} late ${grace.flamLate}`);
 
 // -------------------------------------------- highway readability geometry
 // Dense rudiments (sextuplets, drags) used to draw fixed 48 px pucks a few px
