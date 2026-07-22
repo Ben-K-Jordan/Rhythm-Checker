@@ -122,6 +122,13 @@ export class TimingMode {
 
   activate() {
     this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
+    // adopt the working tempo (a persona feel may have moved it since boot);
+    // update just the chip so a finished/cancelled run summary stays on screen
+    if (!this.session) {
+      this.bpm = store.get('preferredBpm') || 120;
+      const el = this.root.querySelector('#tm-bpm');
+      if (el) el.textContent = this.bpm;
+    }
   }
 
   render() {

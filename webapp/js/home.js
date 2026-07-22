@@ -99,8 +99,7 @@ export class HomeMode {
     this.root.querySelector('#home-show').addEventListener('click', () => this.nav('preshow'));
     this.root.querySelectorAll('[data-feel]').forEach((b) => {
       b.addEventListener('click', () => {
-        applyFeel(b.dataset.feel);
-        store.set('preferredBpm', FEELS[b.dataset.feel].defaultBpm);
+        applyFeel(b.dataset.feel); // also seeds the working tempo
         this.render();
       });
     });

@@ -163,10 +163,11 @@ export class TunerMode {
     });
     this.root.querySelectorAll('[data-feel]').forEach((b) => {
       b.addEventListener('click', () => {
+        const feel = FEELS[b.dataset.feel];
         const hits = applyFeel(b.dataset.feel);
         this.render();
         this.flashStatus(hits
-          ? `${FEELS[b.dataset.feel].label} set on ${hits} drums — his ballpark, your ears finish it`
+          ? `${feel.label}: ${hits} drums · ${feel.defaultBpm} BPM · picks up top in Rudiments — his ballpark, your ears finish it`
           : 'no drums matched — name them snare / rack / floor / kick in settings');
       });
     });

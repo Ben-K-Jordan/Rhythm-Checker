@@ -124,9 +124,22 @@ await page.click('[data-mode="fund"]');
 await nav('rudiments');
 check('rud-controls', await page.locator('.param-box').count() === 4);
 // all 40 essential rudiments, grouped by PAS category
-check('rud-40-options', await page.locator('#rud-pattern option').count() === 40,
-  `${await page.locator('#rud-pattern option').count()} options`);
-check('rud-4-categories', await page.locator('#rud-pattern optgroup').count() === 4);
+// 40 distinct rudiments across the four PAS category groups (an active feel may
+// add a "★ …'S PICKS" group that duplicates a few, so count distinct + non-star)
+const rudOpts = await page.evaluate(() => {
+  const vals = new Set([...document.querySelectorAll('#rud-pattern option')].map((o) => o.value));
+  const cats = [...document.querySelectorAll('#rud-pattern optgroup')].filter((g) => !g.label.startsWith('★'));
+  return { distinct: vals.size, cats: cats.length };
+});
+check('rud-40-options', rudOpts.distinct === 40, `${rudOpts.distinct} distinct`);
+check('rud-4-categories', rudOpts.cats === 4);
+// a loaded player feel (barker, chosen on Home earlier) sets the working tempo
+// and floats its five signature rudiments to the top of the picker
+check('rud-persona-tempo', (await page.locator('#rud-tempo-chip').textContent()).trim() === '170');
+check('rud-persona-picks', await page.evaluate(() => {
+  const g = document.querySelector('#rud-pattern optgroup');
+  return !!g && g.label.includes('BARKER') && g.querySelectorAll('option').length === 5;
+}));
 check('rud-data-integrity', (await page.evaluate(() => window.__rhythmChecker.rudimentErrors)).length === 0,
   (await page.evaluate(() => window.__rhythmChecker.rudimentErrors)).join('; '));
 // default (single paradiddle) is editable: 4 accent modes, 8 pucks

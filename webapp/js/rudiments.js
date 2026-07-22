@@ -11,6 +11,7 @@ import { RUDIMENTS, CATEGORIES, rudimentById } from './rudiment-data.js';
 import { rudimentNotationSVG, notationModel } from './notation.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
+import { FEELS } from './feel.js';
 import { theme } from './theme.js';
 import { wakeLock } from './audio.js';
 
@@ -219,6 +220,17 @@ export class RudimentsMode {
 
   activate() {
     this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
+    // a persona feel picked in the tuner may have moved the working tempo and
+    // surfaced its vocabulary; adopt both when idle (targeted updates, so a
+    // run report already on screen survives), never mid-run
+    if (!this.running) {
+      const saved = store.get('grooveRud');
+      this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
+      const chip = this.root.querySelector('#rud-tempo-chip');
+      if (chip) chip.textContent = this.bpm;
+      const sel = this.root.querySelector('#rud-pattern');
+      if (sel) sel.innerHTML = this.patternOptionsHTML();
+    }
     if (!this._raf) this.loop();
   }
 
@@ -236,6 +248,19 @@ export class RudimentsMode {
     store.set('preferredBpm', this.bpm);
   }
 
+  // pattern-picker options: when a player feel is loaded, its signature
+  // rudiments float to the top in their own group, above the four PAS
+  // categories. Kept separate so activate() can refresh it without a full
+  // re-render (which would wipe a just-earned run report).
+  patternOptionsHTML() {
+    const rud = this.currentRudiment();
+    const feelId = store.get('feel');
+    const feel = feelId && FEELS[feelId];
+    const picks = feel && feel.vocab ? feel.vocab.map((id) => rudimentById(id)).filter(Boolean) : [];
+    const opt = (r) => `<option value="${r.id}" ${r.id === rud.id ? 'selected' : ''}>${r.num}. ${r.name}</option>`;
+    return `${picks.length ? `<optgroup label="★ ${feel.label}'S PICKS">${picks.map(opt).join('')}</optgroup>` : ''}${CATEGORIES.map((c) => `<optgroup label="${c.label}">${RUDIMENTS.filter((r) => r.cat === c.id).map(opt).join('')}</optgroup>`).join('')}`;
+  }
+
   render() {
     const rud = this.currentRudiment();
     const meter = meterById(this.meterId);
@@ -245,11 +270,7 @@ export class RudimentsMode {
 
       <div class="rud-controls">
         <div class="rud-picker">
-          <select id="rud-pattern" aria-label="rudiment">
-            ${CATEGORIES.map((c) => `<optgroup label="${c.label}">
-              ${RUDIMENTS.filter((r) => r.cat === c.id).map((r) => `<option value="${r.id}" ${r.id === rud.id ? 'selected' : ''}>${r.num}. ${r.name}</option>`).join('')}
-            </optgroup>`).join('')}
-          </select>
+          <select id="rud-pattern" aria-label="rudiment">${this.patternOptionsHTML()}</select>
         </div>
         <div class="param-grid">
           <div class="param"><div class="param-cap">LEAD</div><button id="rud-lead" class="param-box">${this.lead}</button></div>

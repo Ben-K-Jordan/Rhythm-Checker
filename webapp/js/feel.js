@@ -14,6 +14,8 @@ export const FEELS = {
     },
     reso: { tom: 1.06, snare: 1.42, kick: 1.02 },
     voice: 'OPEN & BOOMY',
+    // triplet vocabulary: the Bonham triplet, single-stroke fours/sevens, groove diddles
+    vocab: ['single-stroke-four', 'single-stroke-seven', 'triple-stroke-roll', 'single-paradiddle', 'flam'],
   },
   barker: {
     label: 'BARKER', genre: 'PUNK SPEED', bpm: '150–190', defaultBpm: 170,
@@ -24,6 +26,8 @@ export const FEELS = {
     },
     reso: { tom: 1.19, snare: 1.5, kick: 1.05 },
     voice: 'HIGH & TIGHT',
+    // fast singles, ghost-note diddles, flam chops out of the marching world
+    vocab: ['single-stroke-roll', 'single-paradiddle', 'paradiddle-diddle', 'flam-tap', 'six-stroke-roll'],
   },
   jordison: {
     label: 'JORDISON', genre: 'BLAST METAL', bpm: '200+', defaultBpm: 200,
@@ -34,6 +38,8 @@ export const FEELS = {
     },
     reso: { tom: 1.19, snare: 1.5, kick: 1.08 },
     voice: 'DEEP & DRY',
+    // double-stroke control and blast singles for speed and endurance
+    vocab: ['double-stroke-roll', 'single-stroke-roll', 'triple-stroke-roll', 'five-stroke-roll', 'seven-stroke-roll'],
   },
 };
 
@@ -72,6 +78,14 @@ export function applyFeel(feelId) {
   const feel = FEELS[feelId];
   if (!feel) return 0;
   store.set('feel', feelId);
+  // seed this player's working tempo — their ballpark, you nudge from there.
+  // preferredBpm feeds Timing + Pre-show; grooveRud.bpm overrides it in
+  // Rudiments, so move that too when it exists.
+  if (feel.defaultBpm) {
+    store.set('preferredBpm', feel.defaultBpm);
+    const gr = store.get('grooveRud');
+    if (gr) store.set('grooveRud', { ...gr, bpm: feel.defaultBpm });
+  }
   let hits = 0;
   for (const d of store.get('kit')) {
     const role = roleOf(d.name);
