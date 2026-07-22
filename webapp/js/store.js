@@ -161,7 +161,11 @@ export const store = {
     persist();
   },
   exportJson() {
-    return JSON.stringify(state, null, 2);
+    // latency is a property of THIS device's audio chain, never of the backup —
+    // importJson ignores any imported value, but don't even write it, so the
+    // "never travels with a backup" promise holds literally.
+    const { calibrationMs, ...rest } = state;
+    return JSON.stringify(rest, null, 2);
   },
   importJson(text) {
     const data = JSON.parse(text); // throws on garbage — caller shows the error

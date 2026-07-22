@@ -194,7 +194,12 @@ export class ArmedMode {
     this.session = new ArmedSession(this.mic, { bpm });
     this.session.addEventListener('hit', () => this.updateLive());
     this.session.addEventListener('song', () => this.updateLive());
-    this.session.addEventListener('miclost', () => { /* mic-lost overlay handles it */ });
+    // Losing the mic mid-set ends the run the same way the other live modes
+    // handle it: finalize a verdict from what was captured. This stops the
+    // metronome, releases the wake-lock and detector lock, and clears the
+    // clock/waveform loops — instead of leaving them spinning under the
+    // mic-lost overlay while the click keeps playing.
+    this.session.addEventListener('miclost', () => { if (this.session) this.disarm(); });
     this.session.start();
     this.render();
     this._clock = setInterval(() => this.updateClock(), 1000);
