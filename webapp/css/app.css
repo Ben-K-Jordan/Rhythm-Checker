@@ -888,8 +888,8 @@ footer:has(.dim:empty) { display: none; }
 .head-row { position: relative; display: flex; align-items: center; gap: 7px; padding: 10px 14px 0; flex: none; }
 .head-spacer { flex: 1; }
 .gauge-card {
-  position: relative; margin: 11px 14px 0; border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink); background: #fff; padding: 10px 12px 8px; flex: none;
+  position: relative; margin: 9px 14px 0; border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink); background: #fff; padding: 8px 12px 6px; flex: none;
 }
 .gauge-state {
   position: relative; z-index: 2; margin: 0 auto 2px; width: fit-content;
@@ -898,7 +898,7 @@ footer:has(.dim:empty) { display: none; }
 }
 .gauge-state.good { color: var(--green); }
 .gauge-state.off { color: var(--red); }
-.gauge-stage { position: relative; height: 132px; max-width: 260px; margin: 0 auto; }
+.gauge-stage { position: relative; height: 116px; max-width: 260px; margin: 0 auto; }
 .gauge-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .gauge-needle {
   position: absolute; left: 50%; bottom: 7%; width: 4px; height: 78%;
@@ -924,7 +924,7 @@ footer:has(.dim:empty) { display: none; }
 .gauge-target { font: 700 8px var(--mono-font); color: var(--ink60); }
 .heads-line { font: 400 9px var(--mono-font); color: var(--ink60); text-align: center; margin-top: 5px; min-height: 1.2em; }
 .tuner-status { font: 700 9px var(--mono-font); color: var(--amber-text); text-align: center; min-height: 1.2em; margin-top: 2px; }
-.tuning-stack { position: relative; flex: 1; min-height: 0; margin: 11px 14px 0; display: flex; flex-direction: column; gap: 7px; }
+.tuning-stack { position: relative; flex: 1; min-height: 0; margin: 8px 14px 0; display: flex; flex-direction: column; gap: 7px; }
 .feel-row {
   flex: 1; display: flex; align-items: center; gap: 10px;
   border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); background: #fff;
@@ -1109,11 +1109,11 @@ footer:has(.dim:empty) { display: none; }
 /* ---------------------------------------- fidelity-review fixes (fleet) */
 .module-tile { min-height: 130px; }
 .highway-panel { min-height: 230px; }
-.feel-row { padding: 14px 12px; min-height: 72px; }
-.tuning-stack { gap: 10px; }
-.tuner-actions { padding-top: 16px; }
-.fr-name { font-size: 24px; }
-.gauge-read { border-top: 2px solid var(--ink); margin-top: 10px; padding-top: 8px; }
+.feel-row { padding: 9px 12px; min-height: 56px; }
+.tuning-stack { gap: 6px; }
+.tuner-actions { padding-top: 9px; }
+.fr-name { font-size: 21px; }
+.gauge-read { border-top: 2px solid var(--ink); margin-top: 6px; padding-top: 6px; }
 .head-row .drop { font: 600 13px var(--label-font); padding: 7px 28px 7px 12px; min-width: 112px; }
 .mm-arm { background: var(--ink); }
 .mm-arm::after {
