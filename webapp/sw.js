@@ -5,7 +5,7 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v21';
+const CACHE = 'rhythm-checker-v22';
 const ASSETS = [
   '.',
   'index.html',

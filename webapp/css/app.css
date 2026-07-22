@@ -912,9 +912,13 @@ footer:has(.dim:empty) { display: none; }
   border-radius: 50%; background: var(--red); border: 2px solid var(--ink);
   transform: translateX(-50%);
 }
-.gauge-flat, .gauge-sharp { position: absolute; bottom: 2%; font: 700 8px var(--mono-font); color: var(--red); }
-.gauge-flat { left: 2%; }
-.gauge-sharp { right: 2%; }
+.gauge-flat, .gauge-sharp {
+  position: absolute; bottom: 0; z-index: 2;
+  font: 700 8px var(--mono-font); color: var(--red);
+  background: #fff; padding: 1px 3px; line-height: 1;
+}
+.gauge-flat { left: 0; }
+.gauge-sharp { right: 0; }
 .gauge-read { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px; }
 .gauge-cents { font-family: var(--display-font); font-size: 34px; line-height: .9; }
 .gauge-cents.good { color: var(--green); }
