@@ -37,11 +37,13 @@ const MISS_SLACK_MS = 55;     // grace past the accept window before a miss
 const GRACE_GAP_S = 0.045;    // visual lead of a flam/drag grace before its primary
 const BARS_CYCLE = [8, 16, 32, 64];
 
-// Half the local note spacing: every hit maps to its NEAREST note, so there
-// is no dead zone between notes, capped so a slow tempo can't accept a wild
-// hit. Used by both the accept test and the miss deadline.
-export function matchWindowMs(stepSec) {
-  return Math.min(MATCH_WINDOW_MS, 0.5 * stepSec * 1000);
+// Half a gap between notes, capped at 90 ms. Used per-side for the asymmetric
+// accept window (early = half the previous gap, late = half the next gap), so
+// a hit maps to its nearest note with no dead zone between CLOSE notes. On
+// sparse rudiments (gaps > 180 ms) the cap does leave an outer band that reads
+// as a stray rather than a graded miss — deliberate wild-hit rejection.
+export function matchWindowMs(gapSec) {
+  return Math.min(MATCH_WINDOW_MS, 0.5 * gapSec * 1000);
 }
 
 // Horizontal zoom for the highway. Dense rudiments (sextuplet rolls, drags)
@@ -152,9 +154,16 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
   }
   notes.sort((a, b) => a.offset - b.offset);
   for (let i = 0; i < notes.length; i++) {
-    notes[i].step = i + 1 < notes.length
-      ? notes[i + 1].offset - notes[i].offset
-      : (notes[i].offset - (notes[i - 1] ? notes[i - 1].offset : notes[i].offset)) || 0.2;
+    // gaps to each neighbour, used for an ASYMMETRIC accept window: a note owns
+    // up to half the space to the note before it (early side) and half the
+    // space to the note after it (late side). A phrase-leading downbeat after a
+    // rest therefore keeps a wide early window even when a fast note follows it.
+    notes[i].gapPrev = i > 0 ? notes[i].offset - notes[i - 1].offset : Infinity;
+    notes[i].gapNext = i + 1 < notes.length ? notes[i + 1].offset - notes[i].offset : Infinity;
+    // step drives rendering spacing/overlap: the tighter adjacent gap so a puck
+    // never overlaps either neighbour.
+    notes[i].step = Math.min(notes[i].gapPrev, notes[i].gapNext);
+    if (!Number.isFinite(notes[i].step)) notes[i].step = 0.2;
   }
   return { notes, clicks, barOffsets, segments, total };
 }
@@ -368,11 +377,15 @@ export class RudimentsMode {
   }
 
   setAccentMode(mode) {
-    this.accentMode = mode;
     if (mode === 'custom' && this.customAccents.size === 0) {
+      // seed custom from whatever is currently SHOWN (pulses/none/built-in),
+      // not always the built-in pattern, so switching to custom continues from
+      // the accents you were just looking at.
       const rud = this.currentRudiment();
-      rud.notes.forEach((n, i) => { if (n.accent) this.customAccents.add(i); });
+      const shown = this.accentValue();
+      rud.notes.forEach((n, i) => { if (accentForNote(rud, shown, { ...n, phrasePos: i })) this.customAccents.add(i); });
     }
+    this.accentMode = mode;
     this.root.querySelectorAll('[data-am]')
       .forEach((b) => b.classList.toggle('on', b.dataset.am === mode));
     this.renderAccentEditor();
@@ -496,16 +509,22 @@ export class RudimentsMode {
     if (this.bleed.shouldDrop(onset.level || 0, nearClick)) return;
     let best = null;
     let bestAbs = Infinity;
+    let bestDev = 0;
     for (const n of this.chart.notes) {
       if (n.state !== 'coming') continue;
       const dev = (t - (this.chartStart + n.offset)) * 1000;
-      if (Math.abs(dev) < bestAbs) { bestAbs = Math.abs(dev); best = n; }
+      if (Math.abs(dev) < bestAbs) { bestAbs = Math.abs(dev); bestDev = dev; best = n; }
       if (dev < -MATCH_WINDOW_MS) break;
     }
-    const winMs = matchWindowMs(best ? best.step : 1);
-    if (!best || bestAbs > winMs) { this.strays++; return; }
+    // asymmetric window: half the gap to the previous note on the early side,
+    // half the gap to the next note on the late side (each capped). Keeps the
+    // window from collapsing on a note that sits after a big gap but before a
+    // fast one — the phrase-leading downbeat of every roll.
+    const earlyMs = matchWindowMs(best ? best.gapPrev : 0);
+    const lateMs = matchWindowMs(best ? best.gapNext : 0);
+    if (!best || bestDev < -earlyMs || bestDev > lateMs) { this.strays++; return; }
     const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
-    const dev = (t - (this.chartStart + best.offset)) * 1000;
+    const dev = bestDev;
     const judge = judgeHit(dev, windows);
     best.state = judge === 'miss' ? 'miss' : `hit-${judge}`;
     best.devMs = dev;
@@ -574,7 +593,7 @@ export class RudimentsMode {
     const cal = (store.get('calibrationMs') || 0) / 1000;
     for (const n of this.chart.notes) {
       if (n.state !== 'coming') continue;
-      const deadline = matchWindowMs(n.step) / 1000 + MISS_SLACK_MS / 1000;
+      const deadline = matchWindowMs(n.gapNext) / 1000 + MISS_SLACK_MS / 1000;
       if (now - cal - (this.chartStart + n.offset) > deadline) {
         n.state = 'miss';
         this.combo = 0;

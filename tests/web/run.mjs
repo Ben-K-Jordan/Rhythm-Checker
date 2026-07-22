@@ -212,6 +212,17 @@ const geom = await page.evaluate(() => {
 check('rud-window-covers-ok-tier', geom.para120 >= 60, `paradiddle@120 window ${geom.para120.toFixed(1)}ms < 60ms ok tier`);
 check('rud-window-half-spacing', Math.abs(geom.para120 - 62.5) < 0.1 && Math.abs(geom.trip120 - 83.33) < 0.1);
 check('rud-window-capped', geom.singles120 === 90);
+// asymmetric window: a phrase-leading roll downbeat sits after a big gap but
+// before a fast note — its EARLY side must stay wide (prev gap) while its LATE
+// side is tight (next gap), so an early hit on it isn't wrongly a stray/miss.
+const asym = await page.evaluate(() => {
+  const mw = window.__rhythmChecker.matchWindowMs;
+  const g = window.__rhythmChecker.rudGaps('five-stroke-roll');
+  const db = g.find((n, i) => i > 0 && n.phrasePos === 0); // a later phrase's downbeat
+  return { early: mw(db.gapPrev), late: mw(db.gapNext) };
+});
+check('rud-window-asymmetric', asym.early === 90 && asym.late < 40 && asym.early > 2 * asym.late,
+  `early ${asym.early} late ${asym.late}`);
 
 // -------------------------------------------- highway readability geometry
 // Dense rudiments (sextuplets, drags) used to draw fixed 48 px pucks a few px
