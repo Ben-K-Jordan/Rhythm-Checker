@@ -44,6 +44,21 @@ export const FEELS = {
     // (Surfacing, Purity), blazing single-stroke rolls, and flams for weight
     vocab: ['single-paradiddle', 'paradiddle-diddle', 'single-stroke-roll', 'flam', 'flam-tap'],
   },
+  haake: {
+    label: 'HAAKE', genre: 'DJENT GRIND', bpm: '110–140', defaultBpm: 120,
+    tone: {
+      // tuned tight and articulate to cut through 8-string down-tuned guitars:
+      // clicky defined kick, cracky 6" snare, big but punchy toms
+      tom: { 8: 220, 10: 185, 12: 152, 14: 120, 16: 102, 18: 86 },
+      snare: { 13: 300, 14: 285 },
+      kick: { 18: 80, 20: 76, 22: 72, 24: 66 },
+    },
+    reso: { tom: 1.2, snare: 1.5, kick: 1.1 },
+    voice: 'TIGHT & CLINICAL',
+    // polymetric djent: linear single strokes (the "Bleed" herta engine), odd
+    // seven-count groupings, and paradiddles split hand/foot for the grooves
+    vocab: ['single-stroke-roll', 'single-stroke-seven', 'single-paradiddle', 'paradiddle-diddle', 'triple-paradiddle'],
+  },
 };
 
 export function roleOf(name) {

@@ -91,7 +91,7 @@ const nav = (t) => page.evaluate((x) => window.__rhythmChecker.nav(x), t);
 // -------------------------------------------------------------------- home
 await nav('home');
 check('home-arm-toggle', await page.locator('.arm-seg').count() === 2);
-check('home-feel-cards', await page.locator('.feel-card').count() === 3);
+check('home-feel-cards', await page.locator('.feel-card').count() === 4);
 check('home-modules', await page.locator('.module-tile').count() === 4
   && await page.locator('.hero-tile').count() === 1);
 check('home-stats-real', (await page.locator('.stat-strip .statbox b').first().textContent()).trim() === '3');
@@ -114,7 +114,7 @@ check('tuner-target-shown', (await page.locator('#gauge-target').textContent()).
 await page.selectOption('#tuner-head', 'reso');
 await page.waitForTimeout(100);
 check('tuner-head-reso', (await page.locator('#gauge-target').textContent()).includes('450'));
-check('tuner-feel-rows', await page.locator('.feel-row').count() === 3);
+check('tuner-feel-rows', await page.locator('.feel-row').count() === 4);
 await page.click('[data-mode="lug"]');
 await page.waitForTimeout(100);
 check('tuner-lug-mode', await page.locator('#lug-panel:not(.hidden)').count() === 1);
