@@ -215,8 +215,9 @@ export class CalibrateMode {
         pulse.style.opacity = (0.5 + 0.5 * flash).toFixed(3);
         pulse.classList.toggle('lit', flash > 0.5);
         if (phaseEl) {
+          const toGo = Math.max(0, CLICKS - idx); // clicks left to tap on
           phaseEl.textContent = idx < IGNORE_FIRST ? 'FEEL THE BEAT…'
-            : idx >= CLICKS ? 'DONE' : 'HIT ON EACH CLICK';
+            : idx >= CLICKS ? 'DONE' : `HIT EACH CLICK · ${toGo} TO GO`;
         }
       }
     }
@@ -256,22 +257,33 @@ export class CalibrateMode {
     this.bindLatIdle();
     const resultEl = this.root.querySelector('#cal-result');
     const detailEl = this.root.querySelector('#cal-detail');
-    if (usable.length < 5) {
+    const median = (arr) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+    if (usable.length < 4) {
       resultEl.innerHTML = '&mdash;';
       detailEl.textContent = 'the mic barely heard you — move the phone closer, check the TRIG line, and start the test again.';
       return;
     }
-    const sorted = [...usable].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    const spread = Math.sqrt(usable.reduce((a, b) => a + (b - median) ** 2, 0) / usable.length);
-    if (spread > 30) {
+    // the median is the latency; drop the odd flubbed tap so it doesn't sink an
+    // otherwise-good run, then judge the spread of what's left. The bar is set
+    // to real human tapping (~30-45 ms), not metronome-tight — the median stays
+    // reliable well past that.
+    const m0 = median(usable);
+    const kept = usable.filter((v) => Math.abs(v - m0) <= 90);
+    if (kept.length < 4) {
+      resultEl.innerHTML = '&mdash;';
+      detailEl.textContent = 'your taps were all over the place — relax, lock onto the click, and run it again.';
+      return;
+    }
+    const med = median(kept);
+    const spread = Math.sqrt(kept.reduce((a, b) => a + (b - med) ** 2, 0) / kept.length);
+    if (spread > 50) {
       resultEl.innerHTML = '&mdash;';
       detailEl.textContent = `your taps varied ±${spread.toFixed(0)} ms — that's your own timing, not the phone's. Relax, lock onto the click, and run it again.`;
       return;
     }
-    store.set('calibrationMs', median);
-    resultEl.innerHTML = `${median >= 0 ? '&#8722;' : '+'}${Math.abs(median).toFixed(0)}<span> MS</span>`;
-    detailEl.textContent = `your phone hears itself ${Math.abs(median).toFixed(0)} ms ${median >= 0 ? 'late' : 'early'} (±${spread.toFixed(0)} ms). Now subtracted from every score on this phone.`;
+    store.set('calibrationMs', med);
+    resultEl.innerHTML = `${med >= 0 ? '&#8722;' : '+'}${Math.abs(med).toFixed(0)}<span> MS</span>`;
+    detailEl.textContent = `your phone hears itself ${Math.abs(med).toFixed(0)} ms ${med >= 0 ? 'late' : 'early'} (±${spread.toFixed(0)} ms). Now subtracted from every score on this phone.`;
     const chip = this.root.querySelector('.status-row .chip-stamp');
     chip.textContent = 'SET';
     chip.classList.remove('warn');
