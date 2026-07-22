@@ -429,9 +429,15 @@ footer { padding: 4px 12px calc(4px + env(safe-area-inset-bottom)); }
 footer .dim { font: 400 10px var(--mono-font); color: var(--ink40); }
 footer:has(.dim:empty) { display: none; }
 
-/* reduced motion: the flyer stands still */
+/* reduced motion (also what iOS Low-Power Mode reports): cut the flashy pulses
+   and big entrance stamps the OS asked us to reduce, but keep the two small
+   identity loops that ARE the look — the level bars and the hazard tape — plus
+   the functional hold-to-confirm fill. */
 @media (prefers-reduced-motion: reduce) {
-  .vu i, .hazard, .cta.glow, .led, .live-dot, .scan, .title-stamp { animation: none !important; }
+  *, *::before, *::after { animation: none !important; }
+  .vu i { animation: vu .5s ease-in-out infinite !important; }
+  .hazard, .poster-hazard, .sp-fill { animation: hz .6s linear infinite !important; }
+  button.holding::after { animation: holdfill var(--hold-ms, 600ms) linear forwards !important; }
 }
 
 /* ------------------------------------------------------ 13a: start poster */
