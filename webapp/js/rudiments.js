@@ -54,7 +54,11 @@ export function matchWindowMs(gapSec) {
 // the geometry is machine-checked.
 export function clusterPrimaryDev(cluster, grace) {
   let prim = cluster[0];
-  for (const e of cluster) if (e.level > prim.level) prim = e;
+  for (const e of cluster) {
+    // loudest is the primary; if two are equally loud, the one nearer the beat
+    // (graces sit before it)
+    if (e.level > prim.level || (e.level === prim.level && Math.abs(e.dev) < Math.abs(prim.dev))) prim = e;
+  }
   let dev = prim.dev;
   if (cluster.length === 1 && dev < -GRACE_MIN_EARLY_MS) {
     dev = Math.min(0, dev + GRACE_LEAD_MS * grace);
