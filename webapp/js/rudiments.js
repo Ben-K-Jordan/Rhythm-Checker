@@ -492,6 +492,10 @@ export class RudimentsMode {
       el.classList.remove('hidden');
       el.textContent = 'run cancelled — you left the Rudiments tab mid-run.';
     }
+    // stop the highway animation loop when off-screen — otherwise it keeps
+    // rescheduling every frame for the life of the page after the first visit
+    cancelAnimationFrame(this._raf);
+    this._raf = null;
   }
 
   onHit(onset) {
