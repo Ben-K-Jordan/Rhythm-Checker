@@ -23,8 +23,9 @@ export const RAMPS = [
   { id: 'r5x8', label: '+5 / 8 bars', ramp: { addBpm: 5, everyBars: 8 } },
 ];
 
-// Accent modes apply only to the editable pure patterns (accent studies);
-// standard rudiments carry their own intrinsic accents.
+// Accent modes are available on every rudiment. 'built-in' shows the
+// rudiment's own written accents; the others let you run it as an accent
+// study (accent the pulses, strip every accent, or place your own).
 export const ACCENT_MODES = [
   { id: 'pattern', label: 'built-in' },
   { id: 'pulses', label: 'pulses' },
@@ -92,12 +93,11 @@ function swapLead(ch) {
 }
 
 function accentForNote(rud, accent, note) {
-  if (!rud.editable) return note.accent; // intrinsic
   switch (accent.mode) {
     case 'none': return false;
     case 'pulses': return note.slot % rud.grid === 0;
     case 'custom': return accent.custom.includes(note.phrasePos);
-    default: return note.accent; // 'pattern' = built-in
+    default: return note.accent; // 'built-in' = the rudiment's own accents
   }
 }
 
@@ -162,7 +162,7 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
         slot: nd.slot,
         offset,
         stick: hand,
-        accent: false, // filled below (needs the note object for editable modes)
+        accent: false, // filled below (needs the note object for the accent mode)
         grace: nd.grace,
         buzz: nd.buzz,
         graceTimes: [],
@@ -274,12 +274,11 @@ export class RudimentsMode {
               ${groupings.map((g) => `<button class="pill ${g === this.grouping ? 'on' : ''}" data-grouping="${g}">${g}</button>`).join('')}` : ''}
           </div>` : ''}
         <div class="rud-notation" aria-label="notation">${this.notationSVG(rud)}</div>
-        ${rud.editable ? `
-          <div class="expand-row accents-row">
-            <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
-            ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
-          </div>
-          <div id="rud-accent-editor" class="accent-editor"></div>` : ''}
+        <div class="expand-row accents-row">
+          <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
+          ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
+        </div>
+        <div id="rud-accent-editor" class="accent-editor"></div>
       </div>
 
       <div class="highway-panel">
@@ -313,14 +312,16 @@ export class RudimentsMode {
 
     this.root.querySelector('#rud-pattern').addEventListener('change', (e) => {
       this.rudimentId = e.target.value;
+      // start each rudiment on its own written accents; custom indices from the
+      // previous pattern don't carry over
+      this.accentMode = 'pattern';
       this.customAccents.clear();
       this.render();
     });
     this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
       this.lead = this.lead === 'R' ? 'L' : 'R';
       e.currentTarget.textContent = this.lead;
-      if (this.currentRudiment().editable) this.renderAccentEditor();
-      else this.render();
+      this.renderAccentEditor();
     });
     this.root.querySelector('#rud-bars').addEventListener('click', (e) => {
       this.bars = BARS_CYCLE[(BARS_CYCLE.indexOf(this.bars) + 1) % BARS_CYCLE.length];
@@ -376,17 +377,17 @@ export class RudimentsMode {
       b.addEventListener('click', () => this.setAccentMode(b.dataset.am));
     });
     this.root.querySelector('#rud-go').addEventListener('click', () => this.toggle());
-    if (rud.editable) this.renderAccentEditor();
+    this.renderAccentEditor();
   }
 
   currentRudiment() {
     return rudimentById(this.rudimentId);
   }
 
-  // real rhythm notation for the current rudiment (accents reflect the mode on
-  // the editable patterns; intrinsic everywhere else) — a sight-reading aid.
+  // real rhythm notation for the current rudiment; accents reflect the chosen
+  // mode (built-in by default) — a sight-reading aid.
   notationSVG(rud) {
-    const accent = rud.editable ? this.accentValue() : { mode: 'pattern', custom: [] };
+    const accent = this.accentValue();
     return rudimentNotationSVG(rud, {
       lead: this.lead,
       accentOf: (n, idx) => accentForNote(rud, accent, { ...n, phrasePos: idx }),

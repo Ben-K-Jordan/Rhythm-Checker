@@ -17,9 +17,10 @@
 // guidance, and grace notes (flams/drags/buzz) render for feel but are scored
 // at their PRIMARY (the detector's refractory merges a flam into one onset).
 //
-// `editable: true` marks the pure single/double/paradiddle patterns where
-// free-form accent placement is a normal practice method; there the accent
-// editor stays available. Everywhere else the accents are the rudiment's own.
+// The accent editor is available on every rudiment (default 'built-in' shows
+// its own written accents). `editable: true` is kept as a hint marking the
+// pure single/double/paradiddle patterns whose whole point is free accent
+// placement, but it no longer gates the editor.
 
 function parseSeq(seq, grid) {
   const tokens = seq.trim().split(/\s+/);
