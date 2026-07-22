@@ -95,7 +95,7 @@ export class TimingSession extends EventTarget {
     clearTimeout(this._endTimer);
     clearTimeout(this._muteTimer);
     this.metro.stop();
-    this.metro.gain = 0.5;
+    this.metro.gain = 0.9;
     this.mic.removeEventListener('onset', this._onOnset);
     if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
     this.mic.unlockDetector(this);

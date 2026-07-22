@@ -31,7 +31,7 @@ export function playClick(ctx, time, accent, gain) {
     osc.frequency.setValueAtTime(accent ? 1150 : 820, time);
     osc.frequency.exponentialRampToValueAtTime(accent ? 780 : 560, time + 0.02);
     g.gain.setValueAtTime(0, time);
-    g.gain.linearRampToValueAtTime(gain * 1.2, time + 0.0008);
+    g.gain.linearRampToValueAtTime(gain * 1.05, time + 0.0008); // headroom so a loud click won't clip
     g.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
   } else {
     osc.frequency.value = accent ? 1318 : 880;
@@ -57,7 +57,7 @@ export class Metronome {
     this.schedule = [];      // {time, index, isBeat, isAccent} — scoring grid
     this._lookahead = 0.12;  // seconds scheduled ahead
     this._interval = 25;     // ms between scheduler runs
-    this.gain = 0.5;
+    this.gain = 0.9; // loud enough to cut through a practice pad / kit
   }
 
   gridInterval() {
@@ -131,7 +131,7 @@ export class ChartPlayer {
     this.clicks = clicks; // [{offset, accent}] relative to t0
     this.running = false;
     this.t0 = 0;
-    this.gain = 0.5;
+    this.gain = 0.9; // loud enough to cut through a practice pad / kit
     this._next = 0;
     this._timer = null;
     this._lookahead = 0.12;
