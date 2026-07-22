@@ -142,7 +142,10 @@ main {
   padding-bottom: calc(14px + env(safe-area-inset-bottom));
 }
 .mode { display: none; }
-.mode.active { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* fill the viewport when content is short, but GROW past it (and let <main>
+   scroll) when it's tall — flex-shrink:0 stops the old behaviour where the
+   middle compressed to fit and fixed bottom controls overlapped on short phones */
+.mode.active { display: flex; flex-direction: column; flex: 1 0 auto; min-height: 0; }
 
 /* ------------------------------------------------------------ header chrome */
 header.chrome {
