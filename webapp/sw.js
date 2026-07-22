@@ -5,7 +5,7 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v31';
+const CACHE = 'rhythm-checker-v32';
 const ASSETS = [
   '.',
   'index.html',
@@ -30,8 +30,9 @@ const ASSETS = [
   'js/tuner.js',
   'worklet/capture.js',
   'manifest.webmanifest',
-  'icons/icon.svg',
-  'icons/icon-180.png',
+  'icons/icon-32.png',
+  'icons/icon-192.png',
+  'icons/apple-touch-icon-180.png',
   'icons/icon-512.png',
   'fonts/Anton-Regular.ttf',
   'fonts/Oswald-400.ttf',
