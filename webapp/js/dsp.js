@@ -195,11 +195,19 @@ export class OnsetDetector {
   // proxy for accent analysis) covers the whole attack, not its first 3 ms.
   feed(samples, startTime) {
     if (this._carry && this._carry.length) {
-      const joined = new Float32Array(this._carry.length + samples.length);
-      joined.set(this._carry, 0);
-      joined.set(samples, this._carry.length);
-      startTime = this._carryTime;
-      samples = joined;
+      // Prepend the carry ONLY when this feed continues it on the audio clock.
+      // A dropped input quantum (mobile underrun) makes startTime jump; if we
+      // blindly kept counting from _carryTime, every later onset would be
+      // offset by the gap for the rest of the session. Resync instead.
+      const expected = this._carryTime + this._carry.length / this.sampleRate;
+      if (Math.abs(startTime - expected) < 0.5 * this.block / this.sampleRate) {
+        const joined = new Float32Array(this._carry.length + samples.length);
+        joined.set(this._carry, 0);
+        joined.set(samples, this._carry.length);
+        startTime = this._carryTime;
+        samples = joined;
+      }
+      this._carry = null;
     }
     const out = [];
     let off = 0;
@@ -211,7 +219,11 @@ export class OnsetDetector {
         acc += a * a;
         if (a > peak) peak = a;
       }
-      const fast = Math.sqrt(acc / this.block);
+      let fast = Math.sqrt(acc / this.block);
+      // one NaN/Inf sample (driver glitch, detached buffer) must not poison the
+      // floor — that would make every later comparison false and deafen the
+      // detector for the whole session. Treat a bad block as silence.
+      if (!Number.isFinite(fast)) fast = 0;
       const t = startTime + off / this.sampleRate;
 
       if (this._pending) {
@@ -452,6 +464,32 @@ export function selftest() {
         for (let i = 0; i < Math.floor(0.05 * sr); i++) q[st + i] += 0.08 * Math.exp(-i / dec) * Math.sin((2 * Math.PI * 480 * i) / sr);
       }
       check('onset-quiet-over-noisy-floor', detect(q).length >= 14);
+    }
+
+    // one NaN/Inf sample must not deafen the detector for the rest of the run
+    {
+      const s = new Float32Array(Math.floor(1.4 * sr));
+      let seed = 5; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff - 0.5;
+      for (let i = 0; i < s.length; i++) s[i] = 0.003 * rnd();
+      s[Math.floor(0.1 * sr)] = NaN;
+      for (let k = 0; k < 10; k++) {
+        const st = Math.floor((0.3 + k * 0.1) * sr); const dec = 0.006 * sr;
+        for (let i = 0; i < Math.floor(0.05 * sr); i++) s[st + i] += 0.6 * Math.exp(-i / dec) * Math.sin((2 * Math.PI * 500 * i) / sr);
+      }
+      check('onset-nan-recovers', detect(s).length === 10);
+    }
+
+    // a reported input-clock gap (dropped quantum) must resync, not offset every
+    // later onset: two hits, the second fed after a claimed +0.1 s jump.
+    {
+      const det = new OnsetDetector(sr);
+      const hit = (t0, len) => {
+        const s = new Float32Array(Math.floor(len * sr)); const st = Math.floor(t0 * sr); const dec = 0.006 * sr;
+        for (let i = 0; i < Math.floor(0.05 * sr) && st + i < s.length; i++) s[st + i] += 0.6 * Math.exp(-i / dec) * Math.sin((2 * Math.PI * 500 * i) / sr);
+        return s;
+      };
+      const got = [...det.feed(hit(0.2, 0.5), 0), ...det.feed(hit(0.3, 0.5), 0.6)];
+      check('onset-gap-resyncs', got.length === 2 && Math.abs(got[1].time - 0.9) < 0.005);
     }
     check('summarize-median-even-n', summarize([1, 2, 3, 10]).median === 2.5);
   }
