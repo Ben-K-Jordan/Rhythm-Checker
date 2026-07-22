@@ -126,7 +126,7 @@ canvas { max-width: 100%; height: auto; display: block; }
 @keyframes scanx { 0% { left: 2%; } 100% { left: 98%; } }
 @keyframes ping { 0% { left: 6%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { left: 82%; opacity: 0; } }
 @keyframes needle { 0%, 100% { transform: translateX(-10px); } 50% { transform: translateX(12px); } }
-@keyframes staple { 0% { transform: translateY(-50px) rotate(7deg); opacity: 0; } 55% { opacity: 1; } 100% { transform: translateY(0) rotate(-1.6deg); opacity: 1; } }
+@keyframes staple { 0% { transform: translateY(-14px) rotate(5deg); opacity: 0; } 70% { opacity: 1; } 100% { transform: translateY(0) rotate(-1.6deg); opacity: 1; } }
 
 /* ----------------------------------------------------------- app skeleton */
 #app { display: flex; flex-direction: column; flex: 1; min-height: 0; }
