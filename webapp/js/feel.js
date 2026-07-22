@@ -55,9 +55,10 @@ export const FEELS = {
     },
     reso: { tom: 1.2, snare: 1.5, kick: 1.1 },
     voice: 'TIGHT & CLINICAL',
-    // polymetric djent: linear single strokes (the "Bleed" herta engine), odd
-    // seven-count groupings, and paradiddles split hand/foot for the grooves
-    vocab: ['single-stroke-roll', 'single-stroke-seven', 'single-paradiddle', 'paradiddle-diddle', 'triple-paradiddle'],
+    // polymeter over a steady grid: asymmetrical 3/5/7 groupings that float over
+    // the pulse (triple- and five-stroke rolls, single-stroke seven), the linear
+    // 16ths behind the "Bleed" herta, and ghost-note paradiddle phrasing
+    vocab: ['single-stroke-roll', 'triple-stroke-roll', 'five-stroke-roll', 'single-stroke-seven', 'single-paradiddle'],
   },
 };
 
