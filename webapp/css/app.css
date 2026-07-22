@@ -191,7 +191,7 @@ header.chrome {
   width: 3.5px;
   height: 100%;
   transform-origin: bottom;
-  background: var(--amber);
+  background: var(--ink);
   animation: vu .5s ease-in-out infinite;
 }
 .vu i:nth-child(2) { animation-delay: -.15s; }
