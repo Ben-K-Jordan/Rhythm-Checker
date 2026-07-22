@@ -263,6 +263,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const st = selftest();
   window.__rhythmChecker = {
     selftest: st, version: '2.2.0', nav: (n) => nav(n), matchWindowMs,
+    // test/automation seam: the shared mic (an EventTarget you can dispatch
+    // synthetic 'onset' events on) and the live mode instances
+    mic, modes,
     highwayPxPerSec, puckRadius, clusterPrimaryDev,
     notation: (id) => notationModel(rudimentById(id)),
     rudGaps: (id) => {
