@@ -324,7 +324,7 @@ await page.click('#cal-stop').catch(() => {});
 await page.waitForTimeout(150);
 
 // ----------------------------------------------------------------- settings
-await page.click('#settings-btn');
+await page.click('#chrome-gear-left');
 await page.waitForTimeout(300);
 check('drawer-open', await page.locator('#settings:not(.hidden)').count() === 1);
 check('drawer-kit-rows', await page.locator('.kit-row').count() === 7);
@@ -358,7 +358,7 @@ check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1
   await p2.click('#start-btn');
   await p2.waitForSelector('#app:not(.hidden)');
   // pocket window change goes through store.set -> persist(), writing sanitized state
-  await p2.click('#settings-btn');
+  await p2.click('#chrome-gear-left');
   await p2.waitForTimeout(200);
   await p2.fill('#set-pocket', '11');
   await p2.dispatchEvent('#set-pocket', 'change');

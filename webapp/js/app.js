@@ -26,9 +26,7 @@ function $(sel) { return document.querySelector(sel); }
 
 function chromeFor(name) {
   const back = $('#nav-back');
-  const gearLeft = $('#chrome-gear-left');
   back.classList.toggle('hidden', name === 'home');
-  gearLeft.classList.toggle('hidden', name !== 'home');
   // armed screen swaps BACK for a red DISARM — leaving mid-set IS disarming
   if (name === 'armed') {
     back.innerHTML = '&#9632; DISARM';
@@ -294,7 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (currentScreen === 'armed' && modes.armed && modes.armed.session) modes.armed.disarm();
     else nav('home');
   });
-  $('#settings-btn').addEventListener('click', openSettings);
   $('#chrome-gear-left').addEventListener('click', openSettings);
   $('#settings-close').addEventListener('click', closeSettings);
   $('#drawer-scrim').addEventListener('click', closeSettings);

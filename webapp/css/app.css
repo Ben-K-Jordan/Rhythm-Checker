@@ -167,7 +167,7 @@ header.chrome {
   margin: 0 auto;
   width: 100%;
 }
-.chrome-left { min-width: 72px; display: flex; }
+.chrome-left { min-width: 72px; display: flex; align-items: center; gap: 9px; }
 .chrome-right { min-width: 72px; display: flex; justify-content: flex-end; }
 .chrome-btn {
   font: 700 11px var(--mono-font);
@@ -191,12 +191,12 @@ header.chrome {
   width: 3.5px;
   height: 100%;
   transform-origin: bottom;
+  background: var(--amber);
   animation: vu .5s ease-in-out infinite;
 }
-.vu i:nth-child(1) { background: var(--red); }
-.vu i:nth-child(2) { background: var(--amber); animation-delay: -.15s; }
-.vu i:nth-child(3) { background: var(--green); animation-delay: -.3s; }
-.vu i:nth-child(4) { background: var(--blue); animation-delay: -.45s; }
+.vu i:nth-child(2) { animation-delay: -.15s; }
+.vu i:nth-child(3) { animation-delay: -.3s; }
+.vu i:nth-child(4) { animation-delay: -.45s; }
 .gear-btn { display: flex; align-items: center; }
 .gear-btn svg { display: block; }
 .hazard {
