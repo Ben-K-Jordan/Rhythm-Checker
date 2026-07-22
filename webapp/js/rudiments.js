@@ -37,6 +37,9 @@ const MISS_SLACK_MS = 55;     // grace past the accept window before a miss
 const GRACE_GAP_S = 0.045;    // visual lead of a flam/drag grace before its primary
 const GRACE_MIN_EARLY_MS = 8; // an onset earlier than this, before a grace note, may be a grace
 const GRACE_LEAD_MS = 18;     // typical grace lead added back when a grace merges into its primary
+const GRACE_LEAD_CAP_MS = 24; // never credit back more than this, so it can't mask real rushing
+const CLUSTER_SETTLE_MS = 40; // wait past the late window before judging a cluster, so a late
+//                               primary (the detector emits ~26 ms after the hit) still lands in it
 const BARS_CYCLE = [8, 16, 32, 64];
 
 // Half a gap between notes, capped at 90 ms. Used per-side for the asymmetric
@@ -53,6 +56,7 @@ export function matchWindowMs(gapSec) {
 // lead per grace so a clean flam reads on-time, not early. Pure + exported so
 // the geometry is machine-checked.
 export function clusterPrimaryDev(cluster, grace) {
+  if (!cluster || !cluster.length) return { dev: 0, level: 0 };
   let prim = cluster[0];
   for (const e of cluster) {
     // loudest is the primary; if two are equally loud, the one nearer the beat
@@ -61,7 +65,9 @@ export function clusterPrimaryDev(cluster, grace) {
   }
   let dev = prim.dev;
   if (cluster.length === 1 && dev < -GRACE_MIN_EARLY_MS) {
-    dev = Math.min(0, dev + GRACE_LEAD_MS * grace);
+    // the grace merged into this single onset — add back a typical lead, capped
+    // so it can never mask real rushing
+    dev = Math.min(0, dev + Math.min(GRACE_LEAD_MS * grace, GRACE_LEAD_CAP_MS));
   }
   return { dev, level: prim.level };
 }
@@ -643,9 +649,14 @@ export class RudimentsMode {
       if (n.state !== 'coming') continue;
       const past = now - cal - (this.chartStart + n.offset);
       const lateSec = matchWindowMs(n.gapNext) / 1000;
-      // a flam/drag cluster whose late window has closed: judge it now (loudest
-      // = primary), rather than missing a note the drummer actually hit.
-      if (n._cluster && n._cluster.length && past > lateSec) { this.finalizeCluster(n); continue; }
+      // a flam/drag cluster: judge once its late window has closed AND the
+      // detector has had time to deliver a late primary (it emits ~26 ms after
+      // the hit) — otherwise a late primary would land after we'd already
+      // scored the grace, reading falsely on-time plus a phantom stray.
+      if (n._cluster && n._cluster.length && past > lateSec + CLUSTER_SETTLE_MS / 1000) {
+        this.finalizeCluster(n);
+        continue;
+      }
       if (past > lateSec + MISS_SLACK_MS / 1000) {
         n.state = 'miss';
         this.combo = 0;
