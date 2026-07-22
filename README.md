@@ -23,7 +23,7 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
   <tr>
     <td align="center"><img src="docs/media/start.gif" width="240" alt="Start poster"><br><sub><b>Start</b>: the poster. Mic on, everything stays on this phone.</sub></td>
     <td align="center"><img src="docs/media/home.gif" width="240" alt="Practice home"><br><sub><b>Home</b>: what the data says, every tool one tap away.</sub></td>
-    <td align="center"><img src="docs/media/tuner.gif" width="240" alt="Tuner"><br><sub><b>Tuner</b>: genre targets sized to your drums, batter and reso heads.</sub></td>
+    <td align="center"><img src="docs/media/tuner.gif" width="240" alt="Tuner"><br><sub><b>Tuner</b>: four players' targets sized to your drums, batter and reso heads.</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/media/rudiments.gif" width="240" alt="Rudiment highway"><br><sub><b>Rudiments</b>: the highway. Every hit judged with its signed ms error.</sub></td>
@@ -54,10 +54,14 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
 * **Tuner**: tap the head, read the fundamental in Hz, note, and cents. Every
   drum carries two targets, batter and reso, with the gap between the heads
   shown in semitones and what that gap does to the feel. One tap loads a
-  genre's targets sized to your exact drums: rock aims at John Bonham, punk at
-  Travis Barker, metal at Joey Jordison. Lug mode logs a pass around the drum
-  and marks the lugs that are off. A fold-out crib sheet on the page covers
-  how to get a clean reading at soundcheck.
+  player's whole setup, sized to your exact drums — rock at John Bonham, punk
+  at Travis Barker, metal at Joey Jordison, djent at Tomas Haake. It writes
+  their batter and reso targets, seeds that player's working tempo into the
+  trainer and timing screens, and floats their signature rudiments to the top
+  of the rudiment picker (Haake's 3/5/7 groupings, Bonham's single-stroke
+  triplets): their ballpark, your ears and hands finish it. Lug mode logs a
+  pass around the drum and marks the lugs that are off, and a fold-out crib
+  sheet covers how to get a clean reading at soundcheck.
 * **Pre-show**: the backstage pre-flight. Venue and set details, then a
   readiness checklist where every row is a real check: mic calibrated, tuning
   targets saved, hands baseline recorded, click confirmed in-ear only, free
