@@ -14,8 +14,9 @@ export const FEELS = {
     },
     reso: { tom: 1.06, snare: 1.42, kick: 1.02 },
     voice: 'OPEN & BOOMY',
-    // triplet vocabulary: the Bonham triplet, single-stroke fours/sevens, groove diddles
-    vocab: ['single-stroke-four', 'single-stroke-seven', 'triple-stroke-roll', 'single-paradiddle', 'flam'],
+    // his triplets/sextuplet fills are SINGLE strokes (the RLK "Bonham triplet",
+    // Max Roach's RLRK); single-stroke fours/sevens + paradiddle grooves
+    vocab: ['single-stroke-roll', 'single-stroke-four', 'single-stroke-seven', 'single-paradiddle', 'double-paradiddle'],
   },
   barker: {
     label: 'BARKER', genre: 'PUNK SPEED', bpm: '150–190', defaultBpm: 170,
@@ -26,8 +27,9 @@ export const FEELS = {
     },
     reso: { tom: 1.19, snare: 1.5, kick: 1.05 },
     voice: 'HIGH & TIGHT',
-    // fast singles, ghost-note diddles, flam chops out of the marching world
-    vocab: ['single-stroke-roll', 'single-paradiddle', 'paradiddle-diddle', 'flam-tap', 'six-stroke-roll'],
+    // drumline heritage: the paradiddle family he drills (single/double/diddle)
+    // plus fast singles and the flams from his warm-up
+    vocab: ['single-stroke-roll', 'single-paradiddle', 'double-paradiddle', 'paradiddle-diddle', 'flam-tap'],
   },
   jordison: {
     label: 'JORDISON', genre: 'BLAST METAL', bpm: '200+', defaultBpm: 200,
@@ -38,8 +40,10 @@ export const FEELS = {
     },
     reso: { tom: 1.19, snare: 1.5, kick: 1.08 },
     voice: 'DEEP & DRY',
-    // double-stroke control and blast singles for speed and endurance
-    vocab: ['double-stroke-roll', 'single-stroke-roll', 'triple-stroke-roll', 'five-stroke-roll', 'seven-stroke-roll'],
+    // metal engine: blast = a single-stroke roll split snare/bass; push-pull
+    // doubles; the six-stroke roll is the classic metal fill; paradiddles for
+    // hand/foot (double-bass) coordination
+    vocab: ['single-stroke-roll', 'double-stroke-roll', 'six-stroke-roll', 'single-paradiddle', 'paradiddle-diddle'],
   },
 };
 
