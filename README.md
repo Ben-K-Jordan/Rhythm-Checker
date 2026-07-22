@@ -68,12 +68,13 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
   percentage, and set progress. Disarm stamps the verdict: a giant DIALED or
   NOT YET with per-song drift bars and honest numbers underneath, saved to
   history with one tap.
-* **Rudiments**: a falling-note highway (paradiddles, doubles, triplets, and
-  more) synced to a sample-accurate metronome. Every hit is judged
-  perfect, good, ok, or miss with its signed ms error, streaks, and an honest
-  end-of-run report including per-step means ("your RR doubles run early").
-  Accents go wherever you want them: tap any note in the pattern to place
-  them, or use pulse and moving presets. The groove bar makes the practice
+* **Rudiments**: a falling-note highway across all 40 PAS rudiments
+  (paradiddles, rolls, flams, drags, ratamacues) synced to a sample-accurate
+  metronome. Every hit is judged perfect, good, ok, or miss with its signed ms
+  error, streaks, and an honest end-of-run report including per-step means
+  ("your RR doubles run early"). Accents are yours on every one of them: keep
+  the rudiment's written accents, accent the pulses, strip them all, or tap
+  your own onto the pattern. The groove bar makes the practice
   variables one-tap adjustable: big BPM steps, tap tempo, time signatures
   from 2/4 to 12/8 with odd groupings (7/8 as 2+2+3, 3+2+2, or 2+3+2), lead
   hand switch, and a **tempo ramp** (+5 BPM every 4 bars) whose report breaks
@@ -90,11 +91,13 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
 The look is a photocopied gig poster: cream newsprint, hard ink borders, one
 loud red, hazard stripes, offset shadows with zero blur, and newsprint grain
 over everything. Type is Anton for the shouting, Oswald for the labels, and
-Space Mono for every number. A four-bar VU meter bounces in the header, the
-hazard tape crawls, the tuner needle swings, and verdict stamps slam in. All
-of it is drawn in CSS and SVG with no raster assets, runs GPU-composited so
-the audio thread never feels it, and switches off for users with Reduce
-Motion enabled.
+Space Mono for every number. A four-bar level meter ticks in the header next
+to the wordmark, the hazard tape crawls, the tuner needle swings, and verdict
+stamps slam in. All of it is drawn in CSS and SVG with no raster assets, runs
+GPU-composited so the audio thread never feels it, and under Reduce Motion
+(which iOS Low-Power Mode also triggers) pares back to just those two small
+identity loops — the level bars and the hazard tape — with the flashy motion
+switched off.
 
 ## The deep analyzer
 
