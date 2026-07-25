@@ -58,6 +58,10 @@ export class Metronome {
     this._lookahead = 0.12;  // seconds scheduled ahead
     this._interval = 25;     // ms between scheduler runs
     this.gain = 0.9; // loud enough to cut through a practice pad / kit
+    // audio-clock time after which clicks are silenced (grid keeps running).
+    // Deterministic, unlike flipping `gain` from a setTimeout — a late timer
+    // there let already-scheduled clicks leak past the intended cutoff.
+    this.muteAfter = null;
   }
 
   gridInterval() {
@@ -93,7 +97,8 @@ export class Metronome {
       const pulseIndex = Math.floor(this._nextGrid / this.subdivision);
       const isAccent = isBeat
         && this.meter.accents.includes(pulseIndex % this.meter.pulses);
-      if (isBeat) this._click(t, isAccent);
+      const muted = this.muteAfter !== null && t >= this.muteAfter - 1e-9;
+      if (isBeat && !muted) this._click(t, isAccent);
       this.schedule.push({ time: t, index: this._nextGrid, isBeat, isAccent });
       if (this.schedule.length > 4096) this.schedule.splice(0, 1024);
       this._nextGrid++;

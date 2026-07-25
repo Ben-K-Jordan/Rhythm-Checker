@@ -227,7 +227,7 @@ tool.
    unattributable, not forced into the average.
 
 Every statistic is verified by tests that synthesize a drummer with *known*
-flaws and require the report to find them: 78 Python tests (`pytest`), plus a
+flaws and require the report to find them: 84 Python tests (`pytest`), plus a
 Playwright browser harness that runs the real app in Chromium with a fake
 microphone, executes an in-page DSP ground-truth self-test, and walks every
 screen (`node tests/web/run.mjs`, with `playwright` resolvable on

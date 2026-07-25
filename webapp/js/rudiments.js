@@ -340,19 +340,28 @@ export class RudimentsMode {
       this.render();
     });
     this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
+      // ignored mid-run: the chart was built with the lead at PLAY time, and
+      // the run report + saved history label read this.lead afterwards — a
+      // mid-run flip would label an R-lead run as L-lead and swap every hand
+      // in the per-stroke report
+      if (this.running) return;
       this.lead = this.lead === 'R' ? 'L' : 'R';
       e.currentTarget.textContent = this.lead;
       this.renderAccentEditor();
     });
     this.root.querySelector('#rud-bars').addEventListener('click', (e) => {
+      if (this.running) return;
       this.bars = BARS_CYCLE[(BARS_CYCLE.indexOf(this.bars) + 1) % BARS_CYCLE.length];
       e.currentTarget.textContent = this.bars;
     });
     this.root.querySelector('#rud-tempo-chip').addEventListener('click', () => {
+      // a full render mid-run would relabel STOP as PLAY over a live session
+      if (this.running) return;
       this.expand = this.expand === 'tempo' ? null : 'tempo';
       this.render();
     });
     this.root.querySelector('#rud-meter-chip').addEventListener('click', () => {
+      if (this.running) return;
       this.expand = this.expand === 'meter' ? null : 'meter';
       this.render();
     });
@@ -514,6 +523,12 @@ export class RudimentsMode {
     };
     this.mic.addEventListener('lost', this._lostHandler);
     this.root.querySelector('#rud-go').innerHTML = 'STOP';
+    // fresh run, fresh boxes — run 1's streak/accuracy must not linger into
+    // run 2's first frames
+    const comboEl = this.root.querySelector('#rud-combo');
+    if (comboEl) comboEl.textContent = '0';
+    const accEl = this.root.querySelector('#rud-acc');
+    if (accEl) accEl.innerHTML = '&mdash;';
     const runSecs = countInDur + this.chart.total + 1;
     this._endTimer = setTimeout(() => this.stop(false), (runSecs + 0.4) * 1000);
   }
@@ -527,6 +542,10 @@ export class RudimentsMode {
     if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
     const go = this.root.querySelector('#rud-go');
     if (go) go.innerHTML = 'PLAY<span class="tri"></span>';
+    // a tempo ramp rewrote the chip during the run; the NEXT run starts at
+    // this.bpm, so showing the final ramped figure would mislabel PLAY
+    const chip = this.root.querySelector('#rud-tempo-chip');
+    if (chip) chip.textContent = this.bpm;
     if (!cancelled) {
       for (const n of this.chart.notes) {
         if (n.state !== 'coming') continue;
@@ -616,6 +635,16 @@ export class RudimentsMode {
     this.commitHit(note, dev, level);
   }
 
+  // streak + accuracy boxes, shared by matched hits and timed-out misses
+  updateStats() {
+    const combo = this.root.querySelector('#rud-combo');
+    if (combo) combo.textContent = String(this.combo);
+    const hits = this.judged.filter((j) => j.judge !== 'miss').length;
+    const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
+    const acc = this.root.querySelector('#rud-acc');
+    if (acc && seen) acc.textContent = `${((100 * hits) / seen).toFixed(0)}%`;
+  }
+
   flashJudge(judge, devMs) {
     const chip = this.root.querySelector('#rud-judge-chip');
     const num = this.root.querySelector('#rud-judge-num');
@@ -623,10 +652,7 @@ export class RudimentsMode {
     num.textContent = judge === 'miss' ? '✗' : `${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}`;
     cap.textContent = judge === 'miss' ? 'MISS' : `${judge.toUpperCase()}·MS`;
     chip.className = `judge-chip ${judge}`;
-    this.root.querySelector('#rud-combo').textContent = String(this.combo);
-    const hits = this.judged.filter((j) => j.judge !== 'miss').length;
-    const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
-    if (seen) this.root.querySelector('#rud-acc').textContent = `${((100 * hits) / seen).toFixed(0)}%`;
+    this.updateStats();
     const mean = this.recentDevs.reduce((a, b) => a + b, 0) / this.recentDevs.length;
     const needle = this.root.querySelector('#jb-needle');
     if (needle) needle.style.left = `${50 + Math.max(-42, Math.min(42, (mean / 60) * 42))}%`;
@@ -682,6 +708,7 @@ export class RudimentsMode {
       if (past > lateSec + MISS_SLACK_MS / 1000) {
         n.state = 'miss';
         this.combo = 0;
+        this.updateStats(); // a timed-out miss must reset the visible streak too
       }
     }
     const rel = now - this.chartStart;
@@ -789,7 +816,10 @@ export class RudimentsMode {
     }
 
     if (now < this.chartStart) {
-      const pulsesLeft = Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses));
+      // clamp: the 0.2 s player start delay is inside chartStart - now, which
+      // otherwise flashes "5" before a 4-beat count-in (or "6" at 300+ BPM)
+      const pulsesLeft = Math.min(this.grooveUsed.meter.pulses,
+        Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses)));
       ctx.fillStyle = T.ink;
       ctx.font = "110px 'Anton', system-ui";
       ctx.textAlign = 'center';

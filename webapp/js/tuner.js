@@ -152,7 +152,8 @@ export class TunerMode {
     });
     this.root.querySelector('#tuner-head').addEventListener('change', (e) => {
       this.head = e.target.value;
-      this.render();
+      this.lugTaps = []; // a lug pass is per-head — mixing batter and reso
+      this.render();     // taps would flag every lug and corrupt SAVE AS TARGET
     });
     this.root.querySelectorAll('[data-mode]').forEach((b) => {
       b.addEventListener('click', () => {

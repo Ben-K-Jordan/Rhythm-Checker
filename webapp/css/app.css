@@ -118,14 +118,9 @@ canvas { max-width: 100%; height: auto; display: block; }
 @keyframes flick { 0%, 17%, 19%, 54%, 56%, 100% { opacity: 1; } 18%, 55% { opacity: .35; } }
 @keyframes glow { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
 @keyframes breathe { 0%, 100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(-10deg) scale(1.08); } }
-@keyframes marquee { to { transform: translateX(-50%); } }
-@keyframes tick { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
 @keyframes swingN { 0%, 100% { transform: translateX(-50%) rotate(-23deg); } 50% { transform: translateX(-50%) rotate(13deg); } }
-@keyframes lugpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(224, 48, 30, .5); } 50% { box-shadow: 0 0 0 5px rgba(224, 48, 30, 0); } }
-@keyframes stamp { 0% { transform: rotate(-4deg) scale(2.4); opacity: 0; } 60% { opacity: 1; } 72% { transform: rotate(-4deg) scale(.92); } 100% { transform: rotate(-4deg) scale(1); opacity: 1; } }
 @keyframes scanx { 0% { left: 2%; } 100% { left: 98%; } }
 @keyframes ping { 0% { left: 6%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { left: 82%; opacity: 0; } }
-@keyframes needle { 0%, 100% { transform: translateX(-10px); } 50% { transform: translateX(12px); } }
 @keyframes staple { 0% { transform: translateY(-14px) rotate(5deg); opacity: 0; } 70% { opacity: 1; } 100% { transform: translateY(0) rotate(-1.6deg); opacity: 1; } }
 
 /* ----------------------------------------------------------- app skeleton */
@@ -205,7 +200,6 @@ header.chrome {
 }
 
 /* -------------------------------------------------------- shared components */
-.gutter { padding-left: 14px; padding-right: 14px; }
 
 .title-stamp { /* module page title */
   font-family: var(--display-font);
@@ -277,8 +271,6 @@ header.chrome {
   text-transform: uppercase;
 }
 .cta:active { background: var(--ink); }
-.cta.glow { animation: glow 1.5s ease-in-out infinite; }
-.cta.green { background: var(--green); }
 .cta:disabled { background: var(--cream3); color: var(--ink40); box-shadow: 3px 3px 0 var(--ink); animation: none; }
 .cta .tri {
   display: inline-block;
@@ -335,14 +327,6 @@ header.chrome {
 .drop.amber { background-color: var(--amber); }
 .drop.red { background-color: var(--red); color: #fff; }
 
-.card {
-  border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink);
-  background: #fff;
-  position: relative;
-}
-.card.ink { background: var(--ink); color: var(--paper); }
-.card.row-shadow { box-shadow: 3px 3px 0 var(--ink); }
 
 
 .switch { /* settings toggle */
@@ -451,7 +435,7 @@ footer:has(.dim:empty) { display: none; }
 .poster-hazard {
   position: relative; height: 11px; margin: 8px 0 0;
   background: repeating-linear-gradient(45deg, var(--ink) 0 13px, var(--amber) 13px 26px);
-  background-size: 37px 37px;
+  background-size: 34px 34px;
   border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
   animation: hz .6s linear infinite; flex: none;
 }
@@ -531,7 +515,7 @@ footer:has(.dim:empty) { display: none; }
   border: 2px solid var(--ink); background: #fff; box-shadow: 2px 2px 0 var(--ink);
   width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
 }
-.drawer-hazard { height: 9px; margin: 8px 14px 0; background-size: 31px 31px;
+.drawer-hazard { height: 9px; margin: 8px 14px 0; background-size: 34px 34px;
   background-image: repeating-linear-gradient(45deg, var(--ink) 0 11px, var(--amber) 11px 22px); }
 #settings-body { overflow-y: auto; padding: 4px 14px 12px; }
 .set-group { margin-top: 12px; }
@@ -918,7 +902,6 @@ footer:has(.dim:empty) { display: none; }
   font: 700 8px var(--mono-font); padding: 2px 5px; letter-spacing: .5px; flex: none;
   color: #fff; background: var(--ink);
 }
-.log-tag.red { background: var(--red); }
 .log-tag.blue { background: var(--blue); }
 .log-tag.green { background: var(--green); }
 .log-title { flex: 1; font: 400 11px var(--mono-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -926,8 +909,6 @@ footer:has(.dim:empty) { display: none; }
   font: 700 10px var(--mono-font); border: 2px solid var(--ink); padding: 3px 6px; flex: none;
   background: #fff; box-shadow: 2px 2px 0 var(--ink);
 }
-.log-badge.solid.green { background: var(--green); color: #fff; }
-.log-badge.solid.red { background: var(--red); color: #fff; }
 .log-empty { font: 400 11px var(--mono-font); color: var(--ink60); padding: 14px 4px; }
 .log-more {
   margin: 10px 14px 0; padding: 8px 0 2px; border-top: 2px dashed rgba(20, 18, 16, .3);

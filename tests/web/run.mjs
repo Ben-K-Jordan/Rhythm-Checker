@@ -164,8 +164,8 @@ const nota = await page.evaluate(() => {
   const m = window.__rhythmChecker.notation;
   const ddt = m('double-drag-tap')[0];       // grid6, 3 notes -> triplet
   const dp = m('double-paradiddle')[0];       // grid6, 6 notes -> sextuplet
-  const tr = m('triple-ratamacue');           // resolves to a whole-beat quarter
-  const qb = tr.find((b) => !b.rest && b.notes.length === 1);
+  const fl = m('flam');                       // fR! fills its beat -> plain quarter
+  const qb = fl.find((b) => !b.rest && b.notes.length === 1);
   return {
     ddtTuplet: ddt.tuplet, dpTuplet: dp.tuplet,
     quarter: qb.notes[0].beams === 0 && qb.notes[0].dot === false && qb.tuplet === null,
@@ -189,7 +189,8 @@ await page.click('#rud-tempo-chip');
 await page.waitForTimeout(80);
 check('rud-tempo-expand', await page.locator('[data-ramp]').count() === 4);
 await page.click('[data-bpm="5"]');
-check('rud-bpm-step', (await page.locator('#rud-tempo-chip').textContent()).trim() !== '');
+check('rud-bpm-step', (await page.locator('#rud-tempo-chip').textContent()).trim() === '175',
+  `chip=${(await page.locator('#rud-tempo-chip').textContent()).trim()} (want 170+5)`);
 // meter expansion offers odd meters with groupings
 await page.click('#rud-meter-chip');
 await page.waitForTimeout(80);
@@ -304,7 +305,8 @@ await page.click('[data-f="all"]');
 await nav('calibrate');
 check('cal-two-steps', await page.locator('.num-chip').count() === 2);
 check('cal-trig-mark', await page.locator('#trig-mark').count() === 1);
-check('cal-result-shown', (await page.locator('#cal-result').textContent()).includes('8'));
+check('cal-result-shown', /^[−+-]8 ?MS$/.test((await page.locator('#cal-result').textContent()).trim()),
+  `result=${(await page.locator('#cal-result').textContent()).trim()}`);
 // starting the test shows a 3-2-1 countdown before the clicks begin
 await page.click('#cal-go');
 await page.waitForTimeout(400);
@@ -386,7 +388,7 @@ check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1
   await p2.evaluate(() => window.__rhythmChecker.nav('history'));
   await p2.waitForTimeout(150);
   const histText = await p2.locator('#mode-history').textContent();
-  check('persist-boot-survives', bootErrors.length === 0 && !histText.includes('Invalid'),
+  check('persist-boot-survives', bootErrors.length === 0 && !/invalid/i.test(histText),
     bootErrors.join('; ') || 'invalid date rendered');
   await ctx2.close();
 }

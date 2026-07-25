@@ -10,14 +10,17 @@ function escText(text) {
   return d.innerHTML;
 }
 
-// consecutive practice days ending today or yesterday
+// consecutive practice days ending today or yesterday — in LOCAL days:
+// an evening session must count for the user's today, not UTC's tomorrow
 function streakDays(runs) {
-  const days = new Set(runs.map((r) => (r.date || '').slice(0, 10)));
-  if (!days.size) return 0;
-  const day = (offset) => {
-    const d = new Date(Date.now() - offset * 86400000);
-    return d.toISOString().slice(0, 10);
+  const key = (instant) => {
+    const d = new Date(instant);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   };
+  const days = new Set(runs.map((r) => (r.date ? key(r.date) : '')));
+  if (!days.size) return 0;
+  const day = (offset) => key(Date.now() - offset * 86400000);
   let start = 0;
   if (!days.has(day(0))) {
     if (!days.has(day(1))) return 0;

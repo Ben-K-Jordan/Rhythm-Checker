@@ -11,12 +11,22 @@ function esc(text) {
   return d.innerHTML;
 }
 
+// Calendar math is LOCAL throughout: run dates are stored as UTC instants,
+// but "did I practice Friday" means the user's Friday. Mixing UTC day keys
+// with a local weekday anchor shifted every evening session into the wrong
+// cell for anyone not living in UTC.
+function localDayKey(instant) {
+  const d = new Date(instant);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 function dayKey(offsetDays) {
-  return new Date(Date.now() - offsetDays * 86400000).toISOString().slice(0, 10);
+  return localDayKey(Date.now() - offsetDays * 86400000);
 }
 
 function streakDays(runs) {
-  const days = new Set(runs.map((r) => (r.date || '').slice(0, 10)));
+  const days = new Set(runs.map((r) => (r.date ? localDayKey(r.date) : '')));
   if (!days.size) return 0;
   let start = days.has(dayKey(0)) ? 0 : days.has(dayKey(1)) ? 1 : -1;
   if (start < 0) return 0;
@@ -62,7 +72,7 @@ export class HistoryMode {
     // 10-week heatmap: columns = weeks (oldest left), rows = Mon..Sun
     const counts = new Map();
     for (const r of all) {
-      const k = (r.date || '').slice(0, 10);
+      const k = r.date ? localDayKey(r.date) : '';
       counts.set(k, (counts.get(k) || 0) + 1);
     }
     const today = new Date();
@@ -132,7 +142,7 @@ export class HistoryMode {
 
   exportCsv() {
     const runs = this.runs();
-    const cols = ['date', 'kind', 'label', 'meter', 'bpmStart', 'bpmEnd', 'n', 'mean', 'sd', 'accuracy', 'missed', 'strays', 'pocketPct', 'result', 'heldPct', 'accentDb'];
+    const cols = ['date', 'kind', 'label', 'meter', 'bpmStart', 'bpmEnd', 'n', 'mean', 'sd', 'accuracy', 'missed', 'strays', 'pocketPct', 'unaligned', 'accentDb'];
     const csv = [cols.join(',')].concat(
       runs.map((r) => cols.map((c) => {
         const v = r[c];
@@ -145,7 +155,8 @@ export class HistoryMode {
       }).join(',')),
     ).join('\n');
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    // BOM so Excel decodes UTF-8 — every timing label carries a '÷'
+    a.href = URL.createObjectURL(new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }));
     a.download = 'rhythm-checker-history.csv';
     a.click();
   }

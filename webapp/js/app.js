@@ -85,6 +85,9 @@ function closeSettings() {
   $('#settings').classList.add('hidden');
   if (modes.home && currentScreen === 'home') modes.home.render();
   if (modes.tuner) modes.tuner.render();
+  // an import or RESET ALL in the drawer replaces the runs — the screen
+  // whose entire content is that data must not keep showing the old ones
+  if (modes.history && currentScreen === 'history') modes.history.render();
 }
 
 function renderSettings() {

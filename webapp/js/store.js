@@ -54,8 +54,12 @@ function sanitize(data) {
   const trig = numOrNull(data.trigger);
   if (trig !== undefined) clean.trigger = trig;
   if (Array.isArray(data.kit)) {
+    // ids are app-generated ('snare', 'drum-<ts>') and land in HTML attributes
+    // — a backup id with quotes/spaces would break out of the attribute and
+    // desync the rename/delete handlers, so enforce the generated shape
     const kit = data.kit.filter((d) => d && typeof d === 'object'
-      && typeof d.id === 'string' && typeof d.name === 'string'
+      && typeof d.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(d.id)
+      && typeof d.name === 'string'
       && (d.targetHz === null || num(d.targetHz) !== undefined))
       .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz,
         resoHz: d.resoHz === null || num(d.resoHz) !== undefined ? (d.resoHz ?? null) : null }));
@@ -84,8 +88,14 @@ function sanitize(data) {
     clean.runs = data.runs
       .filter((r) => r && typeof r === 'object' && num(r.sd) !== undefined && num(r.mean) !== undefined)
       // a run's date must be a real parseable string — an epoch number is
-      // coerced, anything else is dropped (a bad date once aborted boot)
-      .map((r) => (num(r.date) !== undefined ? { ...r, date: new Date(r.date).toISOString() } : r))
+      // coerced, anything else is dropped (a bad date once aborted boot).
+      // getTime() is the throw-free validity probe: toISOString() on an
+      // out-of-range epoch (|ms| > 8.64e15) throws and would abort the import
+      .map((r) => {
+        if (num(r.date) === undefined) return r;
+        const d = new Date(r.date);
+        return Number.isNaN(d.getTime()) ? { ...r, date: null } : { ...r, date: d.toISOString() };
+      })
       .filter((r) => typeof r.date === 'string' && !Number.isNaN(Date.parse(r.date)))
       // accuracy feeds .toFixed() in the history badge — a non-number here
       // (hand-edited backup) must degrade to "no badge", not a crash
@@ -164,10 +174,11 @@ export const store = {
     persist();
   },
   exportJson() {
-    // latency is a property of THIS device's audio chain, never of the backup —
-    // importJson ignores any imported value, but don't even write it, so the
-    // "never travels with a backup" promise holds literally.
-    const { calibrationMs, ...rest } = state;
+    // latency AND the trigger floor are properties of THIS device's audio
+    // chain (its mic, its room), never of the backup — importJson ignores
+    // any imported value, but don't even write them, so the "never travels
+    // with a backup" promise holds literally.
+    const { calibrationMs, trigger, ...rest } = state;
     return JSON.stringify(rest, null, 2);
   },
   importJson(text) {
@@ -177,9 +188,10 @@ export const store = {
     }
     const current = state;
     state = sanitize(data);
-    // latency is a property of THIS device's audio chain, not of the backup:
-    // carrying it across devices would silently skew every timing score
+    // device-local values stay: carrying latency or the detector floor across
+    // devices would silently skew every timing score on this one
     state.calibrationMs = current.calibrationMs;
+    state.trigger = current.trigger;
     persist();
   },
   reset() {

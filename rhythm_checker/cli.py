@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -179,6 +180,12 @@ def main(argv: list[str] | None = None) -> int:
                 "onsets": _cmd_onsets, "tune": _cmd_tune}
     try:
         return handlers[args.command](args)
+    except sqlite3.DatabaseError as exc:
+        # a corrupt sessions.db must not traceback (worst case: after a full
+        # analyze has already printed its report and only the save fails)
+        print(f"error: session store is unreadable ({exc}) — "
+              "delete it to reset history (see --store)", file=sys.stderr)
+        return 1
     except (AudioError, ValueError, OSError) as exc:
         if isinstance(exc, OSError) and exc.filename:
             msg = f"{exc.strerror or exc}: {exc.filename}"

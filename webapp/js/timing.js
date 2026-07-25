@@ -36,8 +36,10 @@ export class TimingSession extends EventTarget {
     if (!this.clickOn) {
       // click-off hold: one audible bar to set the tempo, then silence — the
       // grid keeps running and judging. Can you hold it on your own?
+      // (deterministic cutoff on the audio clock: a late setTimeout here used
+      // to let an already-scheduled bar-2 click leak through on janky phones)
       const barS = (60 / this.metro.bpm) * this.metro.meter.pulses;
-      this._muteTimer = setTimeout(() => { this.metro.gain = 0; }, Math.max(0, (this.metro.startTime + barS - this.mic.now()) * 1000 - 150));
+      this.metro.muteAfter = this.metro.startTime + barS - 1e-3;
     }
     this._endTimer = setTimeout(() => this.finish(), (this.seconds + 1.5) * 1000);
   }
@@ -93,9 +95,8 @@ export class TimingSession extends EventTarget {
   _teardown() {
     this.running = false;
     clearTimeout(this._endTimer);
-    clearTimeout(this._muteTimer);
     this.metro.stop();
-    this.metro.gain = 0.9;
+    this.metro.muteAfter = null;
     this.mic.removeEventListener('onset', this._onOnset);
     if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
     this.mic.unlockDetector(this);
@@ -187,7 +188,10 @@ export class TimingMode {
     this.root.querySelector('#tm-plus').addEventListener('click', () => this.nudge(5));
     this.root.querySelector('#tm-minus').addEventListener('click', () => this.nudge(-5));
     this.root.querySelector('#tm-hold').addEventListener('click', () => {
-      // cycles hold length; a second tap pattern cycles the grid
+      // cycles hold length; a second tap pattern cycles the grid. Ignored
+      // mid-run: a full render here would repaint the idle UI over a live
+      // session (STOP relabelled START, stats wiped) while it kept scoring
+      if (this.session && this.session.running) return;
       const i = HOLD_CYCLE.indexOf(this.holdSec);
       if (i === HOLD_CYCLE.length - 1) {
         this.holdSec = HOLD_CYCLE[0];
@@ -196,6 +200,7 @@ export class TimingMode {
       this.render();
     });
     this.root.querySelector('#tm-click').addEventListener('click', () => {
+      if (this.session && this.session.running) return;
       this.clickOn = !this.clickOn;
       this.render();
     });
@@ -310,11 +315,12 @@ export class TimingMode {
     ctx.clearRect(0, 0, w, h);
     const T = theme();
     const band = store.get('pocketMs');
+    // rushing = early = NEGATIVE dev, and yOf already sends negative dev
+    // toward smaller y = the top = the FASTER label. No sign flip: flipping
+    // here once plotted rushers in the SLOWER half of the chart.
     const yOf = (dev) => h / 2 + (Math.max(-60, Math.min(60, dev)) / 60) * (h / 2 - 16);
-    // rushing = early = negative dev = FASTER = up: flip sign
-    const yOfFlipped = (dev) => yOf(-dev);
     ctx.fillStyle = 'rgba(58,125,52,.14)';
-    ctx.fillRect(0, yOfFlipped(band), w, yOfFlipped(-band) - yOfFlipped(band));
+    ctx.fillRect(0, yOf(-band), w, yOf(band) - yOf(-band));
     ctx.strokeStyle = T.ink;
     ctx.setLineDash([8, 7]);
     ctx.lineWidth = 3;
@@ -331,7 +337,7 @@ export class TimingMode {
     ctx.beginPath();
     this.trace.forEach((p, i) => {
       const x = xOf(p.relT);
-      const y = yOfFlipped(p.rolling);
+      const y = yOf(p.rolling);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     });
@@ -340,13 +346,13 @@ export class TimingMode {
       if (Math.abs(p.dev) <= band) continue;
       ctx.fillStyle = T.pink;
       ctx.beginPath();
-      ctx.arc(xOf(p.relT), yOfFlipped(p.dev), 5, 0, 7);
+      ctx.arc(xOf(p.relT), yOf(p.dev), 5, 0, 7);
       ctx.fill();
     }
     const last = this.trace[this.trace.length - 1];
     ctx.fillStyle = T.pink;
     ctx.beginPath();
-    ctx.arc(xOf(last.relT), yOfFlipped(last.rolling), 8, 0, 7);
+    ctx.arc(xOf(last.relT), yOf(last.rolling), 8, 0, 7);
     ctx.fill();
   }
 
@@ -380,6 +386,10 @@ export class TimingMode {
       pocketPct: +result.pocketPct.toFixed(1),
       unaligned: result.unaligned,
     });
+    // the session is finished — clear it so activate() resumes adopting the
+    // working tempo (a feel pick elsewhere moves preferredBpm; holding a
+    // stale session reference here used to block that forever)
+    this.session = null;
   }
 
   saveBaseline() {

@@ -8,9 +8,15 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.batch = [];
     this.batchFrames = 0;
     this.batchStartFrame = -1;
+    this.dead = false;
+    // a reconnect builds a fresh node on the same context; the old one must
+    // actually die (returning true forever would keep it running for the
+    // life of the context, one orphan per reconnect)
+    this.port.onmessage = (e) => { if (e.data === 'stop') this.dead = true; };
   }
 
   process(inputs) {
+    if (this.dead) return false;
     const ch = inputs[0] && inputs[0][0];
     if (ch && ch.length) {
       // If the audio clock skipped ahead (an input underrun dropped quanta),

@@ -42,7 +42,9 @@ def load_recording(path: str | Path) -> Recording:
     if path.suffix.lower() in (".wav", ".wave"):
         try:
             return _load_wav(path)
-        except wave.Error:
+        except (wave.Error, EOFError):
+            # EOFError: a zero-byte or header-truncated file — stdlib wave
+            # raises it from Chunk.__init__ instead of wave.Error
             pass
         try:
             # WAVE_FORMAT_EXTENSIBLE / float WAVs: stdlib wave (< 3.12) rejects
@@ -124,7 +126,7 @@ def _load_wav_riff(path: Path) -> Recording:
     tag, channels, sr, _, _, bits = struct.unpack_from("<HHIIHH", fmt, 0)
     if tag == _FMT_EXTENSIBLE and len(fmt) >= 26:
         (tag,) = struct.unpack_from("<H", fmt, 24)  # first bytes of SubFormat GUID
-    if channels < 1 or sr < 1:
+    if channels < 1 or sr < 1 or bits < 8:
         raise AudioError(f"'{path.name}' has a corrupt fmt chunk")
 
     if tag == _FMT_PCM:

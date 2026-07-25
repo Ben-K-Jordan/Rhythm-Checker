@@ -39,12 +39,16 @@ def detect_onsets(
 ) -> OnsetList:
     """Detect percussive onsets. ``sensitivity`` > 1 finds quieter hits.
 
+    ``sensitivity`` must be positive — it divides the detection threshold.
+
     Known limits, by design: hits closer together than ``min_separation``
     (default 30 ms) merge into one, so tight flams and drag ruffs register as
     a single onset; and a hit inside the first analysis window (~25 ms) has no
     "before" to rise from and cannot be detected — leave a moment of room tone
     before playing.
     """
+    if sensitivity <= 0:
+        raise ValueError(f"--sensitivity must be positive (got {sensitivity})")
     win = _analysis_window(sample_rate)
     hop = win // 4
     flux = _spectral_flux(samples, win, hop)

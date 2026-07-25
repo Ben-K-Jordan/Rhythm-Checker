@@ -89,15 +89,21 @@ const RAW = [
   // --------------------------------------------------------- IV. DRAGS
   [31, 'drag', 'Drag', 'drag', 4, 'dR! . . . dL! . . .'],
   [32, 'single-drag-tap', 'Single Drag Tap', 'drag', 4, 'dR . L! . dL . R! .'],
-  [33, 'double-drag-tap', 'Double Drag Tap', 'drag', 6, 'dR . dL . R! . dL . dR . L! .'],
+  // both drags on the SAME hand, accented tap on the other (PAS: llR llR L!)
+  [33, 'double-drag-tap', 'Double Drag Tap', 'drag', 6, 'dR . dR . L! . dL . dL . R! .'],
   [34, 'lesson-25', 'Lesson 25', 'drag', 6, 'dR . L . R! . dL . R . L! .'],
-  [35, 'single-dragadiddle', 'Single Dragadiddle', 'drag', 4, 'R! dR L R L! dL R L'],
+  // a paradiddle whose accented first stroke is played as a drag (RLRR sticking)
+  [35, 'single-dragadiddle', 'Single Dragadiddle', 'drag', 4, 'dR! L R R dL! R L L'],
   [36, 'drag-paradiddle-1', 'Drag Paradiddle #1', 'drag', 4, 'R! dL R R L! dR L L'],
   [37, 'drag-paradiddle-2', 'Drag Paradiddle #2', 'drag', 4, 'R! dL R L R R L! dR L R L L'],
-  [38, 'single-ratamacue', 'Single Ratamacue', 'drag', 3, 'dR L R! dL R L!'],
-  [39, 'double-ratamacue', 'Double Ratamacue', 'drag', 3, 'dR L dR L R! . dL R dL R L! .'],
-  [40, 'triple-ratamacue', 'Triple Ratamacue', 'drag', 3,
-    'dR L dR L dR L R! . . dL R dL R dL R L! . .'],
+  // ra-ta-ma-CUE: a 16th-triplet (drag on the first note) then the accented
+  // cue on the "&", opposite hand — 4 strokes, not 3. Double and triple
+  // prepend one and two 8th-note drag-taps (llR L) before the same figure.
+  [38, 'single-ratamacue', 'Single Ratamacue', 'drag', 6, 'dR L R L! . . dL R L R! . .'],
+  [39, 'double-ratamacue', 'Double Ratamacue', 'drag', 6,
+    'dR . . L . . dR L R L! . . dL . . R . . dL R L R! . .'],
+  [40, 'triple-ratamacue', 'Triple Ratamacue', 'drag', 6,
+    'dR . . L . . dR . . L . . dR L R L! . . dL . . R . . dL . . R . . dL R L R! . .'],
 ];
 
 export const CATEGORIES = [
@@ -117,12 +123,15 @@ export function rudimentById(id) {
 }
 
 // Structural self-check. The numbered rolls are objectively verifiable: an
-// "N-Stroke Roll" must have exactly N primary strokes per phrase. Returns a
-// list of problems (empty = clean). Machine-checked by the browser harness.
+// "N-Stroke Roll" must have exactly N primary strokes per phrase — and so
+// are the ratamacues (ra-ta-ma-cue = 4 per figure, two figures per phrase;
+// a missing terminal cue once shipped unnoticed because nothing pinned it).
+// Returns a list of problems (empty = clean). Machine-checked by the harness.
 const STROKE_COUNT = {
   'five-stroke-roll': 5, 'six-stroke-roll': 6, 'seven-stroke-roll': 7,
   'nine-stroke-roll': 9, 'ten-stroke-roll': 10, 'eleven-stroke-roll': 11,
   'thirteen-stroke-roll': 13, 'fifteen-stroke-roll': 15, 'seventeen-stroke-roll': 17,
+  'single-ratamacue': 8, 'double-ratamacue': 12, 'triple-ratamacue': 16,
 };
 export function validateRudiments() {
   const errs = [];

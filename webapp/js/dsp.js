@@ -306,7 +306,11 @@ export class BleedGuard {
       this.suspected++;
       return true;
     }
-    if (!nearClick || ref === null || level >= 0.5 * ref) {
+    // the reference pool must hold only clearly-real hits: an on-click onset
+    // may enter it ONLY once real hits exist to compare against — otherwise
+    // a bar of pure bleed before the player starts would seed the pool, make
+    // bleed its own quartile, and latch the guard open with warning() silent
+    if (!nearClick || (ref !== null && level >= 0.5 * ref)) {
       this._hitLevels.push(level);
       if (this._hitLevels.length > 12) this._hitLevels.shift();
     }
@@ -514,6 +518,12 @@ export function selftest() {
     for (let i = 0; i < 4; i++) { mixed.shouldDrop(0.4, false); mixed.shouldDrop(0.05, false); } // center + ghosts
     check('bleed-spares-onbeat-ghosts', !mixed.shouldDrop(0.03, true));
     check('bleed-still-drops-ticks', mixed.shouldDrop(0.002, true)); // whisper tick on the click
+    // a bar of pure bleed BEFORE the player starts must not seed the pool:
+    // the first real hits define the reference, then bleed drops immediately
+    const late = new BleedGuard();
+    for (let i = 0; i < 5; i++) late.shouldDrop(0.005, true);        // idle bar, clicks bleeding
+    for (let i = 0; i < 4; i++) late.shouldDrop(0.4, false);         // player starts
+    check('bleed-bootstrap-not-seeded', late.shouldDrop(0.005, true));
   }
 
   { // onset level: a half-amplitude hit reports ~half the level (accents rely on this)

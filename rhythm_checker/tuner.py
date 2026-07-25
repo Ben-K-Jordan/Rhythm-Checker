@@ -145,7 +145,12 @@ def estimate_pitch(
     if pre is not None:
         pre_seg = pre[-len(raw):] * np.hanning(min(len(pre), len(raw)))
         pre_mags = np.abs(np.fft.rfft(pre_seg, n_fft))[band]
-        # match analysis gain: same window length, so magnitudes are comparable
+        # gain-match: a steady tone's rfft magnitude scales with the window
+        # length, so a shorter pre window (first tap early in the recording)
+        # UNDERSTATES pre-existing hum — scaled unscaled, 60 Hz mains passed
+        # the 0.6x gate and was reported as the drum's fundamental
+        if len(pre_seg) < len(raw):
+            pre_mags = pre_mags * (len(raw) / max(1, len(pre_seg)))
 
     floor = float(np.max(mags)) * (10 ** (-PEAK_FLOOR_DB / 20))
     # local maxima above the floor, lowest frequency first; skip any peak that

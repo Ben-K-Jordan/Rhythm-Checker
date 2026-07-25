@@ -32,7 +32,10 @@ export class CalibrateMode {
   deactivate() {
     clearInterval(this._meterT);
     this._meterT = null;
-    if (this.running) this.abort();
+    if (this.running) {
+      this.abort();
+      this.render(); // else returning shows a frozen test UI with no START
+    }
   }
 
   frac(level) {
@@ -181,6 +184,9 @@ export class CalibrateMode {
     this.metro.subdivision = 1;
     this.metro.meter = { pulses: 1, accents: [] };
     this.metro.start(LEAD_S);
+    // silence clicks past the scored range — the metronome free-runs until
+    // finish(), and unscored clicks after "DONE" read as dropped taps
+    this.metro.muteAfter = this.metro.startTime + CLICKS * CLICK_S - 1e-3;
     this.root.querySelector('#lat-body').innerHTML = this.latTestHtml();
     this.root.querySelector('#cal-stop').addEventListener('click', () => { this.abort(); this.render(); });
     this._pulse();

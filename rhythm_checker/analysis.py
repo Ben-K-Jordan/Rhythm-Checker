@@ -384,7 +384,10 @@ def _dense_passages(
 
     passages: list[DensePassage] = []
     for start, end in spans:
-        sel = (times >= start) & (times <= end)
+        # half-open [start, end) to match n_all's searchsorted bounds — a hit
+        # exactly on a span end once counted as aligned but not as a hit,
+        # printing "31 hits, mean over 32"
+        sel = (times >= start) & (times < end)
         dense_mask |= sel
         n_aligned = int(np.sum(sel))
         n_all = int(np.searchsorted(all_times, end) - np.searchsorted(all_times, start))
