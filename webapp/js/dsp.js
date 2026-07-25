@@ -291,23 +291,32 @@ export class BleedGuard {
 
   // nearClick: onset within ~±30 ms of a scheduled click. Returns true when
   // the onset should be DROPPED as probable metronome bleed.
+  //
+  // The reference is the LOWER QUARTILE of recent hits at a strict 6% — not
+  // the median at 15%, which ate real playing: an edge-of-pad stroke or an
+  // on-beat ghost note sits at 8-15% of a center hit's level, so the same
+  // on-time rhythm scored perfect at the center of the pad and "miss" at the
+  // edge. The player's own quiet hits define quiet-but-real; only a tick far
+  // below even those reads as bleed. Bleed louder than that leaks through and
+  // is disclosed by warning() instead of silently deleting real strokes —
+  // when in doubt, the honest failure is counting too much, never too little.
   shouldDrop(level, nearClick) {
-    const median = this._median();
-    if (nearClick && median !== null && level < 0.15 * median) {
+    const ref = this._quietRef();
+    if (nearClick && ref !== null && level < 0.06 * ref) {
       this.suspected++;
       return true;
     }
-    if (!nearClick || median === null || level >= 0.5 * median) {
+    if (!nearClick || ref === null || level >= 0.5 * ref) {
       this._hitLevels.push(level);
       if (this._hitLevels.length > 12) this._hitLevels.shift();
     }
     return false;
   }
 
-  _median() {
+  _quietRef() {
     if (this._hitLevels.length < 4) return null;
     const s = [...this._hitLevels].sort((a, b) => a - b);
-    return s[Math.floor(s.length / 2)];
+    return s[Math.floor(s.length / 4)];
   }
 
   warning() {
@@ -492,6 +501,19 @@ export function selftest() {
       check('onset-gap-resyncs', got.length === 2 && Math.abs(got[1].time - 0.9) < 0.005);
     }
     check('summarize-median-even-n', summarize([1, 2, 3, 10]).median === 2.5);
+  }
+
+  { // bleed guard: pad position must not decide the verdict. On-time strokes
+    // at the pad edge (~10% of a center hit's level) landing ON the click must
+    // survive; a true metronome tick far below even the quiet hits must drop.
+    const guard = new BleedGuard();
+    for (let i = 0; i < 6; i++) guard.shouldDrop(0.4, false);       // center strokes
+    const edgeSurvives = !guard.shouldDrop(0.04, true);             // edge hit on the click
+    check('bleed-spares-edge-hits', edgeSurvives);
+    const mixed = new BleedGuard();
+    for (let i = 0; i < 4; i++) { mixed.shouldDrop(0.4, false); mixed.shouldDrop(0.05, false); } // center + ghosts
+    check('bleed-spares-onbeat-ghosts', !mixed.shouldDrop(0.03, true));
+    check('bleed-still-drops-ticks', mixed.shouldDrop(0.002, true)); // whisper tick on the click
   }
 
   { // onset level: a half-amplitude hit reports ~half the level (accents rely on this)
