@@ -54,7 +54,6 @@ const SEED = {
   runs: [
     { date: days(2), kind: 'rudiment', label: 'Single Paradiddle', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 128, mean: -3.1, sd: 11.2, accuracy: 91, missed: 4 },
     { date: days(1), kind: 'timing', label: 'steady hold ÷2', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 96, mean: 2.2, sd: 9.9, pocketPct: 71 },
-    { date: days(0), kind: 'show', label: 'Rehearsal room', meter: '4/4', bpmStart: 122, bpmEnd: 122, n: 300, mean: 5.0, sd: 12.0, result: 'NOT YET', heldPct: 61, songs: 9, minutes: 40 },
   ],
 };
 
@@ -90,11 +89,10 @@ const nav = (t) => page.evaluate((x) => window.__rhythmChecker.nav(x), t);
 
 // -------------------------------------------------------------------- home
 await nav('home');
-check('home-arm-toggle', await page.locator('.arm-seg').count() === 2);
 check('home-feel-cards', await page.locator('.feel-card').count() === 4);
 check('home-modules', await page.locator('.module-tile').count() === 4
   && await page.locator('.hero-tile').count() === 1);
-check('home-stats-real', (await page.locator('.stat-strip .statbox b').first().textContent()).trim() === '3');
+check('home-stats-real', (await page.locator('.stat-strip .statbox b').first().textContent()).trim() === '2');
 
 // selecting a feel writes real targets onto the kit
 await page.click('[data-feel="barker"]');
@@ -292,33 +290,11 @@ await nav('home');
 await nav('timing');
 check('tm-cancelled-on-nav', (await page.locator('#tm-final').textContent()).includes('cancelled'));
 
-// ----------------------------------------------------------------- show flow
-await nav('preshow');
-check('ps-readiness-rows', await page.locator('.check-row').count() === 5);
-check('ps-calibrated-green', await page.locator('.check-row').first().locator('.check-ic.ok').count() === 1);
-// click-ack toggles
-const ackBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('rhythm-checker-v1')).clickAck);
-await page.click('[data-check="clickack"]');
-await page.waitForTimeout(100);
-const ackAfter = await page.evaluate(() => JSON.parse(localStorage.getItem('rhythm-checker-v1')).clickAck);
-check('ps-clickack-toggles', ackBefore !== ackAfter);
-// arm -> armed screen with DISARM chrome
-await page.click('#ps-arm');
-await page.waitForTimeout(400);
-check('armed-active', await page.locator('#mode-armed.active').count() === 1);
-check('armed-chrome-disarm', (await page.locator('#nav-back').textContent()).includes('DISARM'));
-check('armed-waveform', await page.locator('.wave i').count() === 34);
-// disarm -> honest empty verdict (fake mic heard nothing attributable)
-await page.click('#armed-disarm');
-await page.waitForTimeout(500);
-check('verdict-active', await page.locator('#mode-verdict.active').count() === 1);
-check('verdict-honest-empty', (await page.locator('#mode-verdict').textContent()).includes('NOTHING'));
-
 // ------------------------------------------------------------------ history
 await nav('history');
 check('hist-heatmap', await page.locator('.heatmap i').count() === 70);
-check('hist-rows', await page.locator('.log-row').count() === 3);
-check('hist-show-badge', (await page.locator('.log-badge.solid.red').textContent()).includes('NOT YET'));
+check('hist-rows', await page.locator('.log-row').count() === 2);
+check('hist-badges', (await page.locator('.log-badge').allTextContents()).join(' ').includes('91%'));
 await page.click('[data-f="rudiment"]');
 await page.waitForTimeout(100);
 check('hist-filter', await page.locator('.log-row').count() === 1);
@@ -355,17 +331,26 @@ await page.waitForTimeout(200);
 check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1);
 
 // ---------------------------------------------- state persistence (sanitize)
-// A stage time set in pre-show and an intentionally emptied kit must both
-// survive sanitize() on load (regressions: sanitize() dropped
-// showMeta.stage, breaking the T-minus countdown; and reset an empty kit to
-// the 7-drum defaults). Fresh context whose init payload IS the tricky state,
-// then force a persist so the SANITIZED state is written back and read.
+// Tricky-but-legal state must survive sanitize() on load (regressions:
+// sanitize() reset an intentionally empty kit to the 7-drum defaults; the
+// feel whitelist was missing 'haake', silently dropping that pick on every
+// reload; and a run with a numeric epoch date once ABORTED BOOT — it must be
+// coerced to ISO, never crash, never render "INVALID DATE"). Fresh context
+// whose init payload IS the tricky state, then force a persist so the
+// SANITIZED state is written back and read.
 {
   const ctx2 = await browser.newContext({ permissions: ['microphone'], viewport: { width: 390, height: 760 } });
   const p2 = await ctx2.newPage();
+  const bootErrors = [];
+  p2.on('pageerror', (e) => bootErrors.push(String(e).slice(0, 120)));
   await p2.addInitScript(() => localStorage.setItem('rhythm-checker-v1', JSON.stringify({
-    showMeta: { venue: 'X', setMin: 45, songs: 12, stage: '21:30' },
     kit: [],
+    feel: 'haake',
+    metronomeSound: 'rim',
+    runs: [
+      { date: 1700000000000, kind: 'timing', label: 'epoch date', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 40, mean: -3.2, sd: 4.1 },
+      { date: { bad: true }, kind: 'timing', label: 'garbage date', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 40, mean: -3.2, sd: 4.1 },
+    ],
   })));
   await p2.goto(`${base}/index.html`);
   await p2.waitForFunction(() => window.__rhythmChecker);
@@ -379,10 +364,19 @@ check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1
   await p2.waitForTimeout(120);
   const afterSanitize = await p2.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('rhythm-checker-v1'));
-    return { stage: raw.showMeta && raw.showMeta.stage, kitLen: raw.kit.length };
+    return { kitLen: raw.kit.length, feel: raw.feel, sound: raw.metronomeSound,
+      runDates: raw.runs.map((r) => typeof r.date) };
   });
-  check('persist-stage-time', afterSanitize.stage === '21:30', `stage=${afterSanitize.stage}`);
   check('persist-empty-kit', afterSanitize.kitLen === 0, `kit had ${afterSanitize.kitLen} drums`);
+  check('persist-feel-haake', afterSanitize.feel === 'haake', `feel=${afterSanitize.feel}`);
+  check('persist-click-sound', afterSanitize.sound === 'rim', `sound=${afterSanitize.sound}`);
+  check('persist-run-dates', afterSanitize.runDates.length === 1 && afterSanitize.runDates[0] === 'string',
+    `dates=${JSON.stringify(afterSanitize.runDates)}`);
+  await p2.evaluate(() => window.__rhythmChecker.nav('history'));
+  await p2.waitForTimeout(150);
+  const histText = await p2.locator('#mode-history').textContent();
+  check('persist-boot-survives', bootErrors.length === 0 && !histText.includes('Invalid'),
+    bootErrors.join('; ') || 'invalid date rendered');
   await ctx2.close();
 }
 

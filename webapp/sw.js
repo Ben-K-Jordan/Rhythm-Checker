@@ -5,7 +5,7 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v32';
+const CACHE = 'rhythm-checker-v33';
 const ASSETS = [
   '.',
   'index.html',
@@ -20,8 +20,6 @@ const ASSETS = [
   'js/history.js',
   'js/meter.js',
   'js/metronome.js',
-  'js/show.js',
-  'js/showflow.js',
   'js/rudiments.js',
   'js/rudiment-data.js',
   'js/notation.js',
@@ -34,6 +32,8 @@ const ASSETS = [
   'icons/icon-192.png',
   'icons/apple-touch-icon-180.png',
   'icons/icon-512.png',
+  'icons/icon-maskable-192.png',
+  'icons/icon-maskable-512.png',
   'fonts/Anton-Regular.ttf',
   'fonts/Oswald-400.ttf',
   'fonts/Oswald-600.ttf',
@@ -55,7 +55,8 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  // extensions and other non-http schemes are not ours to answer
+  if (e.request.method !== 'GET' || !e.request.url.startsWith('http')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
@@ -65,6 +66,16 @@ self.addEventListener('fetch', (e) => {
         }
         return res;
       })
-      .catch(() => caches.match(e.request, { ignoreSearch: true })),
+      .catch(async () => {
+        const hit = await caches.match(e.request, { ignoreSearch: true });
+        if (hit) return hit;
+        // offline navigation to a URL never cached (e.g. a deep link with a
+        // path) still gets the app shell instead of the browser error page
+        if (e.request.mode === 'navigate') {
+          const shell = await caches.match('index.html');
+          if (shell) return shell;
+        }
+        return Response.error();
+      }),
   );
 });

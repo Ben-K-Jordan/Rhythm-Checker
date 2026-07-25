@@ -1,5 +1,5 @@
-// Home: the practice hub. PRACTICE/SHOW arm toggle, feel presets, poster
-// tiles into every module, and an honest session strip — real numbers only.
+// Home: the practice hub. Feel presets, poster tiles into every module,
+// and an honest session strip — real numbers only.
 
 import { store } from './store.js';
 import { FEELS, applyFeel } from './feel.js';
@@ -53,11 +53,6 @@ export class HomeMode {
     this.root.innerHTML = `
       <div class="home-title">RHYTHM<br><span>CHECKER</span></div>
 
-      <div class="arm-toggle">
-        <button class="arm-seg on"><span class="led"></span>PRACTICE</button>
-        <button class="arm-seg" id="home-show">SHOW &#9654;</button>
-      </div>
-
       <div class="feel-wrap">
         <div class="feel-label"><span class="chip-stamp">Feel presets</span></div>
         <div class="feel-grid">
@@ -96,7 +91,6 @@ export class HomeMode {
     this.root.querySelectorAll('[data-nav]').forEach((b) => {
       b.addEventListener('click', () => this.nav(b.dataset.nav));
     });
-    this.root.querySelector('#home-show').addEventListener('click', () => this.nav('preshow'));
     this.root.querySelectorAll('[data-feel]').forEach((b) => {
       b.addEventListener('click', () => {
         applyFeel(b.dataset.feel); // also seeds the working tempo

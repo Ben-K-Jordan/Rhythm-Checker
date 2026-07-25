@@ -13,9 +13,10 @@ import { RudimentsMode, matchWindowMs, highwayPxPerSec, puckRadius, buildChart, 
 import { meterById, accentsFor, defaultGrouping } from './meter.js';
 import { validateRudiments, rudimentById } from './rudiment-data.js';
 import { notationModel } from './notation.js';
-import { PreshowMode, ArmedMode, VerdictMode } from './showflow.js';
 import { CalibrateMode } from './calibrate.js';
 import { HistoryMode } from './history.js';
+
+const VERSION = '2.3.0';
 
 const mic = new MicEngine();
 const modes = {};
@@ -27,14 +28,6 @@ function $(sel) { return document.querySelector(sel); }
 function chromeFor(name) {
   const back = $('#nav-back');
   back.classList.toggle('hidden', name === 'home');
-  // armed screen swaps BACK for a red DISARM — leaving mid-set IS disarming
-  if (name === 'armed') {
-    back.innerHTML = '&#9632; DISARM';
-    back.classList.add('disarm');
-  } else {
-    back.innerHTML = '&#8592; HOME';
-    back.classList.remove('disarm');
-  }
 }
 
 function nav(name) {
@@ -67,9 +60,6 @@ function initModes() {
   modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
   modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
   modes.history = new HistoryMode($('#mode-history'));
-  modes.verdict = new VerdictMode($('#mode-verdict'), nav);
-  modes.armed = new ArmedMode($('#mode-armed'), mic, nav, modes.verdict);
-  modes.preshow = new PreshowMode($('#mode-preshow'), mic, nav, modes.armed);
   modes.home = new HomeMode($('#mode-home'), nav);
 }
 
@@ -159,7 +149,7 @@ function renderSettings() {
       Calibration is per-device and never travels with a backup.</p>
     </div>
     <div class="drawer-foot">
-      <span>v2.1.0 &middot; ${runs.length} sessions</span>
+      <span>v${VERSION} &middot; ${runs.length} sessions</span>
       <button id="set-reset">RESET ALL</button>
     </div>`;
 
@@ -262,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // machine-checkable health: Playwright and the diagnostics footer read this
   const st = selftest();
   window.__rhythmChecker = {
-    selftest: st, version: '2.2.0', nav: (n) => nav(n), matchWindowMs,
+    selftest: st, version: VERSION, nav: (n) => nav(n), matchWindowMs,
     // test/automation seam: the shared mic (an EventTarget you can dispatch
     // synthetic 'onset' events on) and the live mode instances
     mic, modes,
@@ -291,10 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
       boot();
     });
   });
-  $('#nav-back').addEventListener('click', () => {
-    if (currentScreen === 'armed' && modes.armed && modes.armed.session) modes.armed.disarm();
-    else nav('home');
-  });
+  $('#nav-back').addEventListener('click', () => nav('home'));
   $('#chrome-gear-left').addEventListener('click', openSettings);
   $('#settings-close').addEventListener('click', closeSettings);
   $('#drawer-scrim').addEventListener('click', closeSettings);

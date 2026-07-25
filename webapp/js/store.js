@@ -6,14 +6,12 @@ const KEY = 'rhythm-checker-v1';
 const DEFAULTS = {
   calibrationMs: null,          // measured system latency; null = not calibrated
   pocketMs: 10,
-  tuneToleranceCents: 10,       // pre-show pass window per drum
+  tuneToleranceCents: 10,       // tuner in-tune window per drum
   judgeMode: 'standard',        // 'standard' | 'pro'
   lugCount: 6,
-  feel: null,                   // 'bonham' | 'barker' | 'jordison' | null — kit voicing preset
-  showMeta: { venue: '', setMin: 45, songs: 12, stage: '' },
+  feel: null,                   // 'bonham' | 'barker' | 'jordison' | 'haake' | null — kit voicing preset
   metronomeSound: 'woodblock',  // 'woodblock' | 'beep' | 'rim'
   showGrades: false,            // honest default: numbers, not grades
-  clickAck: false,              // user confirmed the click routes to in-ears only
   trigger: null,                // user-set detector floor (level units), null = auto
   kit: [
     // {id, name, targetHz|null} — Ben's kit (depth x diameter), targets set
@@ -50,19 +48,9 @@ function sanitize(data) {
     if (v !== undefined) clean[key] = v;
   }
   if (data.judgeMode === 'standard' || data.judgeMode === 'pro') clean.judgeMode = data.judgeMode;
-  if (data.feel === null || ['bonham', 'barker', 'jordison'].includes(data.feel)) clean.feel = data.feel ?? null;
-  const sm = data.showMeta;
-  if (sm && typeof sm === 'object') {
-    clean.showMeta = {
-      venue: typeof sm.venue === 'string' ? sm.venue.slice(0, 60) : '',
-      setMin: num(sm.setMin) !== undefined ? sm.setMin : 45,
-      songs: num(sm.songs) !== undefined ? sm.songs : 12,
-      stage: typeof sm.stage === 'string' && /^\d{2}:\d{2}$/.test(sm.stage) ? sm.stage : '',
-    };
-  }
+  if (data.feel === null || ['bonham', 'barker', 'jordison', 'haake'].includes(data.feel)) clean.feel = data.feel ?? null;
   if (['woodblock', 'beep', 'rim'].includes(data.metronomeSound)) clean.metronomeSound = data.metronomeSound;
   if (typeof data.showGrades === 'boolean') clean.showGrades = data.showGrades;
-  if (typeof data.clickAck === 'boolean') clean.clickAck = data.clickAck;
   const trig = numOrNull(data.trigger);
   if (trig !== undefined) clean.trigger = trig;
   if (Array.isArray(data.kit)) {
@@ -87,6 +75,10 @@ function sanitize(data) {
   if (Array.isArray(data.runs)) {
     clean.runs = data.runs
       .filter((r) => r && typeof r === 'object' && num(r.sd) !== undefined && num(r.mean) !== undefined)
+      // a run's date must be a real parseable string — an epoch number is
+      // coerced, anything else is dropped (a bad date once aborted boot)
+      .map((r) => (num(r.date) !== undefined ? { ...r, date: new Date(r.date).toISOString() } : r))
+      .filter((r) => typeof r.date === 'string' && !Number.isNaN(Date.parse(r.date)))
       .slice(-MAX_RUNS);
   }
   return clean;

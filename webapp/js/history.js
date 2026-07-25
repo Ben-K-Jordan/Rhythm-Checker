@@ -26,18 +26,18 @@ function streakDays(runs) {
 }
 
 const TAG = {
-  show: ['SHOW', 'red'],
   rudiment: ['RUDIMENTS', 'ink'],
   timing: ['TIMING', 'blue'],
   tuner: ['TUNER', 'green'],
 };
 
 export class HistoryMode {
+  // constructor stays render-free on purpose: History is built eagerly during
+  // boot, and a render throw here once aborted the whole app mid-boot
   constructor(root) {
     this.root = root;
     this.filter = 'all';
     this.showAll = false;
-    this.render();
   }
 
   activate() { this.render(); }
@@ -45,16 +45,10 @@ export class HistoryMode {
   runs() {
     const all = store.get('runs') || [];
     if (this.filter === 'all') return all;
-    if (this.filter === 'practice') return all.filter((r) => r.kind !== 'show');
     return all.filter((r) => r.kind === this.filter);
   }
 
   badge(r) {
-    if (r.kind === 'show') {
-      return r.result === 'DIALED'
-        ? '<span class="log-badge solid green">DIALED</span>'
-        : `<span class="log-badge solid red">${r.result || 'SHOW'}</span>`;
-    }
     if (r.kind === 'rudiment' && r.accuracy != null) return `<span class="log-badge">${r.accuracy.toFixed(0)}%</span>`;
     if (r.kind === 'timing') return `<span class="log-badge">${r.mean >= 0 ? '+' : ''}${r.mean.toFixed(0)} MS</span>`;
     return '<span class="log-badge">&mdash;</span>';
@@ -101,7 +95,7 @@ export class HistoryMode {
       </div>
 
       <div class="log-filters">
-        ${[['all', 'All'], ['practice', 'Practice'], ['show', 'Show'], ['rudiment', 'Rudiments'], ['timing', 'Timing']].map(([id, label]) => `
+        ${[['all', 'All'], ['rudiment', 'Rudiments'], ['timing', 'Timing']].map(([id, label]) => `
           <button class="pill ${this.filter === id ? 'on' : ''}" data-f="${id}">${label}</button>`).join('')}
         <span style="flex:1"></span>
         <button id="hist-csv" class="pill" title="export CSV" ${runs.length ? '' : 'disabled'}>CSV &#8595;</button>
@@ -111,11 +105,12 @@ export class HistoryMode {
         ${shown.length ? shown.map((r) => {
     const [tag, tone] = TAG[r.kind] || ['RUN', 'ink'];
     const d = new Date(r.date);
-    const mon = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-    const wd = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+    const ok = !Number.isNaN(d.getTime()); // sanitize guards this, but never render "INVALID DATE"
+    const mon = ok ? d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase() : '&mdash;';
+    const wd = ok ? d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase() : '';
     return `
           <div class="log-row">
-            <span class="log-date"><b>${mon} ${d.getDate()}</b><i>${wd}</i></span>
+            <span class="log-date"><b>${mon} ${ok ? d.getDate() : ''}</b><i>${wd}</i></span>
             <span class="log-tag ${tone}">${tag}</span>
             <span class="log-title">${esc(r.label || '')}</span>
             ${this.badge(r)}

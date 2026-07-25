@@ -2,8 +2,8 @@
 
 Every drummer believes they have good timing until they hear a recording of
 themselves. Behind the kit a fill feels locked in; on the recording, it rushed.
-Rhythm Checker closes that gap and gets you **dialed before a show**: tuning
-checked against your saved targets, hands checked against your baseline.
+Rhythm Checker closes that gap: **every hit measured against the grid, every
+drum tuned against a saved target** — honest numbers instead of feel.
 
 **What it deliberately does not do: judge the music.** Groove is a human call.
 Sometimes dragging slightly is the whole point. The data has one job, telling
@@ -14,7 +14,7 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
 
 | | |
 |---|---|
-| **Live app** (`webapp/`) | Drum tuner, pre-show check, Guitar-Hero-style rudiment trainer, live timing check. Runs on iPhone (installable PWA, works offline) and any laptop browser. **Zero cloud APIs, zero runtime cost.** All DSP happens on the device. |
+| **Live app** (`webapp/`) | Drum tuner, Guitar-Hero-style trainer across all 40 PAS rudiments, live timing check, per-device latency calibration. Runs on iPhone (installable PWA, works offline) and any laptop browser. **Zero cloud APIs, zero runtime cost.** All DSP happens on the device. |
 | **Deep analyzer** (`rhythm_checker/`) | Post-session truth: drift, fills, per-position stats, multi-week history, tuning reports from recordings. Python CLI. |
 
 ## Every page
@@ -31,8 +31,6 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
     <td align="center"><img src="docs/media/history.gif" width="240" alt="History"><br><sub><b>History</b>: spread per session. Falling is winning.</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/media/preshow.gif" width="240" alt="Pre-show"><br><sub><b>Pre-show</b>: real readiness checks, then ARM FOR SHOW.</sub></td>
-    <td align="center"><img src="docs/media/armed.gif" width="240" alt="Armed live monitor"><br><sub><b>Armed</b>: live listening for the whole set, judged against the click.</sub></td>
     <td align="center"><img src="docs/media/calibrate.gif" width="240" alt="Calibrate"><br><sub><b>Calibrate</b>: trigger floor plus latency, measured once per phone.</sub></td>
   </tr>
 </table>
@@ -62,16 +60,6 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
   triplets): their ballpark, your ears and hands finish it. Lug mode logs a
   pass around the drum and marks the lugs that are off, and a fold-out crib
   sheet covers how to get a clean reading at soundcheck.
-* **Pre-show**: the backstage pre-flight. Venue and set details, then a
-  readiness checklist where every row is a real check: mic calibrated, tuning
-  targets saved, hands baseline recorded, click confirmed in-ear only, free
-  storage. Then one glowing button: ARM FOR SHOW.
-* **Armed**: live monitoring for the whole set. The click runs in your
-  in-ears, the mic judges every hit against the grid, long silences split
-  songs, and the screen shows live BPM drift, a real input waveform, held
-  percentage, and set progress. Disarm stamps the verdict: a giant DIALED or
-  NOT YET with per-song drift bars and honest numbers underneath, saved to
-  history with one tap.
 * **Rudiments**: a falling-note highway across all 40 PAS rudiments
   (paradiddles, rolls, flams, drags, ratamacues) synced to a sample-accurate
   metronome. Every hit is judged perfect, good, ok, or miss with its signed ms
@@ -92,12 +80,18 @@ cd webapp && python -m http.server 8000   # then open http://localhost:8000
 * **Calibrate**: measures your device's fixed audio latency by tapping along
   with clicks, then subtracts it from every score. Run it once per device.
 
+The scope is deliberately lean. Through v2.2 the app also carried a full
+show-night flow — pre-show readiness checks, live set monitoring, a stamped
+DIALED / NOT YET verdict. It worked, and it was cut anyway: a stranger
+installing a practice tool shouldn't meet an ARM FOR SHOW button. It lives
+intact in the git history.
+
 The look is a photocopied gig poster: cream newsprint, hard ink borders, one
 loud red, hazard stripes, offset shadows with zero blur, and newsprint grain
 over everything. Type is Anton for the shouting, Oswald for the labels, and
 Space Mono for every number. A four-bar level meter ticks in the header next
-to the wordmark, the hazard tape crawls, the tuner needle swings, and verdict
-stamps slam in. All of it is drawn in CSS and SVG with no raster assets, runs
+to the wordmark, the hazard tape crawls, and the tuner needle swings. All of
+it is drawn in CSS and SVG with no raster assets (the app icon aside), runs
 GPU-composited so the audio thread never feels it, and under Reduce Motion
 (which iOS Low-Power Mode also triggers) pares back to just those two small
 identity loops — the level bars and the hazard tape — with the flashy motion

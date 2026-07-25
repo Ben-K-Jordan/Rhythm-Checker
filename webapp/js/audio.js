@@ -41,14 +41,7 @@ export class MicEngine extends EventTarget {
       );
     }
     this._stream = stream;
-    this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: 'interactive',
-    });
-    if (this.ctx.state !== 'running') await this.ctx.resume();
-    if (!this._workletLoaded) {
-      await this.ctx.audioWorklet.addModule('worklet/capture.js');
-      this._workletLoaded = true;
-    }
+    await this._ensureContext();
     const src = this.ctx.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(this.ctx, 'capture', {
       numberOfInputs: 1,
@@ -67,6 +60,35 @@ export class MicEngine extends EventTarget {
     }
     this.running = true;
     this.dispatchEvent(new Event('started'));
+  }
+
+  // A context iOS has closed (or wedged in its non-standard 'interrupted'
+  // state after a call / Siri / media-server reset) can never be resumed —
+  // resume() either rejects forever or never settles. Try a bounded resume,
+  // then tear down and rebuild. The worklet registry dies with its context,
+  // so 'capture' must be re-registered on the new one.
+  async _ensureContext() {
+    if (this.ctx && this.ctx.state !== 'closed') {
+      try {
+        await Promise.race([
+          this.ctx.resume(),
+          new Promise((_, rej) => { setTimeout(() => rej(new Error('resume timed out')), 1000); }),
+        ]);
+      } catch { /* fall through to the rebuild */ }
+    }
+    if (!this.ctx || this.ctx.state !== 'running') {
+      try { if (this.ctx) await this.ctx.close(); } catch { /* already closed */ }
+      this.ctx = null;
+      this._workletLoaded = false;
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)({
+        latencyHint: 'interactive',
+      });
+      if (this.ctx.state !== 'running') await this.ctx.resume();
+    }
+    if (!this._workletLoaded) {
+      await this.ctx.audioWorklet.addModule('worklet/capture.js');
+      this._workletLoaded = true;
+    }
   }
 
   // iOS suspends the AudioContext and kills mic tracks on screen lock, app
@@ -94,16 +116,14 @@ export class MicEngine extends EventTarget {
     this.dispatchEvent(new CustomEvent('lost', { detail: { reason } }));
   }
 
-  // must be called from a user gesture (the reconnect tap)
+  // must be called from a user gesture (the reconnect tap); start() →
+  // _ensureContext() resumes the context or rebuilds it if it's dead
   async reconnect() {
     if (this._stream) {
       for (const track of this._stream.getTracks()) track.stop();
       this._stream = null;
     }
     this.running = false;
-    if (this.ctx && this.ctx.state !== 'running') {
-      try { await this.ctx.resume(); } catch { /* recreated below via start() */ }
-    }
     await this.start();
   }
 

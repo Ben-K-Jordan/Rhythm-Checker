@@ -1,5 +1,11 @@
 # Rhythm Checker — Product Plan
 
+> **Scope update (v2.3):** the public release was deliberately narrowed to the
+> practice core — tuner, rudiments, timing, calibrate, history. The show-night
+> flow this plan describes (pre-show readiness → ARM → live monitoring →
+> verdict) shipped through v2.2, worked, and was cut for focus; it lives in
+> the git history. The rest of this document is the original plan, unedited.
+
 The goal: a **warmup / pre-show double-check suite**. Before a show you want two
 facts confirmed: the kit sounds right (tuning) and your hands are right
 (timing). Both checks must be fast, work in a noisy backstage with no wifi, and
