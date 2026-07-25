@@ -137,7 +137,10 @@ export class HistoryMode {
       runs.map((r) => cols.map((c) => {
         const v = r[c];
         if (v === undefined || v === null) return '';
-        const s = String(v);
+        let s = String(v);
+        // string cells starting with =/+/-/@ would execute as formulas in
+        // Excel/Sheets; a leading apostrophe forces them to plain text
+        if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = `'${s}`;
         return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
       }).join(',')),
     ).join('\n');

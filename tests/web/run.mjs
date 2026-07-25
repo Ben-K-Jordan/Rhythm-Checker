@@ -347,9 +347,13 @@ check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1
     kit: [],
     feel: 'haake',
     metronomeSound: 'rim',
+    // a backup is attacker-controllable: grouping/meterId render into HTML,
+    // so anything not shaped like a real meter must be stripped on load
+    grooveRud: { bpm: 132, meterId: '7/8', grouping: '<img src=x onerror=window.__pwned=1>' },
     runs: [
       { date: 1700000000000, kind: 'timing', label: 'epoch date', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 40, mean: -3.2, sd: 4.1 },
       { date: { bad: true }, kind: 'timing', label: 'garbage date', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 40, mean: -3.2, sd: 4.1 },
+      { date: 1700000100000, kind: 'rudiment', label: 'bad accuracy', meter: '4/4', bpmStart: 120, bpmEnd: 120, n: 40, mean: -3.2, sd: 4.1, accuracy: '<b>evil</b>' },
     ],
   })));
   await p2.goto(`${base}/index.html`);
@@ -365,13 +369,20 @@ check('drawer-scrim-close', await page.locator('#settings.hidden').count() === 1
   const afterSanitize = await p2.evaluate(() => {
     const raw = JSON.parse(localStorage.getItem('rhythm-checker-v1'));
     return { kitLen: raw.kit.length, feel: raw.feel, sound: raw.metronomeSound,
-      runDates: raw.runs.map((r) => typeof r.date) };
+      runDates: raw.runs.map((r) => typeof r.date),
+      groove: raw.grooveRud, accuracies: raw.runs.map((r) => typeof r.accuracy),
+      pwned: window.__pwned };
   });
   check('persist-empty-kit', afterSanitize.kitLen === 0, `kit had ${afterSanitize.kitLen} drums`);
   check('persist-feel-haake', afterSanitize.feel === 'haake', `feel=${afterSanitize.feel}`);
   check('persist-click-sound', afterSanitize.sound === 'rim', `sound=${afterSanitize.sound}`);
-  check('persist-run-dates', afterSanitize.runDates.length === 1 && afterSanitize.runDates[0] === 'string',
+  check('persist-run-dates', afterSanitize.runDates.length === 2 && afterSanitize.runDates.every((t) => t === 'string'),
     `dates=${JSON.stringify(afterSanitize.runDates)}`);
+  check('security-groove-stripped', afterSanitize.groove.bpm === 132 && afterSanitize.groove.meterId === '7/8'
+    && afterSanitize.groove.grouping === undefined && afterSanitize.pwned === undefined,
+    `groove=${JSON.stringify(afterSanitize.groove)} pwned=${afterSanitize.pwned}`);
+  check('security-accuracy-stripped', afterSanitize.accuracies.every((t) => t !== 'string'),
+    `accuracies=${JSON.stringify(afterSanitize.accuracies)}`);
   await p2.evaluate(() => window.__rhythmChecker.nav('history'));
   await p2.waitForTimeout(150);
   const histText = await p2.locator('#mode-history').textContent();

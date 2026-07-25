@@ -63,14 +63,22 @@ function sanitize(data) {
     // entries were all garbage is corruption and degrades to defaults
     if (kit.length || data.kit.length === 0) clean.kit = kit;
   }
+  // baseline and grooves are REBUILT field-by-field, never spread: a backup
+  // is attacker-controllable text, and grouping/meterId render into HTML and
+  // drive grid math — anything not shaped like '7/8' / '2+2+3' is dropped
   const b = data.baseline;
   if (b && typeof b === 'object'
     && [b.bpm, b.subdivision, b.mean, b.sd, b.pocketPct].every((v) => num(v) !== undefined)) {
-    clean.baseline = { ...b };
+    clean.baseline = { bpm: b.bpm, subdivision: b.subdivision, mean: b.mean, sd: b.sd, pocketPct: b.pocketPct };
+    if (typeof b.date === 'string' && !Number.isNaN(Date.parse(b.date))) clean.baseline.date = b.date;
   }
   for (const key of ['grooveRud', 'grooveTiming']) {
     const g = data[key];
-    if (g && typeof g === 'object' && num(g.bpm) !== undefined) clean[key] = { ...g };
+    if (!g || typeof g !== 'object' || num(g.bpm) === undefined) continue;
+    const groove = { bpm: g.bpm };
+    if (typeof g.meterId === 'string' && /^\d{1,2}\/\d{1,2}$/.test(g.meterId)) groove.meterId = g.meterId;
+    if (typeof g.grouping === 'string' && /^\d{1,2}(\+\d{1,2}){0,7}$/.test(g.grouping)) groove.grouping = g.grouping;
+    clean[key] = groove;
   }
   if (Array.isArray(data.runs)) {
     clean.runs = data.runs
@@ -79,6 +87,9 @@ function sanitize(data) {
       // coerced, anything else is dropped (a bad date once aborted boot)
       .map((r) => (num(r.date) !== undefined ? { ...r, date: new Date(r.date).toISOString() } : r))
       .filter((r) => typeof r.date === 'string' && !Number.isNaN(Date.parse(r.date)))
+      // accuracy feeds .toFixed() in the history badge — a non-number here
+      // (hand-edited backup) must degrade to "no badge", not a crash
+      .map((r) => (r.accuracy == null || num(r.accuracy) !== undefined ? r : { ...r, accuracy: undefined }))
       .slice(-MAX_RUNS);
   }
   return clean;
