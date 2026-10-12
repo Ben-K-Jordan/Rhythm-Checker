@@ -1,0 +1,78 @@
+/* Home screen. */
+
+/* Pre-v3 look of the shared .statbox and .stat-strip on this screen (scoped with :where so
+   specificity matches the old global rules). Delete when this screen moves to v3. */
+:where(#mode-home) .statbox {
+  flex: 1;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  background: #fff;
+  padding: 5px;
+  text-align: center;
+  min-width: 0;
+  min-height: auto;
+}
+:where(#mode-home) .statbox b {
+  display: block;
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: .9;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+:where(#mode-home) .statbox span {
+  display: inline; margin-top: 0; white-space: normal; overflow: visible; text-overflow: clip;
+  font: 700 7.5px var(--mono-font); letter-spacing: .04em; color: var(--ink60); text-transform: uppercase;
+}
+:where(#mode-home) .statbox.ink { background: var(--ink); color: var(--paper); }
+:where(#mode-home) .statbox.red { background: var(--red); color: #fff; }
+:where(#mode-home) .statbox.green { background: var(--green); color: #fff; }
+:where(#mode-home) .statbox.amber { background: var(--amber); color: var(--ink); }
+:where(#mode-home) .statbox.ink span, :where(#mode-home) .statbox.red span, :where(#mode-home) .statbox.green span { color: inherit; }
+:where(#mode-home) .statbox.amber span { color: var(--ink); }
+:where(#mode-home) .stat-strip { position: relative; display: flex; grid-template-columns: none; gap: 8px; padding: 12px 14px 0; flex: none; }
+
+/* -------------------------------------------------------------- 4a: home */
+.home-title {
+  position: relative; padding: 12px 14px 0; flex: none;
+  font-family: var(--display-font); font-size: 52px; line-height: .82; letter-spacing: 1px;
+}
+.home-title span { color: var(--red); text-shadow: 3px 3px 0 var(--ink); }
+.feel-wrap { position: relative; padding: 14px 14px 0; flex: none; }
+.feel-label { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.feel-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.feel-card {
+  border: 2px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink);
+  padding: 7px 6px; text-align: left;
+}
+.feel-card:active { background: var(--amber); }
+.feel-card.on { background: var(--red); color: #fff; }
+.feel-name { font-family: var(--display-font); font-size: 16px; line-height: .9; }
+.feel-genre { font: 700 7px var(--mono-font); margin-top: 3px; color: var(--ink60); }
+.feel-card.on .feel-genre { color: #fff; opacity: .85; }
+.feel-bpm { font: 700 8px var(--mono-font); margin-top: 4px; }
+.modules {
+  position: relative; flex: 1; min-height: 0; padding: 14px 14px 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.hero-tile {
+  border: 2px solid var(--ink); background: var(--ink); color: var(--paper);
+  box-shadow: 4px 4px 0 var(--red);
+  padding: 10px 12px; display: flex; align-items: center; gap: 12px; flex: none;
+  width: 100%;
+}
+.hero-tile:active { box-shadow: 2px 2px 0 var(--red); }
+.hero-name { flex: 1; text-align: left; font-family: var(--display-font); font-size: 22px; line-height: .9; }
+.hero-arrow { font-family: var(--display-font); font-size: 22px; color: var(--red); }
+.module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
+.module-tile {
+  border: 2px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink);
+  padding: 9px; display: flex; flex-direction: column; justify-content: space-between;
+  align-items: flex-start; gap: 14px; min-height: 96px;
+}
+.module-tile:active { background: var(--amber); }
+.module-name { font-family: var(--display-font); font-size: 18px; line-height: .9; text-align: left; }
+
+.module-tile { min-height: 130px; }

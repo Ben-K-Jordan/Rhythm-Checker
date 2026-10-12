@@ -5,11 +5,18 @@
 // deploys on the next load without anyone remembering to bump a version;
 // offline (the backstage case) everything serves from cache.
 
-const CACHE = 'rhythm-checker-v33';
+const CACHE = 'rhythm-checker-v34';
 const ASSETS = [
   '.',
   'index.html',
-  'css/app.css',
+  'css/base.css',
+  'css/shell.css',
+  'css/home.css',
+  'css/tuner.css',
+  'css/rudiments.css',
+  'css/timing.css',
+  'css/calibrate.css',
+  'css/history.css',
   'js/app.js',
   'js/audio.js',
   'js/calibrate.js',
@@ -18,6 +25,7 @@ const ASSETS = [
   'js/home.js',
   'js/theme.js',
   'js/history.js',
+  'js/highway.js',
   'js/meter.js',
   'js/metronome.js',
   'js/rudiments.js',
@@ -26,6 +34,7 @@ const ASSETS = [
   'js/store.js',
   'js/timing.js',
   'js/tuner.js',
+  'js/ui.js',
   'worklet/capture.js',
   'manifest.webmanifest',
   'icons/icon-32.png',

@@ -1,0 +1,100 @@
+/* Timing screen. */
+
+/* Pre-v3 look of the shared .statbox on this screen (scoped with :where so
+   specificity matches the old global rules). Delete when this screen moves to v3. */
+:where(#mode-timing) .statbox {
+  flex: 1;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  background: #fff;
+  padding: 5px;
+  text-align: center;
+  min-width: 0;
+  min-height: auto;
+}
+:where(#mode-timing) .statbox b {
+  display: block;
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: .9;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+:where(#mode-timing) .statbox span {
+  display: inline; margin-top: 0; white-space: normal; overflow: visible; text-overflow: clip;
+  font: 700 7.5px var(--mono-font); letter-spacing: .04em; color: var(--ink60); text-transform: uppercase;
+}
+:where(#mode-timing) .statbox.ink { background: var(--ink); color: var(--paper); }
+:where(#mode-timing) .statbox.red { background: var(--red); color: #fff; }
+:where(#mode-timing) .statbox.green { background: var(--green); color: #fff; }
+:where(#mode-timing) .statbox.amber { background: var(--amber); color: var(--ink); }
+:where(#mode-timing) .statbox.ink span, :where(#mode-timing) .statbox.red span, :where(#mode-timing) .statbox.green span { color: inherit; }
+:where(#mode-timing) .statbox.amber span { color: var(--ink); }
+
+.scan { /* sweeping scan line for charts */
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1.5px;
+  background: rgba(224, 48, 30, .55);
+  animation: scanx 3s linear infinite;
+  pointer-events: none;
+}
+
+
+.cta-wrap { position: relative; padding: 11px 14px 0; flex: none; }
+.cta-wrap .cta { font-size: 26px; letter-spacing: 2px; padding: 11px; gap: 11px; }
+
+/* --------------------------------------------------------- 9a: timing */
+.timing-title { display: flex; align-items: flex-start; gap: 10px; padding: 0 14px; }
+.metronome-motif {
+  width: 34px; height: 34px; border: 2px solid var(--ink); background: #fff;
+  box-shadow: 2px 2px 0 var(--ink); position: relative; overflow: hidden; margin-top: 12px;
+}
+.mm-arm {
+  position: absolute; left: 50%; bottom: 4px; width: 3px; height: 24px;
+  background: var(--red); transform-origin: bottom center;
+  animation: swingN 1.1s ease-in-out infinite;
+}
+.timing-controls { position: relative; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 10px 14px 0; flex: none; }
+.tc-card {
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); background: #fff;
+  padding: 7px 9px; text-align: left; position: relative;
+}
+.tc-card.ink { background: var(--ink); color: var(--paper); }
+.tc-cap { font: 700 7.5px var(--mono-font); color: var(--ink60); letter-spacing: 1px; }
+.tc-card.ink .tc-cap { color: var(--paper); opacity: .7; }
+.tc-val { font: 700 11px var(--mono-font); margin-top: 2px; }
+.tc-val b { font-family: var(--display-font); font-weight: 400; font-size: 22px; line-height: .9; }
+.tc-cap2 { font: 400 7px var(--mono-font); color: var(--ink60); margin-top: 3px; }
+.tc-card.ink .tc-cap2 { color: var(--paper); opacity: .6; }
+.tc-btns { position: absolute; right: 6px; top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.tc-btns button {
+  width: 22px; height: 20px; border: 2px solid var(--ink); background: #fff;
+  font: 700 12px var(--mono-font); display: flex; align-items: center; justify-content: center;
+}
+.tc-btns button:active { background: var(--amber); }
+.cal-nag { font: 700 9px var(--mono-font); color: var(--amber-text); padding: 8px 14px 0; }
+.tempo-chart {
+  position: relative; flex: 1; min-height: 160px; margin: 10px 14px 0;
+  border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); background: #fff;
+  padding: 8px; display: flex; flex-direction: column;
+}
+.tch-head { display: flex; justify-content: space-between; align-items: center; flex: none; }
+.tch-axis { font: 700 8px var(--mono-font); color: var(--ink60); }
+.tch-plot { position: relative; flex: 1; min-height: 120px; margin-top: 6px; }
+.tch-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tch-steadiness { position: absolute; top: 4px; right: 6px; text-align: right; }
+.tch-steadiness b { display: block; font-family: var(--display-font); font-weight: 400; font-size: 26px; line-height: .9; color: var(--amber-text); }
+.tch-steadiness span { font: 700 7.5px var(--mono-font); color: var(--ink60); }
+.tch-faster { position: absolute; top: 4px; left: 6px; font: 700 8px var(--mono-font); color: var(--green); }
+.tch-slower { position: absolute; bottom: 4px; left: 6px; font: 700 8px var(--mono-font); color: var(--red); }
+.timing-stats { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 10px 14px 0; flex: none; }
+.timing-stats .statbox b { font-size: 19px; }
+
+.mm-arm { background: var(--ink); }
+.mm-arm::after {
+  content: ''; position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+  width: 9px; height: 9px; border-radius: 50%; background: var(--red); border: 1.5px solid var(--ink);
+}

@@ -1,0 +1,145 @@
+/* Rudiments screen. */
+
+/* Pre-v3 look of the shared .statbox on this screen (scoped with :where so
+   specificity matches the old global rules). Delete when this screen moves to v3. */
+:where(#mode-rudiments) .statbox {
+  flex: 1;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  background: #fff;
+  padding: 5px;
+  text-align: center;
+  min-width: 0;
+  min-height: auto;
+}
+:where(#mode-rudiments) .statbox b {
+  display: block;
+  font-family: var(--display-font);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: .9;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+:where(#mode-rudiments) .statbox span {
+  display: inline; margin-top: 0; white-space: normal; overflow: visible; text-overflow: clip;
+  font: 700 7.5px var(--mono-font); letter-spacing: .04em; color: var(--ink60); text-transform: uppercase;
+}
+:where(#mode-rudiments) .statbox.ink { background: var(--ink); color: var(--paper); }
+:where(#mode-rudiments) .statbox.red { background: var(--red); color: #fff; }
+:where(#mode-rudiments) .statbox.green { background: var(--green); color: #fff; }
+:where(#mode-rudiments) .statbox.amber { background: var(--amber); color: var(--ink); }
+:where(#mode-rudiments) .statbox.ink span, :where(#mode-rudiments) .statbox.red span, :where(#mode-rudiments) .statbox.green span { color: inherit; }
+:where(#mode-rudiments) .statbox.amber span { color: var(--ink); }
+
+.tri-up { width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 13px solid var(--ink); }
+
+/* ------------------------------------------------- 3a: rudiments highway */
+.rud-controls { position: relative; padding: 8px 14px 0; flex: none; }
+.rud-picker select {
+  width: 100%; font: 600 15px var(--label-font); text-transform: uppercase;
+  background: var(--ink); color: var(--paper); padding: 9px 12px;
+  border: none; letter-spacing: .5px;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7'%3E%3Cpath d='M0 0h10L5 7z' fill='%23f2ecdd' opacity='.7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+.param-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 7px; }
+.param { text-align: center; }
+.param-cap { font: 700 7.5px var(--mono-font); color: var(--ink60); letter-spacing: 1px; margin-bottom: 3px; text-transform: uppercase; }
+.param-box {
+  width: 100%; border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+  font-family: var(--display-font); font-size: 18px; padding: 4px; background: #fff;
+}
+.param-box.open { background: var(--amber); }
+.expand-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; align-items: center; }
+.expand-row .pill { padding: 4px 7px; font-size: 10px; }
+.expand-sep { width: 2px; align-self: stretch; background: var(--cream3); margin: 0 3px; }
+.accents-row { align-items: center; }
+.accent-editor { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.accent-puck {
+  width: 34px; height: 34px; border-radius: 50%; font-family: var(--display-font);
+  font-size: 15px; color: #fff; border: 2px solid var(--ink); padding: 0;
+}
+.accent-puck.r { background: var(--red); }
+.accent-puck.l { background: var(--blue); }
+.accent-puck.on { box-shadow: 0 0 0 3px var(--ink); transform: scale(1.12); }
+.accent-puck.pulse-start { outline: 2px dotted rgba(20, 18, 16, .3); outline-offset: 2px; }
+.accent-note { font: 400 9px var(--mono-font); color: var(--ink60); margin-left: 4px; }
+
+.highway-panel {
+  position: relative; flex: 1; min-height: 150px; margin: 11px 14px 0;
+  border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
+  background: #fff; overflow: hidden;
+}
+.hw-hatch {
+  position: absolute; inset: 0; z-index: 0;
+  background: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(20, 18, 16, .04) 9px 10px);
+}
+.hw-now {
+  position: absolute; top: 8%; bottom: 8%; left: 42%; width: 58px;
+  transform: translateX(-50%);
+  background: rgba(224, 48, 30, .1);
+  border-left: 2px solid var(--red); border-right: 2px dashed var(--red);
+  z-index: 1;
+}
+.highway-panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; }
+.hw-frost {
+  position: absolute; top: 0; bottom: 0; left: 42%; right: 0; z-index: 3;
+  background: repeating-linear-gradient(-45deg, transparent 0 7px, rgba(20, 18, 16, .045) 7px 8px), rgba(255, 255, 255, .58);
+  pointer-events: none;
+}
+
+.judge-bar {
+  position: relative; flex: none; margin: 10px 14px 0;
+  border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); background: #fff;
+  padding: 9px 10px; display: flex; align-items: center; gap: 10px;
+}
+.jb-gauge { flex: 1; }
+.jb-labels { display: flex; justify-content: space-between; font: 700 8px var(--mono-font); margin-bottom: 4px; color: var(--ink); }
+.jb-labels .mid { color: var(--ink40); }
+.jb-track {
+  position: relative; height: 20px; border: 2px solid var(--ink);
+  background: linear-gradient(90deg, #efe6d2 0 14%, #f0e2b8 14% 30%, #ecd27a 30% 42%, #bfe0ab 42% 58%, #ecd27a 58% 70%, #f0e2b8 70% 86%, #efe6d2 86% 100%);
+}
+.jb-center { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+.jb-needle {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2;
+  transition: left .18s ease-out;
+}
+.jb-needle .tri-up { border-left-width: 8px; border-right-width: 8px; border-bottom-width: 14px; }
+.jb-zones { display: flex; justify-content: center; gap: 14px; font: 700 7px var(--mono-font); color: var(--ink60); margin-top: 3px; }
+.jb-zones .g { color: var(--amber-text); }
+.jb-zones .p { color: var(--green); }
+.judge-chip {
+  text-align: center; background: #fff; color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  padding: 5px 10px; flex: none; min-width: 74px;
+}
+.judge-chip.perfect, .judge-chip.good { background: var(--green); color: #fff; }
+.judge-chip.ok { background: var(--amber); color: var(--ink); }
+.judge-chip.miss { background: var(--red); color: #fff; }
+.jc-num { font-family: var(--display-font); font-size: 26px; line-height: .85; }
+.jc-cap { font: 700 8px var(--mono-font); }
+.rud-bottom { position: relative; display: flex; gap: 8px; padding: 10px 14px 0; flex: none; }
+.rud-bottom .statbox b { font-size: 22px; }
+.rud-play { flex: 1.4; background: var(--red); color: #fff; font-size: 24px; letter-spacing: 1px; gap: 9px; }
+.rud-play:active { background: var(--ink); }
+.rud-play .tri { border-left: 13px solid #fff; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+.rud-summary {
+  margin: 10px 14px 0; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  background: #fff; padding: 10px 12px; font: 400 11px var(--mono-font); line-height: 1.6;
+}
+.rud-summary .sub { color: var(--ink60); }
+
+.highway-panel { min-height: 230px; }
+
+/* -------------------------------- rudiments: rhythm notation (sight-reading) */
+.rud-notation {
+  margin-top: 8px; padding: 4px 8px 2px;
+  border: 2px solid var(--ink); background: #fff;
+  box-shadow: 3px 3px 0 var(--ink);
+  overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+}
+.rud-notation-svg { display: block; }
