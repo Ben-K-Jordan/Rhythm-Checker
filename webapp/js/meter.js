@@ -1,6 +1,6 @@
 // Meters, tempo maps, and tap tempo — pure functions, no audio, no DOM.
 //
-// BPM convention (shown in the UI as ♩= or ♪=): BPM is the rate of the
+// BPM convention (always written "{n} BPM"): BPM is the rate of the
 // meter's pulse unit — the quarter note in /4 meters, the eighth in /8
 // meters. That is what you set on a metronome for those meters, so it is
 // what you set here.
@@ -28,8 +28,9 @@ export function accentsFor(meter, grouping) {
   return meter.groupings[grouping] || meter.groupings[defaultGrouping(meter)];
 }
 
-export function unitGlyph(meter) {
-  return meter.unit === 8 ? '♪' : '♩';
+// The bundled fonts have no note glyphs, so tempo is always "{bpm} BPM".
+export function unitGlyph() {
+  return 'BPM';
 }
 
 // ---------------------------------------------------------------------------

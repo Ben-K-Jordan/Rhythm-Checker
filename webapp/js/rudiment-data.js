@@ -17,7 +17,7 @@
 // guidance, and grace notes (flams/drags/buzz) render for feel but are scored
 // at their PRIMARY (the detector's refractory merges a flam into one onset).
 //
-// The accent editor is available on every rudiment (default 'built-in' shows
+// The accent editor is available on every rudiment (default AS WRITTEN shows
 // its own written accents). `editable: true` is kept as a hint marking the
 // pure single/double/paradiddle patterns whose whole point is free accent
 // placement, but it no longer gates the editor.
@@ -108,7 +108,7 @@ const RAW = [
 
 export const CATEGORIES = [
   { id: 'roll', label: 'Roll Rudiments' },
-  { id: 'diddle', label: 'Paradiddle Rudiments' },
+  { id: 'diddle', label: 'Diddle Rudiments' },
   { id: 'flam', label: 'Flam Rudiments' },
   { id: 'drag', label: 'Drag Rudiments' },
 ];

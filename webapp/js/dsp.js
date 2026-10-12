@@ -325,9 +325,8 @@ export class BleedGuard {
 
   warning() {
     return this.suspected >= 3
-      ? `${this.suspected} quiet hits landing exactly on clicks were ignored as `
-        + 'probable metronome bleed — lower the click volume or move the phone '
-        + 'if that seems wrong'
+      ? `${this.suspected} quiet hits on the click were ignored as speaker bleed. `
+        + 'Real hits? Turn the phone volume down.'
       : null;
   }
 }

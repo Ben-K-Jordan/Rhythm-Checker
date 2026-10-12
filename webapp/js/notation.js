@@ -1,7 +1,8 @@
 // Rhythm-notation for the rudiments — a real single-line drum staff drawn from
 // the same note data the highway plays, so you can SIGHT-READ each rudiment:
 // noteheads at their onsets, stems, beams (by beat), flams/drags as grace
-// notes, accents, buzz tremolos, tuplet numbers, and R/L sticking underneath.
+// notes, accents, buzz tremolos and tuplet numbers. Sticking is not drawn:
+// the accent pucks under the staff carry it.
 //
 // It reads the onset grid: a note lasts until the next onset in its beat (or
 // the beat end), which turns a roll's trailing gaps into the longer note you
@@ -71,20 +72,24 @@ export function notationModel(rud, opts = {}) {
   });
 }
 
-const LY = 46;        // staff line / notehead centre
-const STEM_BOT = 74;  // stem tip (stems point down)
-const STICK_Y = 95;   // sticking letters
-const H = 104;
+const LY = 38;        // staff line / notehead centre
+const STEM_BOT = 66;  // stem tip (stems point down)
+const H = 74;
+// The SVG is drawn 1:1 in CSS px (callers may only scale it up), so the
+// 11 px tuplet numerals never fall under the 11 px floor.
 
 export function rudimentNotationSVG(rud, opts = {}) {
-  const lead = opts.lead || 'R';
   const accentOf = opts.accentOf || ((n) => n.accent);
-  const swap = (h) => (lead === 'L' ? (h === 'R' ? 'L' : 'R') : h);
   const { grid, beats } = rud;
 
-  const beatW = Math.max(70, grid * 12);
-  const padL = 40;
+  // opts.width: room available; short phrases stretch to fill it, long ones
+  // keep their minimum beat width and scroll
+  const padL = opts.width ? 16 : 40;
   const padR = 16;
+  const minBeatW = Math.max(70, grid * 12);
+  const beatW = opts.width
+    ? Math.max(minBeatW, Math.min(170, (opts.width - padL - padR) / beats))
+    : minBeatW;
   const width = padL + beats * beatW + padR;
   const beatX = (b) => padL + b * beatW;
   const noteX = (b, s) => beatX(b) + (s / grid) * beatW + 6;
@@ -95,10 +100,6 @@ export function rudimentNotationSVG(rud, opts = {}) {
   const p = [];
   // staff line
   p.push(`<line x1="${padL - 8}" y1="${LY}" x2="${width - 8}" y2="${LY}" stroke="var(--ink)" stroke-width="1.4"/>`);
-  // faint beat separators
-  for (let b = 1; b < beats; b++) {
-    p.push(`<line x1="${beatX(b)}" y1="${LY - 15}" x2="${beatX(b)}" y2="${LY + 15}" stroke="var(--line)" stroke-width="1"/>`);
-  }
 
   for (const beat of model) {
     const b = beat.beat;
@@ -109,7 +110,7 @@ export function rudimentNotationSVG(rud, opts = {}) {
     }
     const ns = beat.notes.map((n) => ({ ...n, x: noteX(b, n.sib) }));
     if (beat.tuplet) {
-      p.push(`<text x="${beatX(b) + beatW * 0.5}" y="${LY - 25}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--dim)">${beat.tuplet}</text>`);
+      p.push(`<text x="${beatX(b) + beatW * 0.5}" y="${LY - 27}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--ink60)">${beat.tuplet}</text>`);
     }
     for (const n of ns) {
       const { x } = n;
@@ -124,7 +125,8 @@ export function rudimentNotationSVG(rud, opts = {}) {
         }
       }
       if (n.accent) {
-        p.push(`<path d="M ${x - 6} ${LY - 16} L ${x + 4} ${LY - 12.5} L ${x - 6} ${LY - 9}" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
+        // above the grace-note flags, below the tuplet numeral
+        p.push(`<path d="M ${x - 5} ${LY - 22} L ${x + 5} ${LY - 18.5} L ${x - 5} ${LY - 15}" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
       }
       for (let g = 0; g < n.grace; g++) {
         const gx = x - 11 - g * 7.5;
@@ -132,13 +134,11 @@ export function rudimentNotationSVG(rud, opts = {}) {
         p.push(`<line x1="${gx + 2.5}" y1="${LY - 2}" x2="${gx + 2.5}" y2="${LY - 13}" stroke="var(--ink)" stroke-width="1"/>`);
         p.push(`<line x1="${gx - 2}" y1="${LY - 8}" x2="${gx + 6}" y2="${LY - 13}" stroke="var(--ink)" stroke-width="1"/>`);
       }
-      const hand = swap(n.hand);
-      p.push(`<text x="${x}" y="${STICK_Y}" text-anchor="middle" font-family="var(--mono-font)" font-weight="700" font-size="12" fill="${hand === 'R' ? 'var(--pink)' : 'var(--blue)'}">${hand}</text>`);
     }
     drawBeams(ns, p);
   }
 
-  return `<svg viewBox="0 0 ${width} ${H}" height="78" preserveAspectRatio="xMinYMid meet" class="rud-notation-svg" role="img" aria-label="${rud.name} notation">${p.join('')}</svg>`;
+  return `<svg viewBox="0 0 ${width} ${H}" width="${width}" height="${H}" preserveAspectRatio="xMinYMid meet" class="rud-notation-svg" role="img" aria-label="${rud.name} notation">${p.join('')}</svg>`;
 }
 
 // Beam by level: the 8th-beam spans every beamable note in the beat; each

@@ -6,32 +6,33 @@
 // grace notes (flams/drags) render for feel but are scored at their primary.
 
 import { ChartPlayer } from './metronome.js';
-import { METERS, meterById, defaultGrouping, accentsFor, segmentAt, unitGlyph, TapTempo } from './meter.js';
+import { METERS, meterById, defaultGrouping, accentsFor, segmentAt, TapTempo } from './meter.js';
 import { RUDIMENTS, CATEGORIES, rudimentById } from './rudiment-data.js';
 import { rudimentNotationSVG, notationModel } from './notation.js';
 import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { FEELS } from './feel.js';
-import { theme } from './theme.js';
 import { wakeLock } from './audio.js';
+import { icon, fmtSigned, dirWord, nbsp, monitorSize, factLine, announce, setRunState, seg } from './ui.js';
+import { createHighway } from './highway.js';
 
 export { RUDIMENTS };
 
 export const RAMPS = [
-  { id: 'off', label: 'steady', ramp: null },
-  { id: 'r5x4', label: '+5 / 4 bars', ramp: { addBpm: 5, everyBars: 4 } },
-  { id: 'r10x4', label: '+10 / 4 bars', ramp: { addBpm: 10, everyBars: 4 } },
-  { id: 'r5x8', label: '+5 / 8 bars', ramp: { addBpm: 5, everyBars: 8 } },
+  { id: 'off', label: 'STEADY', sub: 'no ramp', ramp: null },
+  { id: 'r5x4', label: '+5', sub: 'per 4 bars', ramp: { addBpm: 5, everyBars: 4 } },
+  { id: 'r10x4', label: '+10', sub: 'per 4 bars', ramp: { addBpm: 10, everyBars: 4 } },
+  { id: 'r5x8', label: '+5', sub: 'per 8 bars', ramp: { addBpm: 5, everyBars: 8 } },
 ];
 
-// Accent modes are available on every rudiment. 'built-in' shows the
+// Accent modes are available on every rudiment. AS WRITTEN shows the
 // rudiment's own written accents; the others let you run it as an accent
-// study (accent the pulses, strip every accent, or place your own).
+// study (accent the beats, strip every accent, or place your own).
 export const ACCENT_MODES = [
-  { id: 'pattern', label: 'built-in' },
-  { id: 'pulses', label: 'pulses' },
-  { id: 'none', label: 'none' },
-  { id: 'custom', label: 'custom' },
+  { id: 'pattern', label: 'AS WRITTEN' },
+  { id: 'pulses', label: 'ON BEAT' },
+  { id: 'none', label: 'NONE' },
+  { id: 'custom', label: 'CUSTOM' },
 ];
 
 const MATCH_WINDOW_MS = 90;   // absolute accept cap (slow tempos)
@@ -98,7 +99,7 @@ function accentForNote(rud, accent, note) {
     case 'none': return false;
     case 'pulses': return note.slot % rud.grid === 0;
     case 'custom': return accent.custom.includes(note.phrasePos);
-    default: return note.accent; // 'built-in' = the rudiment's own accents
+    default: return note.accent; // AS WRITTEN = the rudiment's own accents
   }
 }
 
@@ -195,11 +196,24 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
   return { notes, clicks, barOffsets, segments, total };
 }
 
+
+const NBSP = ' ';
+const one = (x) => Math.abs(x).toFixed(1);
+const HAND_WORD = { R: 'right', L: 'left' };
+const CYCLE_SVG = '<svg class="icon param-box__cue" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.8" d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M20.5 3.5v6h-6z"/></svg>';
+
+// Signed tick label for an ms axis: U+2212 minus, '+' on positives, bare 0.
+function tickLabel(v) {
+  return v === 0 ? '0' : fmtSigned(v, 0);
+}
+
 export class RudimentsMode {
-  constructor(root, mic) {
+  constructor(root, mic, nav = null) {
     this.root = root;
     this.mic = mic;
+    this.nav = nav || ((name) => window.__rhythmChecker && window.__rhythmChecker.nav(name));
     this.running = false;
+    this.state = 'idle';
     this.lead = 'R';
     this.bars = 16;
     this.rampId = 'off';
@@ -213,6 +227,9 @@ export class RudimentsMode {
     this.grouping = (saved && saved.grouping) || defaultGrouping(meterById('4/4'));
     this.tap = new TapTempo();
     this.recentDevs = [];
+    this.judged = [];
+    this.stopInfo = null;
+    this.saved = false;
     this._raf = null;
     this.render();
     mic.addEventListener('onset', (e) => this.onHit(e.detail));
@@ -226,10 +243,11 @@ export class RudimentsMode {
     if (!this.running) {
       const saved = store.get('grooveRud');
       this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
-      const chip = this.root.querySelector('#rud-tempo-chip');
-      if (chip) chip.textContent = this.bpm;
+      this.updateTempoText();
       const sel = this.root.querySelector('#rud-pattern');
       if (sel) sel.innerHTML = this.patternOptionsHTML();
+      this.renderTitleSlot();
+      this.refreshNotation();
     }
     if (!this._raf) this.loop();
   }
@@ -261,85 +279,115 @@ export class RudimentsMode {
     return `${picks.length ? `<optgroup label="★ ${feel.label}'S PICKS">${picks.map(opt).join('')}</optgroup>` : ''}${CATEGORIES.map((c) => `<optgroup label="${c.label}">${RUDIMENTS.filter((r) => r.cat === c.id).map(opt).join('')}</optgroup>`).join('')}`;
   }
 
+  setState(state, label = '') {
+    this.state = state;
+    setRunState(this.root, state, label);
+  }
+
+  // ------------------------------------------------------------ skeleton
   render() {
-    const rud = this.currentRudiment();
     const meter = meterById(this.meterId);
-    const groupings = Object.keys(meter.groupings);
     this.root.innerHTML = `
-      <div class="title-stamp" style="font-size:36px">RUDIMENTS</div>
-
-      <div class="rud-controls">
-        <div class="rud-picker">
-          <select id="rud-pattern" aria-label="rudiment">${this.patternOptionsHTML()}</select>
+      <div class="screen rud">
+        <div class="title-row rud-title">
+          <h1 class="stamp">RUDIMENTS</h1>
+          <div class="rud-title__slot"></div>
         </div>
-        <div class="param-grid">
-          <div class="param"><div class="param-cap">LEAD</div><button id="rud-lead" class="param-box">${this.lead}</button></div>
-          <div class="param"><div class="param-cap">BARS</div><button id="rud-bars" class="param-box">${this.bars}</button></div>
-          <div class="param"><div class="param-cap">TEMPO</div><button id="rud-tempo-chip" class="param-box ${this.expand === 'tempo' ? 'open' : ''}">${this.bpm}</button></div>
-          <div class="param"><div class="param-cap">METER</div><button id="rud-meter-chip" class="param-box ${this.expand === 'meter' ? 'open' : ''}">${meter.label}</button></div>
+        <div class="card card--ink rud-stopped">
+          <span class="chip chip--warn">STOPPED · NOT SAVED</span>
+          <p class="rud-stopped__line"></p>
         </div>
-        ${this.expand === 'tempo' ? `
-          <div class="expand-row">
-            <button class="pill" data-bpm="-5">&#8722;5</button>
-            <button class="pill" data-bpm="-1">&#8722;1</button>
-            <button class="pill" data-bpm="1">+1</button>
-            <button class="pill" data-bpm="5">+5</button>
-            <button class="pill" id="rud-tap">TAP</button>
-            <span class="expand-sep"></span>
-            ${RAMPS.map((r) => `<button class="pill ${this.rampId === r.id ? 'on' : ''}" data-ramp="${r.id}">${r.label}</button>`).join('')}
-          </div>` : ''}
-        ${this.expand === 'meter' ? `
-          <div class="expand-row">
-            ${METERS.map((m) => `<button class="pill ${m.id === this.meterId ? 'on' : ''}" data-meter="${m.id}">${m.label}</button>`).join('')}
-            ${groupings.length > 1 ? `<span class="expand-sep"></span>
-              ${groupings.map((g) => `<button class="pill ${g === this.grouping ? 'on' : ''}" data-grouping="${g}">${g}</button>`).join('')}` : ''}
-          </div>` : ''}
-        <div class="rud-notation" aria-label="notation">${this.notationSVG(rud)}</div>
-        <div class="expand-row accents-row">
-          <span class="param-cap" style="margin:0 4px 0 0">ACCENTS</span>
-          ${ACCENT_MODES.map((m) => `<button class="pill ${m.id === this.accentMode ? 'on' : ''}" data-am="${m.id}">${m.label}</button>`).join('')}
+        <div class="summary rud-lockstrip" role="group" aria-label="Setup locked while playing">
+          <span class="rud-sum"></span>
+          <span class="summary__lock">${icon('lock')}</span>
         </div>
-        <div id="rud-accent-editor" class="accent-editor"></div>
-      </div>
+        <button type="button" class="summary rud-sumbtn"><span class="rud-sum"></span><span class="sr-only">. Edit setup</span></button>
 
-      <div class="highway-panel">
-        <div class="hw-hatch"></div>
-        <div class="hw-now"></div>
-        <canvas id="rud-highway" width="900" height="330"></canvas>
-        <div class="hw-frost"></div>
-      </div>
-
-      <div class="judge-bar">
-        <div class="jb-gauge">
-          <div class="jb-labels"><span>&#9668; EARLY</span><span class="mid">0</span><span>LATE &#9658;</span></div>
-          <div class="jb-track">
-            <div class="jb-center"></div>
-            <div id="jb-needle" class="jb-needle"><div class="tri-up"></div></div>
+        <div class="rud-setup setup">
+          <div class="rud-picker">
+            <select id="rud-pattern" aria-label="Rudiment">${this.patternOptionsHTML()}</select>
+            ${icon('tri-down')}
           </div>
-          <div class="jb-zones"><span>OK</span><span class="g">GOOD</span><span class="p">PERFECT</span><span class="g">GOOD</span><span>OK</span></div>
+          <div class="param-row">
+            <div class="param-box">
+              <span class="param-box__cap" aria-hidden="true">LEAD</span>${CYCLE_SVG}
+              <button type="button" id="rud-lead" aria-label="Lead hand: ${HAND_WORD[this.lead]}">${this.lead}</button>
+            </div>
+            <div class="param-box">
+              <span class="param-box__cap" aria-hidden="true">BARS</span>${CYCLE_SVG}
+              <button type="button" id="rud-bars" aria-label="Bars: ${this.bars}">${this.bars}</button>
+            </div>
+            <div class="param-box param-box--menu">
+              <span class="param-box__cap" aria-hidden="true">BPM</span>
+              <button type="button" id="rud-tempo-chip" aria-expanded="false" aria-controls="rud-disc" aria-label="Tempo: ${this.bpm} BPM">${this.bpm}</button>
+              <span class="param-badge hidden"></span>
+            </div>
+            <div class="param-box param-box--menu">
+              <span class="param-box__cap" aria-hidden="true">METER</span>
+              <button type="button" id="rud-meter-chip" aria-expanded="false" aria-controls="rud-disc" aria-label="Meter: ${meter.label}">${meter.label}</button>
+            </div>
+          </div>
+          <div id="rud-disc" class="disclosure rud-disc hidden"></div>
+          <section class="card rud-pattern-card" aria-labelledby="rud-pattern-head">
+            <div class="sec-head">
+              <h2 class="sec-head__stamp" id="rud-pattern-head">PATTERN</h2>
+              <span class="sec-head__aside">Tap a note to accent it.</span>
+            </div>
+            <div class="rud-am" role="group" aria-label="Accents"></div>
+            <div class="rud-notation" role="group" aria-label="Notation"></div>
+            <div id="rud-accent-editor" class="accent-editor"></div>
+          </section>
         </div>
-        <div id="rud-judge-chip" class="judge-chip idle">
-          <div class="jc-num" id="rud-judge-num">&mdash;</div>
-          <div class="jc-cap" id="rud-judge-cap">WAITING</div>
+
+        <div class="countin rud-countin">
+          <b id="rud-count" aria-hidden="true"></b>
+          <div class="countin__dots" aria-hidden="true"></div>
         </div>
+        <div id="rud-judge-chip" class="monitor is-idle rud-monitor">
+          <p class="monitor__cap" id="rud-judge-label">LAST HIT</p>
+          <b id="rud-judge-num">—</b>
+          <p class="monitor__side" id="rud-judge-cap"><span class="monitor__wait">LISTENING</span></p>
+        </div>
+        <div class="card rud-strip">
+          <div class="rud-strip__head">
+            <span class="rud-strip__dir">${icon('tri-left')}EARLY</span>
+            <span class="rud-strip__legend">dots: last 8 · ${icon('tri-down')} average</span>
+            <span class="rud-strip__dir">LATE${icon('tri-right')}</span>
+          </div>
+          <div class="rud-strip__plot"></div>
+        </div>
+        <div class="highway-panel">
+          <canvas id="rud-highway" width="900" height="330" role="img" aria-label="Note highway"></canvas>
+          <div class="hw-idle">
+            <p class="hw-idle__title">PRESS PLAY</p>
+            <p class="hw-idle__hint">One bar of count-in, then the notes scroll to the line.</p>
+          </div>
+          <p class="hw-legend" aria-hidden="true"><i class="hw-legend__past"></i>played · <i class="hw-legend__next"></i>coming up</p>
+        </div>
+        <div class="stat-strip rud-tiles">
+          <div class="statbox"><b id="rud-spread">—</b><span>SPREAD</span></div>
+          <div class="statbox"><b id="rud-avg">—</b><span id="rud-avg-label"><span aria-hidden="true">AVG</span><span class="sr-only">Average</span></span></div>
+          <div class="statbox"><b id="rud-acc">—</b><span>HITS</span><em id="rud-combo" class="hidden"></em></div>
+        </div>
+        <div id="rud-summary" class="rud-report"></div>
       </div>
+      <div class="bar">
+        <button type="button" id="rud-edit" class="btn btn--secondary">EDIT SETUP</button>
+        <button type="button" id="rud-go" class="btn btn--primary">PLAY${icon('play')}</button>
+      </div>`;
 
-      <div class="rud-bottom">
-        <div class="statbox"><b id="rud-combo">0</b><span>Streak</span></div>
-        <div class="statbox"><b id="rud-acc">&mdash;</b><span>Accuracy</span></div>
-        <button id="rud-go" class="btn red rud-play">PLAY<span class="tri"></span></button>
-      </div>
-      <div id="rud-summary" class="rud-summary hidden"></div>`;
-
-    this.root.querySelector('#rud-pattern').addEventListener('change', (e) => {
+    const $ = (sel) => this.root.querySelector(sel);
+    $('#rud-pattern').addEventListener('change', (e) => {
+      if (this.running) { e.target.value = this.rudimentId; return; }
       this.rudimentId = e.target.value;
       // start each rudiment on its own written accents; custom indices from the
       // previous pattern don't carry over
       this.accentMode = 'pattern';
       this.customAccents.clear();
-      this.render();
+      if (this.amSeg) this.amSeg.set('pattern');
+      this.renderAccentEditor();
     });
-    this.root.querySelector('#rud-lead').addEventListener('click', (e) => {
+    $('#rud-lead').addEventListener('click', (e) => {
       // ignored mid-run: the chart was built with the lead at PLAY time, and
       // the run report + saved history label read this.lead afterwards — a
       // mid-run flip would label an R-lead run as L-lead and swap every hand
@@ -347,86 +395,206 @@ export class RudimentsMode {
       if (this.running) return;
       this.lead = this.lead === 'R' ? 'L' : 'R';
       e.currentTarget.textContent = this.lead;
+      e.currentTarget.setAttribute('aria-label', `Lead hand: ${HAND_WORD[this.lead]}`);
       this.renderAccentEditor();
     });
-    this.root.querySelector('#rud-bars').addEventListener('click', (e) => {
+    $('#rud-bars').addEventListener('click', (e) => {
       if (this.running) return;
       this.bars = BARS_CYCLE[(BARS_CYCLE.indexOf(this.bars) + 1) % BARS_CYCLE.length];
       e.currentTarget.textContent = this.bars;
+      e.currentTarget.setAttribute('aria-label', `Bars: ${this.bars}`);
     });
-    this.root.querySelector('#rud-tempo-chip').addEventListener('click', () => {
-      // a full render mid-run would relabel STOP as PLAY over a live session
+    $('#rud-tempo-chip').addEventListener('click', () => {
       if (this.running) return;
       this.expand = this.expand === 'tempo' ? null : 'tempo';
-      this.render();
+      this.renderDisclosure();
     });
-    this.root.querySelector('#rud-meter-chip').addEventListener('click', () => {
+    $('#rud-meter-chip').addEventListener('click', () => {
       if (this.running) return;
       this.expand = this.expand === 'meter' ? null : 'meter';
-      this.render();
+      this.renderDisclosure();
     });
-    this.root.querySelectorAll('[data-bpm]').forEach((b) => {
-      b.addEventListener('click', () => {
-        this.bpm = Math.max(20, Math.min(400, this.bpm + +b.dataset.bpm));
-        this.saveGroove();
-        this.root.querySelector('#rud-tempo-chip').textContent = this.bpm;
+    $('.rud-sumbtn').addEventListener('click', () => this.editSetup());
+    $('#rud-edit').addEventListener('click', () => this.editSetup());
+    $('#rud-go').addEventListener('click', () => this.toggle());
+
+    this.amSeg = seg($('.rud-am'),
+      ACCENT_MODES.map((m) => ({ value: m.id, label: m.label, data: { am: m.id } })),
+      this.accentMode,
+      (mode) => {
+        if (this.running) { this.amSeg.set(this.accentMode); return; }
+        this.setAccentMode(mode);
       });
-    });
-    const tapBtn = this.root.querySelector('#rud-tap');
-    if (tapBtn) tapBtn.addEventListener('click', () => {
-      const bpm = this.tap.tap(this.mic.now());
-      if (bpm) {
-        this.bpm = Math.max(20, Math.min(400, Math.round(bpm)));
-        this.saveGroove();
-        this.root.querySelector('#rud-tempo-chip').textContent = this.bpm;
-      }
-    });
-    this.root.querySelectorAll('[data-ramp]').forEach((b) => {
-      b.addEventListener('click', () => {
-        this.rampId = b.dataset.ramp;
-        this.root.querySelectorAll('[data-ramp]').forEach((x) => x.classList.toggle('on', x === b));
-      });
-    });
-    this.root.querySelectorAll('[data-meter]').forEach((b) => {
-      b.addEventListener('click', () => {
-        this.meterId = b.dataset.meter;
-        this.grouping = defaultGrouping(meterById(this.meterId));
-        this.saveGroove();
-        this.render();
-        this.expand = 'meter';
-      });
-    });
-    this.root.querySelectorAll('[data-grouping]').forEach((b) => {
-      b.addEventListener('click', () => {
-        this.grouping = b.dataset.grouping;
-        this.saveGroove();
-        this.root.querySelectorAll('[data-grouping]').forEach((x) => x.classList.toggle('on', x === b));
-      });
-    });
-    this.root.querySelectorAll('[data-am]').forEach((b) => {
-      b.addEventListener('click', () => this.setAccentMode(b.dataset.am));
-    });
-    this.root.querySelector('#rud-go').addEventListener('click', () => this.toggle());
+
+    this.hw = createHighway($('#rud-highway'));
+    this.hw.draw(null);
     this.renderAccentEditor();
+    this.renderRampBadge();
+    this.renderTitleSlot();
+    this.resetLive();
+    this.setState('idle');
   }
 
   currentRudiment() {
     return rudimentById(this.rudimentId);
   }
 
+  updateTempoText() {
+    const chip = this.root.querySelector('#rud-tempo-chip');
+    if (chip) {
+      chip.textContent = this.bpm;
+      chip.setAttribute('aria-label', `Tempo: ${this.bpm} BPM`);
+    }
+    const big = this.root.querySelector('#rud-bpm-big');
+    if (big) big.textContent = this.bpm;
+  }
+
+  setBpm(v) {
+    this.bpm = Math.max(20, Math.min(400, Math.round(v)));
+    this.saveGroove();
+    this.updateTempoText();
+  }
+
+  renderRampBadge() {
+    const badge = this.root.querySelector('.param-badge');
+    if (!badge) return;
+    const r = RAMPS.find((x) => x.id === this.rampId);
+    badge.classList.toggle('hidden', !r || !r.ramp);
+    if (r && r.ramp) {
+      badge.innerHTML = `${icon('ramp')}+${r.ramp.addBpm}/${r.ramp.everyBars}`;
+      badge.setAttribute('aria-label', `Ramp: plus ${r.ramp.addBpm} BPM every ${r.ramp.everyBars} bars`);
+    }
+  }
+
+  // inline disclosure under the param row: TEMPO or METER, one at a time; a
+  // selection inside keeps it open
+  renderDisclosure() {
+    const disc = this.root.querySelector('#rud-disc');
+    const tempoChip = this.root.querySelector('#rud-tempo-chip');
+    const meterChip = this.root.querySelector('#rud-meter-chip');
+    tempoChip.setAttribute('aria-expanded', String(this.expand === 'tempo'));
+    meterChip.setAttribute('aria-expanded', String(this.expand === 'meter'));
+    tempoChip.parentElement.classList.toggle('is-open', this.expand === 'tempo');
+    meterChip.parentElement.classList.toggle('is-open', this.expand === 'meter');
+    this.rampSeg = null;
+    this.meterSeg = null;
+    if (!this.expand) {
+      disc.classList.add('hidden');
+      disc.replaceChildren();
+      return;
+    }
+    disc.classList.remove('hidden');
+    disc.setAttribute('aria-label', this.expand === 'tempo' ? 'Tempo' : 'Meter');
+    if (this.expand === 'tempo') {
+      disc.innerHTML = `
+        <div class="rud-tempo">
+          <div class="rud-steps">
+            <button type="button" data-bpm="-5" aria-label="Tempo down 5">−5</button>
+            <button type="button" data-bpm="-1" aria-label="Tempo down 1">−1</button>
+          </div>
+          <p class="rud-bpm"><b id="rud-bpm-big">${this.bpm}</b><span>BPM</span></p>
+          <div class="rud-steps">
+            <button type="button" data-bpm="1" aria-label="Tempo up 1">+1</button>
+            <button type="button" data-bpm="5" aria-label="Tempo up 5">+5</button>
+          </div>
+          <button type="button" id="rud-tap" class="rud-tap" aria-label="Tap tempo">TAP</button>
+        </div>
+        <p class="rud-disc__label">RAMP</p>
+        <div class="seg--tall rud-ramp"></div>`;
+      disc.querySelectorAll('[data-bpm]').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (this.running) return;
+          this.setBpm(this.bpm + +b.dataset.bpm);
+        });
+      });
+      disc.querySelector('#rud-tap').addEventListener('click', () => {
+        if (this.running) return;
+        const bpm = this.tap.tap(this.mic.now());
+        if (bpm) this.setBpm(bpm);
+      });
+      this.rampSeg = seg(disc.querySelector('.rud-ramp'),
+        RAMPS.map((r) => ({
+          value: r.id, label: r.label, sub: r.sub, data: { ramp: r.id },
+          aria: r.ramp ? `Plus ${r.ramp.addBpm} BPM every ${r.ramp.everyBars} bars` : 'Steady, no ramp',
+        })),
+        this.rampId,
+        (id) => {
+          if (this.running) { this.rampSeg.set(this.rampId); return; }
+          this.rampId = id;
+          this.renderRampBadge();
+        });
+    } else {
+      const meter = meterById(this.meterId);
+      disc.innerHTML = '<div class="rud-meters"></div><div class="rud-groupings"></div>';
+      this.meterSeg = seg(disc.querySelector('.rud-meters'),
+        METERS.map((m) => ({ value: m.id, label: m.label, data: { meter: m.id } })),
+        meter.id,
+        (id) => {
+          if (this.running) { this.meterSeg.set(this.meterId); return; }
+          this.meterId = id;
+          this.grouping = defaultGrouping(meterById(id));
+          this.saveGroove();
+          const label = meterById(id).label;
+          meterChip.textContent = label;
+          meterChip.setAttribute('aria-label', `Meter: ${label}`);
+          this.renderGroupings();
+        });
+      this.renderGroupings();
+    }
+  }
+
+  renderGroupings() {
+    const host = this.root.querySelector('.rud-groupings');
+    if (!host) return;
+    const groupings = Object.keys(meterById(this.meterId).groupings);
+    if (groupings.length < 2) {
+      host.className = 'rud-groupings hidden';
+      host.replaceChildren();
+      return;
+    }
+    host.className = 'rud-groupings';
+    const s = seg(host,
+      groupings.map((g) => ({ value: g, label: g, data: { grouping: g }, aria: `Grouping ${g}` })),
+      this.grouping,
+      (g) => {
+        if (this.running) { s.set(this.grouping); return; }
+        this.grouping = g;
+        this.saveGroove();
+      });
+  }
+
+  renderTitleSlot() {
+    const slot = this.root.querySelector('.rud-title__slot');
+    if (!slot) return;
+    if (this.state === 'result') {
+      slot.innerHTML = this.saved ? `<span class="chip chip--ok">${icon('check')}SAVED TO HISTORY</span>` : '';
+      return;
+    }
+    if (store.get('calibrationMs') === null) {
+      slot.innerHTML = '<button type="button" class="chip-btn chip--warn rud-fix">NOT CALIBRATED · FIX</button>';
+      slot.querySelector('.rud-fix').addEventListener('click', () => {
+        if (this.running) return;
+        this.nav('calibrate');
+      });
+    } else {
+      slot.replaceChildren();
+    }
+  }
+
   // real rhythm notation for the current rudiment; accents reflect the chosen
-  // mode (built-in by default) — a sight-reading aid.
-  notationSVG(rud) {
+  // mode (AS WRITTEN by default) — a sight-reading aid.
+  notationSVG(rud, width) {
     const accent = this.accentValue();
     return rudimentNotationSVG(rud, {
-      lead: this.lead,
+      width,
       accentOf: (n, idx) => accentForNote(rud, accent, { ...n, phrasePos: idx }),
     });
   }
 
   refreshNotation() {
     const el = this.root.querySelector('.rud-notation');
-    if (el) el.innerHTML = this.notationSVG(this.currentRudiment());
+    if (!el) return;
+    el.innerHTML = this.notationSVG(this.currentRudiment(), el.clientWidth || 340);
   }
 
   accentValue() {
@@ -435,49 +603,113 @@ export class RudimentsMode {
 
   setAccentMode(mode) {
     if (mode === 'custom' && this.customAccents.size === 0) {
-      // seed custom from whatever is currently SHOWN (pulses/none/built-in),
-      // not always the built-in pattern, so switching to custom continues from
+      // seed custom from whatever is currently SHOWN (on beat/none/as written),
+      // not always the written pattern, so switching to custom continues from
       // the accents you were just looking at.
       const rud = this.currentRudiment();
       const shown = this.accentValue();
       rud.notes.forEach((n, i) => { if (accentForNote(rud, shown, { ...n, phrasePos: i })) this.customAccents.add(i); });
     }
     this.accentMode = mode;
-    this.root.querySelectorAll('[data-am]')
-      .forEach((b) => b.classList.toggle('on', b.dataset.am === mode));
+    if (this.amSeg) this.amSeg.set(mode);
     this.renderAccentEditor();
   }
 
+  // one 44 px puck per note, rows of at most 8 that break on a beat boundary
   renderAccentEditor() {
     const el = this.root.querySelector('#rud-accent-editor');
     if (!el) return;
     const rud = this.currentRudiment();
     const accent = this.accentValue();
-    const pucks = rud.notes.map((n, i) => {
-      let hand = n.hand;
-      if (this.lead === 'L') hand = swapLead(hand);
-      const on = accentForNote(rud, accent, { ...n, phrasePos: i });
-      return `<button class="accent-puck ${hand === 'R' ? 'r' : 'l'} ${on ? 'on' : ''} ${n.slot % rud.grid === 0 ? 'pulse-start' : ''}"
-        data-step="${i}" aria-pressed="${on}">${hand}</button>`;
+    const beats = [];
+    rud.notes.forEach((n, i) => {
+      const b = Math.floor(n.slot / rud.grid);
+      const last = beats[beats.length - 1];
+      if (last && last.beat === b) last.idx.push(i);
+      else beats.push({ beat: b, idx: [i] });
     });
-    el.innerHTML = pucks.join('')
-      + '<span class="accent-note">tap notes to place accents</span>';
+    const rows = [[]];
+    for (const b of beats) {
+      const row = rows[rows.length - 1];
+      if (row.length && row.length + b.idx.length > 8) rows.push([...b.idx]);
+      else row.push(...b.idx);
+    }
+    const puck = (i) => {
+      const n = rud.notes[i];
+      const hand = this.lead === 'L' ? swapLead(n.hand) : n.hand;
+      const on = accentForNote(rud, accent, { ...n, phrasePos: i });
+      const cls = ['accent-puck', hand === 'R' ? 'r' : 'l', on ? 'on' : '', n.slot % rud.grid === 0 ? 'pulse-start' : '']
+        .filter(Boolean).join(' ');
+      return `<button type="button" class="${cls}" data-step="${i}" aria-pressed="${on}"
+        aria-label="Note ${i + 1}, ${HAND_WORD[hand]} hand, ${on ? 'accented' : 'not accented'}">${hand}</button>`;
+    };
+    el.innerHTML = rows.map((r) => `<div class="accent-row">${r.map(puck).join('')}</div>`).join('');
     this.refreshNotation();
     el.querySelectorAll('.accent-puck').forEach((p) => {
       p.addEventListener('click', () => {
+        if (this.running) return;
         const step = +p.dataset.step;
+        const hadFocus = document.activeElement === p;
         if (this.accentMode !== 'custom') {
           this.customAccents = new Set();
           rud.notes.forEach((n, i) => { if (accentForNote(rud, this.accentValue(), { ...n, phrasePos: i })) this.customAccents.add(i); });
           this.accentMode = 'custom';
-          this.root.querySelectorAll('[data-am]')
-            .forEach((b) => b.classList.toggle('on', b.dataset.am === 'custom'));
+          if (this.amSeg) this.amSeg.set('custom');
         }
         if (this.customAccents.has(step)) this.customAccents.delete(step);
         else this.customAccents.add(step);
         this.renderAccentEditor();
+        const again = this.root.querySelector(`.accent-puck[data-step="${step}"]`);
+        if (again && hadFocus) again.focus();
       });
     });
+  }
+
+  // the collapsed setup line shown while playing and on the result
+  renderSummaryStrip(bpm) {
+    const s = this.runSetup;
+    if (!s) return;
+    const sep = '<span class="summary__sep">·</span>';
+    const html = `<span class="summary__name">${s.name.toUpperCase()}</span>${sep}<span>${s.lead} LEAD</span>${sep}<span>${nbsp(bpm || s.bpm, 'BPM')}</span>${sep}<span>${s.meter}</span>`;
+    this.root.querySelectorAll('.rud-sum').forEach((el) => { el.innerHTML = html; });
+  }
+
+  renderStopped() {
+    const line = this.root.querySelector('.rud-stopped__line');
+    const info = this.stopInfo || { why: 'stopped', bar: 0, bars: this.bars };
+    let text;
+    if (info.why === 'cancelled') text = 'Run cancelled. You left mid-run. Not saved.';
+    else if (info.why === 'invalidated') text = 'Mic lost. Run stopped, not saved.';
+    else if (!info.bar) text = 'Stopped at count-in. Not saved.';
+    else text = `Stopped at bar ${info.bar} of ${info.bars}. Not saved.`;
+    line.textContent = text;
+  }
+
+  editSetup() {
+    if (this.running) return;
+    this.setState('idle');
+    this.renderTitleSlot();
+    this.hw.draw(null);
+    this.refreshNotation();
+  }
+
+  // -------------------------------------------------------------- live
+  resetLive() {
+    const $ = (sel) => this.root.querySelector(sel);
+    const mon = $('#rud-judge-chip');
+    mon.className = 'monitor is-idle rud-monitor';
+    $('#rud-judge-label').textContent = 'LAST HIT';
+    const num = $('#rud-judge-num');
+    num.textContent = '—';
+    num.style.fontSize = `${monitorSize('—')}px`;
+    $('#rud-judge-cap').innerHTML = '<span class="monitor__wait">LISTENING</span>';
+    for (const id of ['#rud-spread', '#rud-avg', '#rud-acc']) {
+      const b = $(id);
+      b.textContent = '—';
+      b.parentElement.classList.add('is-empty');
+    }
+    $('#rud-avg-label').innerHTML = '<span aria-hidden="true">AVG</span><span class="sr-only">Average</span>';
+    $('#rud-combo').classList.add('hidden');
   }
 
   toggle() {
@@ -489,7 +721,14 @@ export class RudimentsMode {
     this.accentUsed = this.accentValue();
     this.chart = buildChart(rud, groove, this.bars, rampDef.ramp, this.lead, this.accentUsed);
     this.grooveUsed = groove;
+    this.barsUsed = this.bars;
     this.saveGroove();
+    // judge settings are fixed for the whole run
+    this.judgeMode = store.get('judgeMode');
+    this.judgeWindows = JUDGE_WINDOWS[this.judgeMode] || JUDGE_WINDOWS.standard;
+    this.pocketMs = store.get('pocketMs');
+    this.showGradesRun = !!store.get('showGrades');
+    this.runSetup = { name: rud.name, lead: this.lead, bpm: groove.bpm, meter: groove.meter.label };
 
     const pulseDur = 60 / groove.bpm;
     const countIn = [];
@@ -504,6 +743,29 @@ export class RudimentsMode {
     this.chartStart = this.player.t0 + countInDur;
     this.countInDur = countInDur;
 
+    // highway frame data: absolute times, radii and windows fixed per run
+    const steps = this.chart.notes.map((n) => n.step).filter((s) => s > 0);
+    this.pxPerSec = highwayPxPerSec(steps.length ? Math.min(...steps) : 0.2);
+    const t0 = this.chartStart;
+    this.hwNotes = this.chart.notes.map((n) => ({
+      t: t0 + n.offset,
+      hand: n.stick,
+      accent: n.accent,
+      grace: n.grace,
+      graceTimes: n.graceTimes.map((g) => t0 + g),
+      buzz: n.buzz,
+      r: puckRadius(n.step, this.pxPerSec, n.accent),
+      lateMs: matchWindowMs(n.gapNext),
+      beams: n.beams,
+      dot: n.dot,
+      tuplet: n.tuplet,
+      beatGroup: n.beatGroup,
+      get state() { return n.state; },
+      get devMs() { return n.devMs; },
+    }));
+    const downs = new Set(this.chart.barOffsets);
+    this.hwBeats = this.chart.clicks.map((c) => ({ t: t0 + c.offset, down: downs.has(c.offset) }));
+
     this.combo = 0;
     this.bestCombo = 0;
     this.strays = 0;
@@ -511,41 +773,42 @@ export class RudimentsMode {
     this.recentDevs = [];
     this.bleed = new BleedGuard();
     this._clickPtr = 0;
-    this.root.querySelector('#rud-summary').classList.add('hidden');
+    this._bar = 0;
+    this._countLeft = null;
+    this.saved = false;
+    this.stopInfo = null;
     this.running = true;
     this.mic.lockDetector(this, { refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     wakeLock.acquire();
-    this._lostHandler = () => {
-      this.stop(true);
-      const el = this.root.querySelector('#rud-summary');
-      el.classList.remove('hidden');
-      el.textContent = 'run invalidated: microphone lost — reconnect and play it again.';
-    };
+    this._lostHandler = () => this.stop(true, 'invalidated');
     this.mic.addEventListener('lost', this._lostHandler);
-    this.root.querySelector('#rud-go').innerHTML = 'STOP';
-    // fresh run, fresh boxes — run 1's streak/accuracy must not linger into
-    // run 2's first frames
-    const comboEl = this.root.querySelector('#rud-combo');
-    if (comboEl) comboEl.textContent = '0';
-    const accEl = this.root.querySelector('#rud-acc');
-    if (accEl) accEl.innerHTML = '&mdash;';
+
+    this.expand = null;
+    this.renderDisclosure();
+    this.root.querySelector('#rud-summary').replaceChildren();
+    this.root.querySelector('#rud-go').innerHTML = `${icon('stop')}STOP`;
+    // fresh run, fresh boxes — run 1's numbers must not linger into run 2
+    this.resetLive();
+    this.renderSummaryStrip();
+    this.setState('countin', `COUNT-IN · ${nbsp(groove.bpm, 'BPM')}`);
+    this.renderCountIn(groove.meter.pulses);
+    this.renderStrip();
+    this.updateStats();
+    this.root.closest('main')?.scrollTo?.(0, 0);
     const runSecs = countInDur + this.chart.total + 1;
     this._endTimer = setTimeout(() => this.stop(false), (runSecs + 0.4) * 1000);
   }
 
-  stop(cancelled) {
+  stop(cancelled, why = 'stopped') {
+    if (!this.running) return;
     this.running = false;
     clearTimeout(this._endTimer);
     if (this.player) this.player.stop();
     this.mic.unlockDetector(this);
     wakeLock.release();
     if (this._lostHandler) this.mic.removeEventListener('lost', this._lostHandler);
+    this._lostHandler = null;
     const go = this.root.querySelector('#rud-go');
-    if (go) go.innerHTML = 'PLAY<span class="tri"></span>';
-    // a tempo ramp rewrote the chip during the run; the NEXT run starts at
-    // this.bpm, so showing the final ramped figure would mislabel PLAY
-    const chip = this.root.querySelector('#rud-tempo-chip');
-    if (chip) chip.textContent = this.bpm;
     if (!cancelled) {
       for (const n of this.chart.notes) {
         if (n.state !== 'coming') continue;
@@ -553,16 +816,28 @@ export class RudimentsMode {
         else n.state = 'miss';
       }
       this.showSummary();
+      const segs = this.chart.segments;
+      const last = segs[segs.length - 1].bpm;
+      this.renderSummaryStrip(last !== segs[0].bpm ? `${segs[0].bpm}–${last}` : segs[0].bpm);
+      go.innerHTML = `PLAY AGAIN${icon('play')}`;
+      this.setState('result');
+      this.renderTitleSlot();
+      const main = this.root.closest('main');
+      if (main) main.scrollTop = 0;
+    } else {
+      this.stopInfo = { why, bar: this._bar, bars: this.barsUsed };
+      this.renderStopped();
+      this.resetLive();
+      go.innerHTML = `PLAY${icon('play')}`;
+      this.setState('stopped');
+      this.renderTitleSlot();
+      this.refreshNotation();
     }
+    this.hw.draw(null);
   }
 
   deactivate() {
-    if (this.running) {
-      this.stop(true);
-      const el = this.root.querySelector('#rud-summary');
-      el.classList.remove('hidden');
-      el.textContent = 'run cancelled — you left the Rudiments tab mid-run.';
-    }
+    if (this.running) this.stop(true, 'cancelled');
     // stop the highway animation loop when off-screen — otherwise it keeps
     // rescheduling every frame for the life of the page after the first visit
     cancelAnimationFrame(this._raf);
@@ -600,18 +875,18 @@ export class RudimentsMode {
     if (!best || bestDev < -earlyMs || bestDev > lateMs) { this.strays++; return; }
     if (best.grace > 0) {
       // Flam/drag: soft grace note(s) land just before the loud primary. Collect
-      // the whole cluster and judge it once the late window closes (in draw),
+      // the whole cluster and judge it once the late window closes (in tick),
       // taking the LOUDEST onset as the primary — so the graces aren't scored
-      // as early hits or strays. (draw's finalizeCluster does the judging.)
+      // as early hits or strays. (tick's finalizeCluster does the judging.)
       (best._cluster || (best._cluster = [])).push({ dev: bestDev, level: onset.level || 0 });
       return;
     }
     this.commitHit(best, bestDev, onset.level || 0);
   }
 
-  // score one primary against the beat: grade, streak, needle, per-stroke stat
+  // score one primary against the beat: grade, streak, monitor, per-stroke stat
   commitHit(note, dev, level) {
-    const windows = JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
+    const windows = this.judgeWindows || JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard;
     const judge = judgeHit(dev, windows);
     note.state = judge === 'miss' ? 'miss' : `hit-${judge}`;
     note.devMs = dev;
@@ -635,62 +910,143 @@ export class RudimentsMode {
     this.commitHit(note, dev, level);
   }
 
-  // streak + accuracy boxes, shared by matched hits and timed-out misses
+  liveStats() {
+    const devs = this.judged.filter((j) => j.judge !== 'miss').map((j) => j.devMs);
+    const missed = this.chart ? this.chart.notes.filter((n) => n.state === 'miss').length : 0;
+    return { devs, s: summarize(devs), hits: devs.length, seen: devs.length + missed };
+  }
+
+  // spread / avg / hits tiles, shared by matched hits and timed-out misses
   updateStats() {
-    const combo = this.root.querySelector('#rud-combo');
-    if (combo) combo.textContent = String(this.combo);
-    const hits = this.judged.filter((j) => j.judge !== 'miss').length;
-    const seen = hits + this.chart.notes.filter((n) => n.state === 'miss').length;
-    const acc = this.root.querySelector('#rud-acc');
-    if (acc && seen) acc.textContent = `${((100 * hits) / seen).toFixed(0)}%`;
+    const $ = (sel) => this.root.querySelector(sel);
+    const { s, hits, seen } = this.liveStats();
+    const set = (id, html, empty) => {
+      const b = $(id);
+      b.innerHTML = html;
+      b.parentElement.classList.toggle('is-empty', empty);
+    };
+    if (s && s.n >= 2) set('#rud-spread', `±${Math.round(s.sd)}<i class="unit">ms</i>`, false);
+    else set('#rud-spread', '—', true);
+    if (s) {
+      set('#rud-avg', `${Math.abs(Math.round(s.mean))}<i class="unit">ms</i>`, false);
+      const word = Math.round(s.mean) === 0 ? '' : ` ${dirWord(s.mean).toUpperCase()}`;
+      $('#rud-avg-label').innerHTML = `<span aria-hidden="true">AVG${word}</span><span class="sr-only">Average${word.toLowerCase()}</span>`;
+    }
+    if (seen) set('#rud-acc', `${hits}<i class="unit">/${seen}</i>`, false);
+    else set('#rud-acc', '—', true);
+    const combo = $('#rud-combo');
+    combo.classList.toggle('hidden', !this.showGradesRun);
+    if (this.showGradesRun) combo.textContent = `streak ${this.combo}`;
   }
 
   flashJudge(judge, devMs) {
-    const chip = this.root.querySelector('#rud-judge-chip');
-    const num = this.root.querySelector('#rud-judge-num');
-    const cap = this.root.querySelector('#rud-judge-cap');
-    num.textContent = judge === 'miss' ? '✗' : `${devMs >= 0 ? '+' : ''}${devMs.toFixed(0)}`;
-    cap.textContent = judge === 'miss' ? 'MISS' : `${judge.toUpperCase()}·MS`;
-    chip.className = `judge-chip ${judge}`;
+    const $ = (sel) => this.root.querySelector(sel);
+    const mon = $('#rud-judge-chip');
+    const num = $('#rud-judge-num');
+    const cap = $('#rud-judge-cap');
+    mon.classList.remove('is-idle');
+    mon.classList.toggle('is-miss', judge === 'miss');
+    if (judge === 'miss') {
+      num.innerHTML = `${icon('cross')}<span class="sr-only">Missed</span>`;
+      num.style.fontSize = `${monitorSize('000')}px`;
+      cap.innerHTML = '<span class="dir">MISSED</span>';
+    } else {
+      const text = fmtSigned(devMs, 0);
+      num.textContent = text;
+      num.style.fontSize = `${monitorSize(text)}px`;
+      const word = dirWord(devMs).toUpperCase();
+      cap.innerHTML = `<span class="unit">ms</span> <span class="dir">${word}</span>`;
+    }
+    $('#rud-judge-label').textContent = this.showGradesRun && judge !== 'miss'
+      ? `LAST HIT · ${judge.toUpperCase()}` : 'LAST HIT';
     this.updateStats();
-    const mean = this.recentDevs.reduce((a, b) => a + b, 0) / this.recentDevs.length;
-    const needle = this.root.querySelector('#jb-needle');
-    if (needle) needle.style.left = `${50 + Math.max(-42, Math.min(42, (mean / 60) * 42))}%`;
+    this.renderStrip();
+  }
+
+  // ------------------------------------------------- early/late strip (8.2)
+  renderStrip() {
+    const host = this.root.querySelector('.rud-strip__plot');
+    if (!host) return;
+    const W = Math.max(240, Math.round(host.clientWidth || 330));
+    const H = 58;
+    const x0 = 14;
+    const x1 = W - 14;
+    const span = 60;
+    const X = (ms) => x0 + ((Math.max(-span, Math.min(span, ms)) + span) / (2 * span)) * (x1 - x0);
+    const y = 20;
+    const win = this.running ? this.judgeWindows : (JUDGE_WINDOWS[store.get('judgeMode')] || JUDGE_WINDOWS.standard);
+    const grades = this.running ? this.showGradesRun : !!store.get('showGrades');
+    const p = [];
+    const band = (ms, fill) => p.push(`<rect x="${X(-ms)}" y="${y - 10}" width="${X(ms) - X(-ms)}" height="20" fill="${fill}"/>`);
+    if (grades) {
+      band(win.ok, '#f3f3f2');
+      band(win.good, '#ececeb');
+      band(win.perfect, '#e3e3e2');
+    } else {
+      band(win.ok, 'var(--tint)');
+      for (const e of [-win.ok, win.ok]) {
+        p.push(`<line x1="${X(e)}" x2="${X(e)}" y1="${y - 10}" y2="${y + 10}" stroke="var(--ink)" stroke-opacity=".3" stroke-width="1"/>`);
+      }
+    }
+    p.push(`<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="var(--ink)" stroke-width="2"/>`);
+    for (let t = -span; t <= span; t += 20) {
+      const zero = t === 0;
+      p.push(`<line x1="${X(t)}" x2="${X(t)}" y1="${y - (zero ? 11 : 6)}" y2="${y + (zero ? 11 : 6)}" stroke="var(--ink)" stroke-width="${zero ? 3 : 1.5}"/>`);
+      p.push(`<text x="${X(t)}" y="${y + 23}" text-anchor="middle" class="rud-strip__tick">${tickLabel(t)}</text>`);
+    }
+    if (grades) {
+      // each tier name sits inside its own band, so narrow strict bands never collide
+      const tier = (x, name) => p.push(`<text x="${x}" y="${y + 35}" text-anchor="middle" class="rud-strip__tier">${name}</text>`);
+      tier(X(0), 'PERFECT');
+      for (const sgn of [-1, 1]) {
+        tier(X((sgn * (win.perfect + win.good)) / 2), 'GOOD');
+        tier(X((sgn * (win.good + win.ok)) / 2), 'OK');
+      }
+    } else {
+      p.push(`<text x="${W / 2}" y="${y + 35}" text-anchor="middle" class="rud-strip__tier">counted ±${nbsp(win.ok, 'ms')}</text>`);
+    }
+    const devs = this.recentDevs || [];
+    const mark = (ms, r, fill, ring) => {
+      if (Math.abs(ms) > span) { // clamped: an arrowhead on the edge
+        const xe = ms < 0 ? x0 : x1;
+        const d = ms < 0 ? -1 : 1;
+        p.push(`<path d="M${xe + d * 7} ${y} L${xe - d * 3} ${y - 7} L${xe - d * 3} ${y + 7}z" fill="${fill}"/>`);
+        return;
+      }
+      p.push(`<circle cx="${X(ms)}" cy="${y}" r="${r}" fill="${fill}"${ring ? ' stroke="#fff" stroke-width="2"' : ''}/>`);
+    };
+    devs.slice(0, -1).forEach((d) => mark(d, 4, 'var(--dot)', false));
+    if (devs.length) mark(devs[devs.length - 1], 6.5, 'var(--ink)', true);
+    const { s } = this.chart && this.running ? this.liveStats() : { s: null };
+    if (s) {
+      const xm = X(s.mean);
+      p.push(`<path id="jb-needle" d="M${xm - 7} ${y - 20} h14 l-7 8z" fill="var(--ink)"/>`);
+    } else {
+      p.push('<path id="jb-needle" d="" fill="var(--ink)"/>');
+    }
+    const label = s
+      ? `Early or late, last ${devs.length} hits. Average ${one(s.mean)} ms ${dirWord(s.mean)}.`
+      : 'Early or late strip, no hits yet.';
+    host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${p.join('')}</svg>`;
+  }
+
+  renderCountIn(pulses) {
+    const dots = this.root.querySelector('.rud-countin .countin__dots');
+    dots.innerHTML = '<i></i>'.repeat(pulses);
+    dots.classList.toggle('is-wide', pulses > 6);
+    this.root.querySelector('#rud-count').textContent = pulses;
   }
 
   loop() {
     this._raf = requestAnimationFrame(() => this.loop());
     if (!this.root.classList.contains('active')) return;
-    this.draw();
+    this.tick();
   }
 
-  draw() {
-    const cv = this.root.querySelector('#rud-highway');
-    if (!cv) return;
-    const ctx = cv.getContext('2d');
-    const w = cv.width;
-    const h = cv.height;
-    ctx.clearRect(0, 0, w, h);
-    const T = theme();
-    const nowX = 0.42 * w;
-    // Adaptive horizontal zoom. Dense rudiments (sextuplet rolls, drags) pack
-    // their notes tightly; at a fixed scale the pucks would overlap into an
-    // unreadable smear. Zoom so the TIGHTEST gap in this chart stays legible,
-    // without flying by so fast you can't read ahead.
-    const steps = this.chart ? this.chart.notes.map((n) => n.step).filter((s) => s > 0) : [];
-    const minStep = steps.length ? Math.min(...steps) : 0.2;
-    const pxPerSec = highwayPxPerSec(minStep);
-
-    if (!this.running) {
-      ctx.textAlign = 'center';
-      ctx.fillStyle = T.ink;
-      ctx.font = "68px 'Anton', system-ui";
-      ctx.fillText('LOAD IN', w / 2, h / 2 - 8);
-      ctx.fillStyle = T.dim;
-      ctx.font = "22px 'Space Mono', monospace";
-      ctx.fillText('dial it in above · hit PLAY · one bar of count-in', w / 2, h / 2 + 34);
-      return;
-    }
+  // per-frame: time out unplayed notes, settle flam/drag clusters, drive the
+  // count-in / bar label, then paint the highway
+  tick() {
+    if (!this.running) return;
     const now = this.mic.now();
     const cal = (store.get('calibrationMs') || 0) / 1000;
     for (const n of this.chart.notes) {
@@ -711,267 +1067,71 @@ export class RudimentsMode {
         this.updateStats(); // a timed-out miss must reset the visible streak too
       }
     }
-    const rel = now - this.chartStart;
-    const seg = rel >= 0 ? segmentAt(this.chart.segments, rel) : this.chart.segments[0];
-    const chipEl = this.root.querySelector('#rud-tempo-chip');
-    if (chipEl && this.running) chipEl.textContent = seg.bpm;
-
-    const xOf = (tt) => nowX + (tt - now) * pxPerSec;
-    const midY = h / 2;
-
-    // beat grid: a line on EVERY pulse so the beat is always visible, with the
-    // downbeat (bar start) emphasized in red. The on-beat notes ride these
-    // lines, and each line falls exactly when its click sounds — so you can
-    // both see and hear where the beat is.
-    for (const c of this.chart.clicks) {
-      const x = xOf(this.chartStart + c.offset);
-      if (x < -4 || x > w + 4) continue;
-      ctx.strokeStyle = c.accent ? 'rgba(224,48,30,.55)' : 'rgba(20,18,16,.3)';
-      ctx.lineWidth = c.accent ? 3 : 2;
-      ctx.beginPath();
-      ctx.moveTo(x, h * (c.accent ? 0.1 : 0.18));
-      ctx.lineTo(x, h * (c.accent ? 0.9 : 0.82));
-      ctx.stroke();
-    }
-
-    // scrolling notation staff across the top, in sync with the pucks below
-    this.drawStaff(ctx, w, h, xOf, T);
-
-    for (const n of this.chart.notes) {
-      const x = xOf(this.chartStart + n.offset);
-      if (x < -70 || x > w + 70) continue;
-      // radius rides the local spacing: full-size when notes are far apart,
-      // tucked down to fit when they're tight (sextuplets, drags) so two pucks
-      // never overlap — 0.46 of the gap each leaves a hair of daylight between.
-      const rad = puckRadius(n.step, pxPerSec, n.accent);
-      const isR = n.stick === 'R';
-      const base = isR ? T.pink : T.blue;
-      // grace notes (flam/drag) — small, above and just before the primary
-      const graceR = Math.max(6, rad * 0.4);
-      for (const gt of n.graceTimes) {
-        const gx = xOf(this.chartStart + gt);
-        ctx.globalAlpha = n.state === 'miss' ? 0.3 : 0.85;
-        ctx.fillStyle = base;
-        ctx.beginPath();
-        ctx.arc(gx, midY - rad - graceR - 2, graceR, 0, 7);
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = T.ink;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-      let ring = null;
-      let alpha = 1;
-      if (n.state === 'hit-perfect' || n.state === 'hit-good') ring = T.green;
-      else if (n.state === 'hit-ok') ring = '#b5891f';
-      else if (n.state === 'miss') alpha = 0.35;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = base;
-      ctx.beginPath();
-      ctx.arc(x, midY, rad, 0, 7);
-      ctx.fill();
-      ctx.lineWidth = Math.max(2.5, rad * 0.16);
-      ctx.strokeStyle = T.ink;
-      ctx.stroke();
-      if (n.accent) {
-        ctx.beginPath();
-        ctx.arc(x, midY, rad + 5, 0, 7);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = T.ink;
-        ctx.stroke();
-      }
-      if (n.buzz) { // multiple-bounce: dashed halo
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.arc(x, midY, rad + 8, 0, 7);
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = T.ink;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      if (ring) {
-        ctx.beginPath();
-        ctx.arc(x, midY, rad + (n.accent ? 10 : 7), 0, 7);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = ring;
-        ctx.stroke();
-      }
-      ctx.fillStyle = '#fff';
-      ctx.font = `${Math.round(rad * 1.5)}px 'Anton', system-ui`;
-      ctx.textAlign = 'center';
-      ctx.fillText(n.stick, x, midY + rad * 0.55);
-      if (n.state === 'miss') {
-        ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = T.pink;
-        ctx.lineWidth = Math.max(3, rad * 0.18);
-        const d = rad - 4;
-        ctx.beginPath();
-        ctx.moveTo(x - d, midY - d);
-        ctx.lineTo(x + d, midY + d);
-        ctx.moveTo(x + d, midY - d);
-        ctx.lineTo(x - d, midY + d);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
 
     if (now < this.chartStart) {
       // clamp: the 0.2 s player start delay is inside chartStart - now, which
       // otherwise flashes "5" before a 4-beat count-in (or "6" at 300+ BPM)
-      const pulsesLeft = Math.min(this.grooveUsed.meter.pulses,
-        Math.ceil((this.chartStart - now) / (this.countInDur / this.grooveUsed.meter.pulses)));
-      ctx.fillStyle = T.ink;
-      ctx.font = "110px 'Anton', system-ui";
-      ctx.textAlign = 'center';
-      ctx.fillText(String(pulsesLeft), w / 2, midY + 38);
+      const pulses = this.grooveUsed.meter.pulses;
+      const left = Math.min(pulses, Math.ceil((this.chartStart - now) / (this.countInDur / pulses)));
+      if (left !== this._countLeft) {
+        this._countLeft = left;
+        this.root.querySelector('#rud-count').textContent = left;
+        const dots = this.root.querySelectorAll('.rud-countin .countin__dots i');
+        dots.forEach((d, k) => d.classList.toggle('on', k < pulses - left + 1));
+        announce(String(left));
+      }
+    } else {
+      const rel = now - this.chartStart;
+      let bar = 0;
+      for (const off of this.chart.barOffsets) { if (off <= rel + 1e-9) bar++; else break; }
+      bar = Math.max(1, Math.min(this.barsUsed, bar));
+      if (bar !== this._bar) {
+        this._bar = bar;
+        this.setState('running', `LIVE · BAR ${bar} OF ${this.barsUsed}`);
+        const seg0 = segmentAt(this.chart.segments, this.chart.barOffsets[bar - 1]);
+        this.renderSummaryStrip(seg0.bpm);
+        const { s } = this.liveStats();
+        announce(s && s.n >= 2
+          ? `Bar ${bar}. Spread ${Math.round(s.sd)} ms. Average ${Math.abs(Math.round(s.mean))} ms ${dirWord(s.mean)}.`
+          : `Bar ${bar}.`);
+      }
     }
+
+    this.hw.draw({
+      t: now,
+      pxPerSec: this.pxPerSec,
+      notes: this.hwNotes,
+      beats: this.hwBeats,
+      showGrades: this.showGradesRun,
+    });
   }
 
-  // The scrolling notation staff: the same notes the pucks show, drawn as real
-  // notation (noteheads, stems, beat-grouped beams, flams/drags, accents,
-  // tuplet numbers) riding the same timeline — so you read the rhythm as it
-  // flows toward the NOW line, then play it on the pucks below.
-  drawStaff(ctx, w, h, xOf, T) {
-    const sy = h * 0.2;              // staff line
-    const R = 5.2;                   // notehead radius
-    const stemBot = sy + 22;
-    const xAt = (n) => xOf(this.chartStart + n.offset);
-    const stemXOf = (n) => xAt(n) - (R - 0.6);
-    const vis = (n) => { const x = xAt(n); return x > -40 && x < w + 40; };
-
-    ctx.strokeStyle = T.ink;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(8, sy);
-    ctx.lineTo(w - 8, sy);
-    ctx.stroke();
-
-    const notes = this.chart.notes;
-    for (const n of notes) {
-      if (!vis(n)) continue;
-      const x = xAt(n);
-      const dim = n.state === 'miss';
-      ctx.globalAlpha = dim ? 0.32 : 1;
-      // grace notes (flam/drag), small, before the primary
-      for (const gt of n.graceTimes) {
-        const gx = xOf(this.chartStart + gt);
-        ctx.save(); ctx.translate(gx, sy - 1); ctx.rotate(-0.32);
-        ctx.fillStyle = T.ink; ctx.beginPath(); ctx.ellipse(0, 0, 3, 2.2, 0, 0, 7); ctx.fill();
-        ctx.restore();
-        ctx.strokeStyle = T.ink; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(gx + 2.4, sy - 2); ctx.lineTo(gx + 2.4, sy - 12); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(gx - 2, sy - 8); ctx.lineTo(gx + 6, sy - 12); ctx.stroke();
-      }
-      // notehead
-      ctx.save(); ctx.translate(x, sy); ctx.rotate(-0.32);
-      ctx.fillStyle = T.ink; ctx.beginPath(); ctx.ellipse(0, 0, R + 1.3, R - 1.1, 0, 0, 7); ctx.fill();
-      ctx.restore();
-      // stem
-      ctx.strokeStyle = T.ink; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(stemXOf(n), sy + 1); ctx.lineTo(stemXOf(n), stemBot); ctx.stroke();
-      if (n.dot) { ctx.fillStyle = T.ink; ctx.beginPath(); ctx.arc(x + 8, sy - 2, 1.6, 0, 7); ctx.fill(); }
-      if (n.buzz) {
-        for (let z = 0; z < 3; z++) {
-          const yy = sy + 8 + z * 4;
-          ctx.beginPath(); ctx.moveTo(stemXOf(n) - 4, yy + 2); ctx.lineTo(stemXOf(n) + 4, yy - 2); ctx.stroke();
-        }
-      }
-      if (n.accent) {
-        ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(x - 6, sy - 14); ctx.lineTo(x + 4, sy - 11); ctx.lineTo(x - 6, sy - 8); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    // beams + tuplet numbers, grouped by beat
-    let i = 0;
-    while (i < notes.length) {
-      let j = i;
-      while (j + 1 < notes.length && notes[j + 1].beatGroup === notes[i].beatGroup) j++;
-      const group = notes.slice(i, j + 1);
-      if (group.some(vis)) {
-        this.drawStaffBeams(ctx, group, stemXOf, stemBot, T);
-        if (group[0].tuplet) {
-          const xs = group.map(xAt);
-          ctx.fillStyle = T.dim;
-          ctx.font = "11px 'Space Mono', monospace";
-          ctx.textAlign = 'center';
-          ctx.fillText(String(group[0].tuplet), (Math.min(...xs) + Math.max(...xs)) / 2, sy - 20);
-        }
-      }
-      i = j + 1;
-    }
-  }
-
-  // beam-by-level for one beat's notes on the scrolling staff (mirrors the
-  // static staff): the 8th-beam spans the whole run, faster levels span the
-  // sub-runs quick enough, with stubs for a lone fast note.
-  drawStaffBeams(ctx, group, stemXOf, stemBot, T) {
-    const gap = 4;
-    ctx.strokeStyle = T.ink;
-    ctx.lineWidth = 3;
-    let a = 0;
-    while (a < group.length) {
-      if (group[a].beams < 1) { a++; continue; }
-      let b = a;
-      while (b + 1 < group.length && group[b + 1].beams >= 1) b++;
-      const run = group.slice(a, b + 1);
-      if (run.length === 1) {
-        const n = run[0];
-        for (let L = 1; L <= n.beams; L++) {
-          const y = stemBot - (L - 1) * gap;
-          ctx.beginPath(); ctx.moveTo(stemXOf(n), y); ctx.lineTo(stemXOf(n) + 7, y - 3); ctx.stroke();
-        }
-      } else {
-        const maxB = Math.max(...run.map((n) => n.beams));
-        for (let L = 1; L <= maxB; L++) {
-          const y = stemBot - (L - 1) * gap;
-          let c = 0;
-          while (c < run.length) {
-            if (run[c].beams < L) { c++; continue; }
-            let d = c;
-            while (d + 1 < run.length && run[d + 1].beams >= L) d++;
-            if (d > c) {
-              ctx.beginPath(); ctx.moveTo(stemXOf(run[c]), y); ctx.lineTo(stemXOf(run[d]), y); ctx.stroke();
-            } else {
-              const dir = c > 0 && run[c - 1].beams >= L ? -1 : 1;
-              ctx.beginPath(); ctx.moveTo(stemXOf(run[c]), y); ctx.lineTo(stemXOf(run[c]) + dir * 7, y); ctx.stroke();
-            }
-            c = d + 1;
-          }
-        }
-      }
-      a = b + 1;
-    }
-  }
-
+  // ----------------------------------------------------------- result (5.9)
   showSummary() {
     const el = this.root.querySelector('#rud-summary');
-    el.classList.remove('hidden');
     const devs = this.judged.filter((j) => j.judge !== 'miss').map((j) => j.devMs);
     const missed = this.chart.notes.filter((n) => n.state === 'miss').length;
     const s = summarize(devs);
-    if (!s) { el.textContent = 'No notes hit. Check the mic meter, then try a slower tempo.'; return; }
+    if (!s) {
+      el.innerHTML = '<div class="card rud-note"><p class="t-body">No hits heard. Check the mic meter, then try a slower tempo.</p></div>';
+      return;
+    }
 
     const rud = this.rudiment;
-    const glyph = unitGlyph(this.grooveUsed.meter);
     const perPhrase = rud.notes.length;
+    const handAt = (p) => (this.lead === 'L' ? swapLead(rud.notes[p].hand) : rud.notes[p].hand);
 
     // per-position: which stroke of the phrase rushes/drags?
-    const perStep = [];
+    const strokes = [];
     for (let p = 0; p < perPhrase; p++) {
       const sd = this.judged
         .filter((j) => j.judge !== 'miss' && j.note.phrasePos === p)
         .map((j) => j.devMs);
       const ss = summarize(sd);
-      if (ss && ss.n >= 3) {
-        let hand = rud.notes[p].hand;
-        if (this.lead === 'L') hand = swapLead(hand);
-        perStep.push(`${hand}${p + 1}: ${ss.mean >= 0 ? '+' : ''}${ss.mean.toFixed(1)}`);
-      }
+      if (ss && ss.n >= 3) strokes.push({ name: `${handAt(p)}${p + 1}`, hand: handAt(p), mean: ss.mean, sd: ss.sd });
     }
 
-    let accentLine = '';
+    let accentRow = '';
     const accHits = this.judged.filter((j) => j.judge !== 'miss' && j.note.accent && j.level > 0);
     const tapHits = this.judged.filter((j) => j.judge !== 'miss' && !j.note.accent && j.level > 0);
     if (accHits.length >= 3 && tapHits.length >= 3) {
@@ -981,41 +1141,141 @@ export class RudimentsMode {
       };
       const db = 20 * Math.log10(med(accHits) / Math.max(med(tapHits), 1e-9));
       const silent = accHits.filter((j) => j.level < med(tapHits)).length;
-      accentLine = `accents: ${accHits.length} played · level ${db >= 0 ? '+' : ''}${db.toFixed(1)} dB vs taps`
-        + (silent ? ` · ${silent} did not speak (at tap level)` : '') + '<br>';
+      accentRow = `<p class="rud-accents"><b>ACCENTS</b> ${nbsp(fmtSigned(db, 1), 'dB')} over taps${silent ? ` · ${silent} no louder` : ''}</p>`;
       this._accentDb = +db.toFixed(1);
     } else {
       this._accentDb = null;
     }
 
+    const segs = this.chart.segments;
     const perTempo = [];
-    for (const seg of this.chart.segments) {
+    for (const sg of segs) {
       const segDevs = this.judged
-        .filter((j) => j.judge !== 'miss' && segmentAt(this.chart.segments, j.note.offset).bpm === seg.bpm)
+        .filter((j) => j.judge !== 'miss' && segmentAt(segs, j.note.offset).bpm === sg.bpm)
         .map((j) => j.devMs);
       const segMiss = this.chart.notes
-        .filter((n) => n.state === 'miss' && segmentAt(this.chart.segments, n.offset).bpm === seg.bpm).length;
+        .filter((n) => n.state === 'miss' && segmentAt(segs, n.offset).bpm === sg.bpm).length;
       const ss = summarize(segDevs);
-      if (ss) perTempo.push(`${glyph}${seg.bpm}: ±${ss.sd.toFixed(1)}ms${segMiss ? ` (${segMiss} missed)` : ''}`);
+      if (ss) perTempo.push({ bpm: sg.bpm, sd: ss.sd, missed: segMiss });
     }
 
     const cal = store.get('calibrationMs');
     let offsetHint = '';
     if (s.n >= 8 && Math.abs(s.mean) > 25 && s.sd < Math.abs(s.mean)) {
-      offsetHint = `<span class="sub">These are tight (±${s.sd.toFixed(0)} ms) but sit ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(0)} ms as a group — a steady offset, not rushing or dragging. That's almost always system latency${cal === null ? " (you haven't calibrated this phone yet)" : ''}. Run Calibrate and these line up.</span><br>`;
+      const tail = cal === null ? 'Likely phone lag.' : 'If the phone moved, recalibrate.';
+      offsetHint = `<div class="card rud-note"><p class="t-body">Hits sit ${nbsp(one(s.mean), 'ms')} ${dirWord(s.mean)} as a group. ${tail}</p>
+        <button type="button" class="btn btn--quiet rud-cal">CALIBRATE${icon('tri-right')}</button></div>`;
     }
     const bleedNote = this.bleed.warning();
-    el.innerHTML = `
-      <b>${rud.name} · ${s.n} hits · ${missed} missed · ${this.strays} strays · best streak ${this.bestCombo}</b><br>
-      ${bleedNote ? `<span class="sub">NOTE: ${bleedNote}</span><br>` : ''}
-      mean ${s.mean >= 0 ? '+' : ''}${s.mean.toFixed(1)} ms · spread ${s.sd.toFixed(1)} ms · ${this.grooveUsed.meter.label} ${this.grooveUsed.grouping !== Object.keys(this.grooveUsed.meter.groupings)[0] ? this.grooveUsed.grouping : ''}<br>
-      ${offsetHint}
-      ${accentLine}
-      ${perTempo.length > 1 ? `<span>spread by tempo: ${perTempo.join(' · ')}</span><br>` : ''}
-      <span class="sub">per stroke (mean ms): ${perStep.join(' · ') || 'not enough hits per stroke'}</span><br>
-      <span class="sub">negative = early. The judgement is yours; these are just the facts.</span>`;
 
-    const segs = this.chart.segments;
+    // fact line inputs
+    const barOf = (offset) => {
+      let b = 0;
+      for (const off of this.chart.barOffsets) { if (off <= offset + 1e-9) b++; else break; }
+      return Math.max(1, b);
+    };
+    const missBars = this.chart.notes.filter((n) => n.state === 'miss').map((n) => barOf(n.offset));
+    let missedBars = null;
+    if (missBars.length) {
+      // the shortest run of bars holding at least half the misses
+      const counts = new Array(this.barsUsed + 2).fill(0);
+      missBars.forEach((b) => { counts[b]++; });
+      const need = Math.ceil(missBars.length / 2);
+      let bestLen = Infinity;
+      for (let a = 1; a <= this.barsUsed; a++) {
+        let sum = 0;
+        for (let b = a; b <= this.barsUsed; b++) {
+          sum += counts[b];
+          if (sum >= need) {
+            if (b - a < bestLen) { bestLen = b - a; missedBars = [a, b]; }
+            break;
+          }
+        }
+      }
+      if (missedBars && missedBars[1] - missedBars[0] + 1 > this.barsUsed / 2) missedBars = null;
+    }
+    const first = perTempo[0];
+    const lastT = perTempo[perTempo.length - 1];
+    const windowMs = this.judgeWindows.perfect;
+    const fact = factLine('rudiments', {
+      notes: this.chart.notes.length,
+      missed,
+      missedBars,
+      mean: s.mean,
+      sd: s.sd,
+      calibrationMs: cal,
+      strokes: strokes.map((k) => ({ name: k.name, mean: k.mean })),
+      ramp: perTempo.length > 1 ? { sdFrom: first.sd, bpmFrom: first.bpm, sdTo: lastT.sd, bpmTo: lastT.bpm } : null,
+      hits: s.n,
+      within: devs.filter((d) => Math.abs(d) <= windowMs).length,
+      windowMs,
+    });
+
+    // BY STROKE: dot = avg, bar = ±spread, on a symmetric ms axis
+    let byStroke;
+    if (strokes.length) {
+      const reach = Math.max(...strokes.map((k) => Math.abs(k.mean) + k.sd));
+      const R = Math.min(60, Math.max(20, Math.ceil(reach / 10) * 10));
+      const P = (ms) => (((Math.max(-R, Math.min(R, ms)) + R) / (2 * R)) * 100).toFixed(2);
+      const ticks = [-R, -R / 2, 0, R / 2, R];
+      const grid = ticks.map((t) => `<i class="${t === 0 ? 'bs-zero' : 'bs-grid'}" style="left:${P(t)}%"></i>`).join('');
+      const rows = strokes.map((k) => {
+        const val = Math.abs(k.mean) < 0.05 ? '0.0' : `${one(k.mean)} ${dirWord(k.mean)}`;
+        const lo = P(k.mean - k.sd);
+        const hi = P(k.mean + k.sd);
+        const hand = k.hand === 'R' ? 'r' : 'l';
+        return `<div class="bs-row" role="row">
+          <span class="bs-name" role="rowheader"><i class="bs-sw ${hand}"></i>${k.name}</span>
+          <span class="bs-plot" aria-hidden="true">${grid}<i class="bs-bar" style="left:${lo}%;width:${(hi - lo).toFixed(2)}%"></i><i class="bs-dot ${hand}" style="left:${P(k.mean)}%"></i></span>
+          <span class="bs-val" role="cell">${val}</span>
+        </div>`;
+      }).join('');
+      byStroke = `
+        <div class="bs-rows" role="table" aria-label="Average offset by stroke">${rows}</div>
+        <div class="bs-axis" aria-hidden="true"><span class="bs-axis__plot">${ticks.map((t) => `<span style="left:${P(t)}%">${tickLabel(t)}</span>`).join('')}</span><span class="bs-axis__unit">ms</span></div>
+        <div class="bs-dirs" aria-hidden="true"><span>${icon('tri-left')}EARLY</span><span>LATE${icon('tri-right')}</span></div>`;
+    } else {
+      byStroke = '<p class="t-body">Not enough hits per stroke.</p>';
+    }
+
+    const byTempo = perTempo.length > 1
+      ? `<section class="card rud-bytempo">
+          <div class="sec-head"><h2 class="sec-head__stamp">SPREAD BY TEMPO</h2></div>
+          <ul>${perTempo.map((r) => `<li>${nbsp(r.bpm, 'BPM')} · ±${nbsp(one(r.sd), 'ms')}${r.missed ? ` · ${r.missed} missed` : ''}</li>`).join('')}</ul>
+        </section>`
+      : '';
+
+    const sdText = one(s.sd);
+    const word = dirWord(s.mean).toUpperCase();
+    const foot = [`${this.strays} extra hits not counted`];
+    if (cal !== null) foot.push(`latency ${nbsp(fmtSigned(-cal, 0), 'ms')} applied`);
+
+    el.innerHTML = `
+      <div class="hero rud-hero">
+        <p class="hero__cap">SPREAD · ${this.barsUsed} BARS · ${s.n} HITS</p>
+        <p class="rud-hero__num"><b><span aria-hidden="true">±${sdText}</span><span class="sr-only">plus or minus ${sdText}</span></b><span class="unit">ms</span></p>
+        <p class="hero__def">How tightly the hits group.</p>
+        <p class="hero__avg"><span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${nbsp(one(s.mean), 'ms')} ${word}</p>
+      </div>
+      <p class="fact" role="status">${fact}</p>
+      <div class="stat-strip">
+        <div class="statbox"><b>${s.n}</b><span>HITS</span></div>
+        <div class="statbox"><b>${missed}</b><span>MISSED</span></div>
+        <div class="statbox"><b>${this.strays}</b><span>EXTRA HITS</span><em>not counted</em></div>
+      </div>
+      ${accentRow}
+      <section class="card rud-bystroke" aria-labelledby="rud-bs-head">
+        <div class="sec-head"><h2 class="sec-head__stamp" id="rud-bs-head">BY STROKE</h2><span class="sec-head__aside">dot = avg · bar = ±spread</span></div>
+        ${byStroke}
+      </section>
+      ${byTempo}
+      ${offsetHint}
+      ${bleedNote ? `<div class="card rud-note"><p class="t-body">${bleedNote}</p></div>` : ''}
+      <p class="rud-foot">${foot.join(' · ')}</p>`;
+    const calBtn = el.querySelector('.rud-cal');
+    if (calBtn) calBtn.addEventListener('click', () => { if (!this.running) this.nav('calibrate'); });
+    announce(`Run done. Spread ${sdText} ms. Average ${one(s.mean)} ms ${dirWord(s.mean)}.`);
+
     store.addRun({
       kind: 'rudiment',
       label: `${rud.name} (${this.lead}-lead)`,
@@ -1030,5 +1290,6 @@ export class RudimentsMode {
       strays: this.strays,
       accuracy: +((100 * s.n) / (s.n + missed)).toFixed(1),
     });
+    this.saved = true;
   }
 }
