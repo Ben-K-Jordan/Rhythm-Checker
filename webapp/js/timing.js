@@ -5,11 +5,14 @@
 import { Metronome } from './metronome.js';
 import { BleedGuard, summarize } from './dsp.js';
 import { store } from './store.js';
-import { theme } from './theme.js';
+import { theme, fitCanvas, holdToConfirm } from './theme.js';
 import { wakeLock } from './audio.js';
+import {
+  icon, fmtSigned, dirWord, nbsp, monitorSize, factLine, announce, setRunState, seg,
+} from './ui.js';
 
 export class TimingSession extends EventTarget {
-  constructor(mic, { bpm, subdivision, seconds, meter = null, clickOn = true }) {
+  constructor(mic, { bpm, subdivision, seconds, meter = null, clickOn = true, pocketMs = null }) {
     super();
     this.mic = mic;
     this.metro = new Metronome(mic.audioContext);
@@ -18,6 +21,7 @@ export class TimingSession extends EventTarget {
     if (meter) this.metro.meter = meter;
     this.clickOn = clickOn;
     this.seconds = seconds;
+    this.pocketMs = pocketMs;
     this.devs = [];
     this.hits = [];
     this.running = false;
@@ -27,7 +31,7 @@ export class TimingSession extends EventTarget {
   start() {
     this.running = true;
     this.bleed = new BleedGuard();
-    this._lostHandler = () => this.abort('microphone lost — reconnect and run it again');
+    this._lostHandler = () => this.abort('Mic lost.');
     this.mic.addEventListener('lost', this._lostHandler);
     this.mic.lockDetector(this, { refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
     this.mic.addEventListener('onset', this._onOnset);
@@ -68,8 +72,9 @@ export class TimingSession extends EventTarget {
     if (!this.running) return;
     this._teardown();
     const stats = summarize(this.devs);
+    const band = this.pocketMs ?? store.get('pocketMs');
     const pocket = this.devs.length
-      ? (100 * this.devs.filter((d) => Math.abs(d) <= store.get('pocketMs')).length) / this.devs.length
+      ? (100 * this.devs.filter((d) => Math.abs(d) <= band).length) / this.devs.length
       : 0;
     const result = stats
       ? {
@@ -104,197 +109,585 @@ export class TimingSession extends EventTarget {
   }
 }
 
-const HOLD_CYCLE = [30, 60, 120];
-const GRID_CYCLE = [1, 2, 3, 4];
+const HOLDS = [30, 60, 120];
+const GRIDS = [
+  { value: 1, label: 'QUARTERS', word: 'quarters' },
+  { value: 2, label: '8THS', word: '8ths' },
+  { value: 3, label: 'TRIPLETS', word: 'triplets' },
+  { value: 4, label: '16THS', word: '16ths' },
+];
+const gridOf = (v) => GRIDS.find((g) => g.value === v) || GRIDS[1];
+
+const COUNTIN_BEATS = 2;  // TimingSession ignores every hit before this
+const LISTEN_HITS = 6;    // the monitor reads LISTENING until this many hits
+const ROLL = 6;           // rolling-mean window on the chart
+const DRIFT_FROM_S = 5;
+const DRIFT_MIN_S = 10;
+const DRIFT_MIN_HITS = 12;
+const Y_MAX = 60;
+const CHART_W = 340;      // fitCanvas logical width (~1 logical px per CSS px)
+const HINT_ON = 'All the way through.';
+const HINT_OFF = '1 bar, then silence.';
+
+const mmss = (sec) => {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+let palette = null;
+function chartPalette() {
+  if (!palette) {
+    const T = theme();
+    const cs = getComputedStyle(document.documentElement);
+    const v = (name, fb) => (cs.getPropertyValue(name) || fb).trim();
+    palette = {
+      ink: T.ink,
+      ink60: T.dim,
+      tint: T.panel,
+      rule: T.line,
+      white: v('--white', '#ffffff'),
+      dotStrong: v('--dot-strong', '#6e685f'),
+      mono: T.mono,
+      label: v('--label-font', "'Oswald', sans-serif"),
+    };
+  }
+  return palette;
+}
 
 export class TimingMode {
-  constructor(root, mic) {
+  constructor(root, mic, nav = null) {
     this.root = root;
     this.mic = mic;
+    this.nav = nav || ((name) => window.__rhythmChecker && window.__rhythmChecker.nav(name));
     this.session = null;
     this.bpm = store.get('preferredBpm') || 120;
     this.holdSec = 30;
     this.grid = 2;
     this.clickOn = true;
-    this.trace = []; // {relT, rolling} for the chart
-    this.recent = [];
+    this.state = 'idle';
+    this.lastRun = null;
+    this.lastResult = null;
+    this.runPocket = null;   // pocketMs snapshotted at START
+    this.trace = [];         // {relT, dev, rolling} for the chart, aligned hits only
+    this.recent = [];        // aligned offsets in play order
+    this.elapsed = null;     // audio-clock seconds since the grid started, while live
+    this.geom = null;
+    this.raf = 0;
     this.render();
   }
 
-  activate() {
-    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
-    // adopt the working tempo (a persona feel may have moved it since boot);
-    // update just the chip so a finished/cancelled run summary stays on screen
-    if (!this.session) {
-      this.bpm = store.get('preferredBpm') || 120;
-      const el = this.root.querySelector('#tm-bpm');
-      if (el) el.textContent = this.bpm;
-    }
+  get running() {
+    return !!(this.session && this.session.running);
   }
 
+  isLiveState() {
+    return this.state === 'countin' || this.state === 'running';
+  }
+
+  setState(state, label = '') {
+    this.state = state;
+    setRunState(this.root, state, label);
+    this.syncFrame();
+  }
+
+  // ------------------------------------------------------------ skeleton
   render() {
-    const cal = store.get('calibrationMs');
     this.root.innerHTML = `
-      <div class="timing-title">
-        <div class="title-stamp" style="margin:10px 0 0">TIMING</div>
-        <div class="metronome-motif"><div class="mm-arm"></div></div>
-      </div>
-
-      <div class="timing-controls">
-        <div class="tc-card">
-          <div class="tc-cap">TARGET</div>
-          <div class="tc-val"><b id="tm-bpm">${this.bpm}</b> BPM</div>
-          <div class="tc-btns"><button id="tm-plus">+</button><button id="tm-minus">&#8722;</button></div>
+      <div class="screen tm">
+        <div class="title-row tm-title">
+          <h1 class="stamp">TIMING</h1>
+          <div class="tm-title__slot"></div>
         </div>
-        <button class="tc-card" id="tm-hold">
-          <div class="tc-cap">HOLD FOR</div>
-          <div class="tc-val"><b>${this.holdSec}</b> SEC</div>
-          <div class="tc-cap2">GRID ÷${this.grid} · tap to cycle</div>
-        </button>
-        <button class="tc-card ink" id="tm-click">
-          <div class="tc-cap">CLICK</div>
-          <div class="tc-val"><b>${this.clickOn ? 'ON' : 'OFF'}</b></div>
-          <div class="tc-cap2">${this.clickOn ? 'clicks all the way' : '1 bar, then silence'}</div>
-        </button>
-      </div>
-      <div id="tm-cal-nag" class="cal-nag">${cal === null
-    ? 'not calibrated — absolute early/late includes your system latency'
-    : `calibration: ${cal.toFixed(0)} ms subtracted from every hit`}</div>
+        <div class="summary tm-lockstrip" role="group" aria-label="Setup locked while playing">
+          <span class="tm-sum"></span>
+          <span class="summary__lock">${icon('lock')}</span>
+        </div>
+        <button type="button" class="summary tm-sumbtn"><span class="tm-sum"></span><span class="sr-only">. Edit setup</span></button>
 
-      <div class="tempo-chart">
-        <div class="tch-head"><span class="chip-stamp">Tempo / time</span><span class="tch-axis">&#9650; RUSH &middot; DRAG &#9660;</span></div>
-        <div class="tch-plot">
-          <canvas id="tm-chart" width="900" height="420"></canvas>
-          <div class="tch-steadiness"><b id="tm-steadiness">&plusmn;&mdash;</b><span>STEADINESS</span></div>
-          <span class="tch-faster">FASTER</span>
-          <span class="tch-slower">SLOWER</span>
-          <div class="scan" id="tm-scan" style="animation-duration:3s"></div>
+        <div id="tm-final" class="tm-final hidden">
+          <div class="card card--ink tm-notice hidden">
+            <span class="chip chip--warn">STOPPED · NOT SAVED</span>
+            <p class="tm-notice__line"></p>
+          </div>
+          <div class="tm-result"></div>
+          <div class="tm-chart-slot"></div>
+          <div class="tm-result-foot"></div>
+        </div>
+
+        <div class="setup tm-setup">
+          <div class="tc-card tc-tempo">
+            <span class="tc-cap" id="tm-tempo-cap">TEMPO</span>
+            <button type="button" id="tm-minus" class="tc-step" aria-label="Tempo down 5">−</button>
+            <p class="tc-val" aria-live="polite"><b id="tm-bpm">${this.bpm}</b> <span class="tc-unit">BPM</span></p>
+            <button type="button" id="tm-plus" class="tc-step" aria-label="Tempo up 5">+</button>
+          </div>
+          <div class="tc-card tc-hold">
+            <p class="tc-cap" id="tm-hold-cap">HOLD</p>
+            <div id="tm-hold" role="group" aria-labelledby="tm-hold-cap"></div>
+            <p class="tc-cap" id="tm-grid-cap">GRID</p>
+            <div id="tm-grid" role="group" aria-labelledby="tm-grid-cap"></div>
+          </div>
+          <button type="button" class="tc-card tc-click" id="tm-click" role="switch" aria-checked="true" aria-label="Click" aria-describedby="tm-click-hint">
+            <span class="tc-click__text">
+              <span class="tc-cap">CLICK</span>
+              <span class="tc-hint" id="tm-click-hint">${HINT_ON}</span>
+            </span>
+            <span class="tc-val"><span class="tc-switch" aria-hidden="true"><i></i></span><b>ON</b></span>
+          </button>
+          <p class="tm-latency hidden" id="tm-latency"></p>
+        </div>
+
+        <div class="countin tm-countin" aria-hidden="true">
+          <span class="tm-countin__cap">COUNT-IN</span>
+          <b id="tm-count">${COUNTIN_BEATS}</b>
+          <div class="countin__dots">${'<i></i>'.repeat(COUNTIN_BEATS)}</div>
+        </div>
+        <div class="monitor tm-monitor is-idle">
+          <p class="monitor__cap">SPREAD SO FAR</p>
+          <b id="tm-steadiness">—</b>
+          <p class="monitor__side" id="tm-steadiness-side"><span class="monitor__wait">LISTENING</span></p>
+        </div>
+        <p class="tm-avgline" id="tm-avg"></p>
+
+        <div class="tm-chart-home">
+          <section class="card tm-chart" aria-labelledby="tm-chart-head">
+            <div class="sec-head">
+              <h2 class="sec-head__stamp" id="tm-chart-head">EARLY / LATE VS CLICK</h2>
+              <span class="sec-head__aside">ms</span>
+            </div>
+            <p class="tm-legend">
+              <span><i class="lg-dot"></i>hit</span>
+              <span><i class="lg-dot lg-dot--in"></i>in pocket</span>
+              <span><i class="lg-line"></i>line: avg of last ${ROLL}</span>
+              <span><i class="lg-band"></i><span class="tm-legend__pocket"></span></span>
+              <span>0 = click</span>
+            </p>
+            <div class="tm-plot">
+              <canvas id="tm-chart" width="900" height="420" role="img" aria-label="Early and late chart, no hits yet"></canvas>
+              <p class="tm-plot__hint">Play along. Early plots up, late plots down.</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="stat-strip tm-tiles">
+          <div class="statbox"><b id="tm-band">—</b><span>IN POCKET</span></div>
+          <div class="statbox"><b id="tm-trend" class="tm-drift">—</b><span id="tm-trend-label">DRIFT</span></div>
+          <div class="statbox"><b id="tm-n">0</b><span>HITS</span></div>
         </div>
       </div>
+      <div class="bar">
+        <button type="button" id="tm-go" class="btn btn--primary"></button>
+      </div>`;
 
-      <div class="timing-stats">
-        <div class="statbox amber"><b id="tm-trend">&mdash;</b><span>Trend MS/MIN</span></div>
-        <div class="statbox"><b id="tm-steady">&mdash;</b><span>Steady</span></div>
-        <div class="statbox"><b id="tm-n">0</b><span>Taps</span></div>
-        <div class="statbox"><b id="tm-band">&mdash;</b><span>In band</span></div>
-      </div>
+    const $ = (sel) => this.root.querySelector(sel);
+    this.el = {
+      final: $('#tm-final'),
+      notice: $('.tm-notice'),
+      noticeLine: $('.tm-notice__line'),
+      result: $('.tm-result'),
+      slot: $('.tm-chart-slot'),
+      foot: $('.tm-result-foot'),
+      home: $('.tm-chart-home'),
+      chart: $('.tm-chart'),
+      cv: $('#tm-chart'),
+      hint: $('.tm-plot__hint'),
+      pocketLegend: $('.tm-legend__pocket'),
+      titleSlot: $('.tm-title__slot'),
+      latency: $('#tm-latency'),
+      bpm: $('#tm-bpm'),
+      minus: $('#tm-minus'),
+      plus: $('#tm-plus'),
+      click: $('#tm-click'),
+      count: $('#tm-count'),
+      dots: [...this.root.querySelectorAll('.tm-countin .countin__dots i')],
+      monitor: $('.tm-monitor'),
+      steadiness: $('#tm-steadiness'),
+      side: $('#tm-steadiness-side'),
+      avg: $('#tm-avg'),
+      band: $('#tm-band'),
+      trend: $('#tm-trend'),
+      trendLabel: $('#tm-trend-label'),
+      n: $('#tm-n'),
+      bar: $('.bar'),
+      go: $('#tm-go'),
+    };
 
-      <div class="cta-wrap">
-        <button id="tm-go" class="cta">START HOLD<span class="tri"></span></button>
-      </div>
-      <div id="tm-final" class="rud-summary hidden"></div>
-      <div class="cta-wrap" style="padding-top:8px"><button id="tm-baseline" class="btn green hidden" style="width:100%">SAVE AS MY BASELINE &#10003;</button></div>`;
-
-    this.root.querySelector('#tm-plus').addEventListener('click', () => this.nudge(5));
-    this.root.querySelector('#tm-minus').addEventListener('click', () => this.nudge(-5));
-    this.root.querySelector('#tm-hold').addEventListener('click', () => {
-      // cycles hold length; a second tap pattern cycles the grid. Ignored
-      // mid-run: a full render here would repaint the idle UI over a live
-      // session (STOP relabelled START, stats wiped) while it kept scoring
-      if (this.session && this.session.running) return;
-      const i = HOLD_CYCLE.indexOf(this.holdSec);
-      if (i === HOLD_CYCLE.length - 1) {
-        this.holdSec = HOLD_CYCLE[0];
-        this.grid = GRID_CYCLE[(GRID_CYCLE.indexOf(this.grid) + 1) % GRID_CYCLE.length];
-      } else this.holdSec = HOLD_CYCLE[i + 1];
-      this.render();
+    this.holdSeg = seg($('#tm-hold'), HOLDS.map((s) => ({ value: s, label: nbsp(s, 's') })), this.holdSec, (v) => {
+      if (this.running) { this.holdSeg.set(this.holdSec); return; }
+      this.holdSec = v;
+      this.syncSummary();
+      this.drawChart();
     });
-    this.root.querySelector('#tm-click').addEventListener('click', () => {
-      if (this.session && this.session.running) return;
+    this.gridSeg = seg($('#tm-grid'), GRIDS.map((g) => ({ value: g.value, label: g.label })), this.grid, (v) => {
+      if (this.running) { this.gridSeg.set(this.grid); return; }
+      this.grid = v;
+      this.syncSummary();
+    });
+
+    this.el.minus.addEventListener('click', () => this.nudge(-5));
+    this.el.plus.addEventListener('click', () => this.nudge(5));
+    this.el.click.addEventListener('click', () => {
+      if (this.running) return;
       this.clickOn = !this.clickOn;
-      this.render();
+      this.syncClick();
+      this.syncSummary();
     });
-    this.root.querySelector('#tm-go').addEventListener('click', () => this.toggle());
-    this.root.querySelector('#tm-baseline').addEventListener('click', () => this.saveBaseline());
+    this.el.go.addEventListener('click', () => (this.running ? this.stopRun() : this.startRun()));
+    $('.tm-sumbtn').addEventListener('click', () => {
+      if (this.running) return;
+      this.clearResult();
+      this.setState('idle');
+    });
+
+    fitCanvas(this.el.cv, CHART_W, ({ w, h, cssPerLogical }) => {
+      this.geom = { w, h, s: cssPerLogical };
+      this.drawChart();
+    });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => this.drawChart());
+    // the settings sheet opens over this screen without a nav, so no activate() follows it
+    const sheet = document.getElementById('settings');
+    if (sheet) {
+      new MutationObserver(() => {
+        if (sheet.classList.contains('hidden') && this.root.classList.contains('active')) this.refresh();
+      }).observe(sheet, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    this.syncBpm();
+    this.syncClick();
+    this.syncSummary();
+    this.syncCalibration();
+    this.syncLegend();
+    this.setState('idle');
+  }
+
+  // --------------------------------------------------------- setup state
+  activate() {
+    this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
+    // a session torn down from outside (never through STOP) leaves no live run
+    if (this.isLiveState() && !this.running) {
+      this.stopLoop();
+      this.session = null;
+      this.clearLive();
+      this.setState('idle');
+    }
+    this.refresh();
+  }
+
+  // re-read what Settings, Calibrate or a player feel may have changed
+  refresh() {
+    if (!this.running) {
+      this.bpm = store.get('preferredBpm') || 120;
+      this.syncBpm();
+      this.syncSummary();
+    }
+    this.syncCalibration();
+    this.syncLegend();
     this.drawChart();
   }
 
-  nudge(d) {
-    this.bpm = Math.max(20, Math.min(400, this.bpm + d));
-    store.set('preferredBpm', this.bpm);
-    this.root.querySelector('#tm-bpm').textContent = this.bpm;
+  deactivate() {
+    if (!this.running) return;
+    this.session.cancel();
+    this.session = null;
+    this.stopLoop();
+    this.clearLive();
+    this.showNotice('Hold cancelled. You left mid-run. Not saved.');
+    this.setState('idle');
   }
 
-  toggle() {
-    if (this.session && this.session.running) {
-      this.session.cancel();
-      this.session = null;
-      this.root.querySelector('#tm-go').innerHTML = 'START HOLD<span class="tri"></span>';
+  nudge(d) {
+    if (this.running) return;
+    const next = Math.max(20, Math.min(400, this.bpm + d));
+    if (next === this.bpm) return;
+    this.bpm = next;
+    store.set('preferredBpm', this.bpm);
+    this.syncBpm();
+    this.syncSummary();
+  }
+
+  syncBpm() {
+    if (this.el.bpm.textContent !== String(this.bpm)) this.el.bpm.textContent = String(this.bpm);
+    this.el.minus.disabled = this.bpm <= 20;
+    this.el.plus.disabled = this.bpm >= 400;
+  }
+
+  syncClick() {
+    const b = this.el.click;
+    b.setAttribute('aria-checked', String(this.clickOn));
+    b.classList.toggle('on', this.clickOn);
+    b.querySelector('.tc-val b').textContent = this.clickOn ? 'ON' : 'OFF';
+    b.querySelector('.tc-hint').textContent = this.clickOn ? HINT_ON : HINT_OFF;
+  }
+
+  // the setup a run used (or will use), one line
+  syncSummary() {
+    const r = (this.isLiveState() || this.state === 'result') && this.lastRun
+      ? this.lastRun
+      : { bpm: this.bpm, subdivision: this.grid, seconds: this.holdSec, clickOn: this.clickOn };
+    const sep = '<span class="summary__sep">·</span>';
+    const html = [nbsp(r.bpm, 'BPM'), gridOf(r.subdivision).label, nbsp(r.seconds, 's'), `CLICK ${r.clickOn ? 'ON' : 'OFF'}`]
+      .map((t) => `<span>${t}</span>`).join(sep);
+    this.root.querySelectorAll('.tm-sum').forEach((el) => { el.innerHTML = html; });
+  }
+
+  syncCalibration() {
+    const cal = store.get('calibrationMs');
+    const lat = this.el.latency;
+    lat.classList.toggle('hidden', cal === null);
+    if (cal !== null) lat.textContent = `Latency ${nbsp(fmtSigned(-cal, 0), 'ms')} applied to every hit.`;
+    this.syncTitleSlot();
+  }
+
+  syncTitleSlot() {
+    const slot = this.el.titleSlot;
+    if (this.state === 'result' && this.lastResult) {
+      slot.innerHTML = `<span class="chip chip--ok">${icon('check')}SAVED TO HISTORY</span>`;
       return;
     }
-    this.lastRun = {
-      bpm: this.bpm,
-      subdivision: this.grid,
-      seconds: this.holdSec,
-      clickOn: this.clickOn,
-    };
-    this.session = new TimingSession(this.mic, this.lastRun);
-    this.recent = [];
-    this.trace = [];
-    this.root.querySelector('#tm-final').classList.add('hidden');
-    this.root.querySelector('#tm-baseline').classList.add('hidden');
-    this.session.addEventListener('hit', (e) => this.onHit(e.detail));
-    this.session.addEventListener('done', (e) => this.onDone(e.detail));
-    this.session.addEventListener('aborted', (e) => {
-      this.root.querySelector('#tm-go').innerHTML = 'START HOLD<span class="tri"></span>';
-      const final = this.root.querySelector('#tm-final');
-      final.classList.remove('hidden');
-      final.textContent = `check invalidated: ${e.detail.reason}`;
-      this.session = null;
-    });
-    this.session.start();
-    this.root.querySelector('#tm-go').innerHTML = '&#9632; STOP';
+    if (store.get('calibrationMs') === null) {
+      if (!slot.querySelector('#tm-cal-nag')) {
+        slot.innerHTML = '<button type="button" id="tm-cal-nag" class="chip-btn chip--warn">NOT CALIBRATED · FIX</button>';
+        slot.querySelector('#tm-cal-nag').addEventListener('click', () => { if (!this.running) this.nav('calibrate'); });
+      }
+      return;
+    }
+    slot.replaceChildren();
   }
 
-  deactivate() {
-    if (this.session && this.session.running) {
-      this.session.cancel();
-      this.session = null;
-      this.root.querySelector('#tm-go').innerHTML = 'START HOLD<span class="tri"></span>';
-      const final = this.root.querySelector('#tm-final');
-      final.classList.remove('hidden');
-      final.textContent = 'check cancelled — you left the Timing tab mid-run.';
+  pocketForChart() {
+    return this.state === 'result' || this.isLiveState()
+      ? (this.runPocket ?? store.get('pocketMs'))
+      : store.get('pocketMs');
+  }
+
+  syncLegend() {
+    const text = `pocket ±${nbsp(this.pocketForChart(), 'ms')}`;
+    if (this.el.pocketLegend.textContent !== text) this.el.pocketLegend.textContent = text;
+  }
+
+  // what is shown for the current state: bar buttons, notice, chart home
+  syncFrame() {
+    const { go } = this.el;
+    if (this.isLiveState()) go.innerHTML = `${icon('stop')}STOP`;
+    else if (this.state === 'result') go.innerHTML = `START AGAIN${icon('play')}`;
+    else go.innerHTML = `START HOLD${icon('play')}`;
+    if (this.state !== 'result') this.removeBaselineButton();
+    const inResult = this.state === 'result' && this.lastResult;
+    const target = inResult ? this.el.slot : this.el.home;
+    if (this.el.chart.parentElement !== target) target.appendChild(this.el.chart);
+    const noticeOn = !this.el.notice.classList.contains('hidden');
+    this.el.final.classList.toggle('hidden', !noticeOn && this.state !== 'result');
+    this.syncTitleSlot();
+    this.syncSummary();
+    this.syncLegend();
+    this.drawChart();
+  }
+
+  showNotice(line) {
+    this.el.noticeLine.textContent = line;
+    this.el.notice.classList.remove('hidden');
+  }
+
+  hideNotice() {
+    this.el.notice.classList.add('hidden');
+    this.el.noticeLine.textContent = '';
+  }
+
+  clearResult() {
+    this.lastResult = null;
+    this.el.result.replaceChildren();
+    this.el.foot.replaceChildren();
+    this.trace = [];
+    this.recent = [];
+    this.el.cv.setAttribute('aria-label', 'Early and late chart, no hits yet');
+  }
+
+  // ------------------------------------------------------------- the run
+  startRun() {
+    if (this.running) return;
+    this.lastRun = { bpm: this.bpm, subdivision: this.grid, seconds: this.holdSec, clickOn: this.clickOn };
+    this.runPocket = store.get('pocketMs');
+    this.hideNotice();
+    this.clearResult();
+    this.clearLive();
+    const session = new TimingSession(this.mic, { ...this.lastRun, pocketMs: this.runPocket });
+    this.session = session;
+    session.addEventListener('hit', (e) => { if (this.session === session) this.onHit(e.detail); });
+    session.addEventListener('done', (e) => { if (this.session === session) this.onDone(e.detail); });
+    session.addEventListener('aborted', () => { if (this.session === session) this.onAborted(); });
+    session.start();
+    this.lastLeft = null;
+    this.lastSaid = null;
+    this.elapsed = 0;
+    this.setState('countin', `COUNT-IN · ${nbsp(this.lastRun.bpm, 'BPM')}`);
+    this.el.cv.setAttribute('aria-label', 'Early and late chart, live');
+    announce(`Count-in. ${COUNTIN_BEATS}, 1.`);
+    this.startLoop();
+  }
+
+  stopRun() {
+    const s = this.session;
+    if (!s || !s.running) return;
+    const at = Math.min(s.seconds, Math.max(0, this.mic.now() - s.metro.startTime));
+    s.cancel();
+    this.session = null;
+    this.stopLoop();
+    this.clearLive();
+    const line = `Stopped at ${mmss(at)}. Not saved.`;
+    this.showNotice(line);
+    this.setState('stopped');
+    announce(line);
+  }
+
+  onAborted() {
+    this.session = null;
+    this.stopLoop();
+    this.clearLive();
+    this.showNotice('Hold stopped: mic lost. Not saved.');
+    this.setState('stopped');
+  }
+
+  startLoop() {
+    this.stopLoop();
+    const tick = () => {
+      this.raf = 0;
+      if (!this.frame()) return;
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  stopLoop() {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+  }
+
+  // one animation frame of a live run; false ends the loop
+  frame() {
+    const s = this.session;
+    if (!s || !s.running) {
+      if (this.isLiveState()) {
+        this.session = null;
+        this.clearLive();
+        this.setState('idle');
+      }
+      return false;
     }
+    const metro = s.metro;
+    const beat = 60 / metro.bpm;
+    const rel = this.mic.now() - metro.startTime;
+    this.elapsed = Math.max(0, rel);
+    if (this.state === 'countin') {
+      if (rel >= COUNTIN_BEATS * beat) {
+        this.setState('running', this.liveLabel(s, rel));
+      } else {
+        const k = rel < 0 ? -1 : Math.floor(rel / beat);
+        const digit = String(COUNTIN_BEATS - Math.max(0, k));
+        if (this.el.count.textContent !== digit) this.el.count.textContent = digit;
+        this.el.dots.forEach((d, i) => d.classList.toggle('on', i <= k));
+      }
+    } else if (this.state === 'running') {
+      const left = Math.ceil(Math.max(0, s.seconds - rel));
+      if (left !== this.lastLeft && left % 5 === 0) setRunState(this.root, 'running', this.liveLabel(s, rel));
+      // one spoken update per 10 s of hold, never per hit
+      const slot = Math.floor(rel / 10);
+      if (this.lastSaid === null) this.lastSaid = slot;
+      else if (slot !== this.lastSaid && this.recent.length >= LISTEN_HITS) {
+        this.lastSaid = slot;
+        const st = summarize(this.recent);
+        announce(`${mmss(left)} left. Spread ${nbsp(Math.round(st.sd), 'ms')}. ${this.avgWords(st.mean)}.`);
+      }
+    }
+    this.drawChart();
+    return true;
+  }
+
+  liveLabel(s, rel) {
+    this.lastLeft = Math.ceil(Math.max(0, s.seconds - rel));
+    return `LIVE · ${mmss(this.lastLeft)} LEFT`;
+  }
+
+  avgWords(mean) {
+    const r = Math.round(Math.abs(mean));
+    return r === 0 ? 'Average 0 ms' : `Average ${nbsp(r, 'ms')} ${dirWord(mean)}`;
+  }
+
+  clearLive() {
+    this.trace = [];
+    this.recent = [];
+    this.elapsed = null;
+    this.el.count.textContent = String(COUNTIN_BEATS);
+    this.el.dots.forEach((d) => d.classList.remove('on'));
+    this.showListening();
+    this.el.avg.innerHTML = '<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> —';
+    this.el.band.textContent = '—';
+    this.el.trend.textContent = '—';
+    this.el.trendLabel.textContent = 'DRIFT';
+    this.el.n.textContent = '0';
+    this.drawChart();
+  }
+
+  showListening() {
+    const { monitor, steadiness, side } = this.el;
+    monitor.classList.add('is-idle');
+    steadiness.textContent = '—';
+    steadiness.style.fontSize = '';
+    side.innerHTML = '<span class="monitor__wait">LISTENING</span>';
   }
 
   onHit(hit) {
     if (!hit.aligned) return;
+    const relT = hit.t - this.session.metro.startTime;
     this.recent.push(hit.devMs);
-    const roll = this.recent.slice(-6);
-    this.trace.push({
-      relT: hit.t - this.session.metro.startTime,
-      rolling: roll.reduce((a, b) => a + b, 0) / roll.length,
-      dev: hit.devMs,
-    });
+    const roll = this.recent.slice(-ROLL);
+    this.trace.push({ relT, dev: hit.devMs, rolling: roll.reduce((a, b) => a + b, 0) / roll.length });
     const s = summarize(this.recent);
-    if (s) {
-      this.root.querySelector('#tm-steadiness').innerHTML = `&plusmn;${s.sd.toFixed(0)} MS`;
-      this.root.querySelector('#tm-n').textContent = String(s.n);
-      const band = store.get('pocketMs');
-      const inBand = (100 * this.recent.filter((d) => Math.abs(d) <= band).length) / this.recent.length;
-      this.root.querySelector('#tm-band').textContent = `${inBand.toFixed(0)}%`;
-      this.root.querySelector('#tm-trend').textContent = this.trendMsPerMin();
-      this.root.querySelector('#tm-steady').textContent = `${this.longestSteady().toFixed(0)}s`;
-    }
-    this.drawChart();
+    const pocket = this.runPocket;
+    const k = this.recent.filter((d) => Math.abs(d) <= pocket).length;
+    this.el.band.innerHTML = `${Math.round((100 * k) / s.n)}<i class="unit">%</i>`;
+    this.el.n.textContent = String(s.n);
+    this.setDriftTile(this.el.trend, this.el.trendLabel, this.drift(Math.max(this.elapsed || 0, relT)));
+    if (s.n < LISTEN_HITS) return;
+    const sd = String(Math.round(s.sd));
+    const { monitor, steadiness, side } = this.el;
+    monitor.classList.remove('is-idle');
+    steadiness.innerHTML = `<span aria-hidden="true">±${sd}</span><span class="sr-only">plus or minus ${sd}</span>`;
+    steadiness.style.fontSize = `${monitorSize(`±${sd}`)}px`;
+    if (!side.querySelector('.unit')) side.innerHTML = '<span class="unit">ms</span>';
+    const r = Math.round(Math.abs(s.mean));
+    const word = r === 0 ? '' : ` ${dirWord(s.mean).toUpperCase()}`;
+    this.el.avg.innerHTML = `<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${nbsp(r, 'ms')}${word}`;
   }
 
-  trendMsPerMin() {
-    const t = this.trace;
-    if (t.length < 6) return '—';
-    const n = t.length;
-    const mx = t.reduce((a, p) => a + p.relT, 0) / n;
-    const my = t.reduce((a, p) => a + p.dev, 0) / n;
+  // least-squares slope of offsets over time, from 5 s on, in ms per minute
+  drift(elapsed) {
+    const pts = this.trace.filter((p) => p.relT >= DRIFT_FROM_S);
+    if (elapsed < DRIFT_MIN_S || pts.length < DRIFT_MIN_HITS) return null;
+    const n = pts.length;
+    const mx = pts.reduce((a, p) => a + p.relT, 0) / n;
+    const my = pts.reduce((a, p) => a + p.dev, 0) / n;
     let num = 0;
     let den = 0;
-    for (const p of t) { num += (p.relT - mx) * (p.dev - my); den += (p.relT - mx) ** 2; }
-    if (!den) return '—';
-    const slope = (num / den) * 60; // ms per minute
-    return `${slope >= 0 ? '+' : ''}${slope.toFixed(0)}`;
+    for (const p of pts) { num += (p.relT - mx) * (p.dev - my); den += (p.relT - mx) ** 2; }
+    return den ? (num / den) * 60 : null;
   }
 
-  longestSteady() {
-    const band = store.get('pocketMs');
+  setDriftTile(valueEl, labelEl, drift) {
+    if (drift === null) {
+      valueEl.textContent = '—';
+      valueEl.classList.remove('is-long');
+      labelEl.textContent = 'DRIFT';
+      return;
+    }
+    const txt = fmtSigned(drift, 0);
+    valueEl.innerHTML = `${txt}<i class="unit">ms/min</i>`;
+    valueEl.classList.toggle('is-long', txt.length > 3);
+    labelEl.textContent = Math.round(drift) === 0 ? 'DRIFT' : `DRIFT ${drift > 0 ? 'LATER' : 'EARLIER'}`;
+  }
+
+  longestInPocket() {
+    const band = this.runPocket;
     let best = 0;
     let startT = null;
     for (const p of this.trace) {
@@ -306,104 +699,309 @@ export class TimingMode {
     return best;
   }
 
-  drawChart() {
-    const cv = this.root.querySelector('#tm-chart');
-    if (!cv) return;
-    const ctx = cv.getContext('2d');
-    const w = cv.width;
-    const h = cv.height;
-    ctx.clearRect(0, 0, w, h);
-    const T = theme();
-    const band = store.get('pocketMs');
-    // rushing = early = NEGATIVE dev, and yOf already sends negative dev
-    // toward smaller y = the top = the FASTER label. No sign flip: flipping
-    // here once plotted rushers in the SLOWER half of the chart.
-    const yOf = (dev) => h / 2 + (Math.max(-60, Math.min(60, dev)) / 60) * (h / 2 - 16);
-    ctx.fillStyle = 'rgba(58,125,52,.14)';
-    ctx.fillRect(0, yOf(-band), w, yOf(band) - yOf(-band));
-    ctx.strokeStyle = T.ink;
-    ctx.setLineDash([8, 7]);
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    if (!this.trace.length) return;
-    const totalS = this.lastRun ? this.lastRun.seconds : 30;
-    const xOf = (relT) => (relT / totalS) * (w - 20) + 10;
-    ctx.strokeStyle = T.ink;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    this.trace.forEach((p, i) => {
-      const x = xOf(p.relT);
-      const y = yOf(p.rolling);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    for (const p of this.trace) {
-      if (Math.abs(p.dev) <= band) continue;
-      ctx.fillStyle = T.pink;
-      ctx.beginPath();
-      ctx.arc(xOf(p.relT), yOf(p.dev), 5, 0, 7);
-      ctx.fill();
-    }
-    const last = this.trace[this.trace.length - 1];
-    ctx.fillStyle = T.pink;
-    ctx.beginPath();
-    ctx.arc(xOf(last.relT), yOf(last.rolling), 8, 0, 7);
-    ctx.fill();
-  }
-
+  // ---------------------------------------------------------- the result
   onDone(result) {
-    this.root.querySelector('#tm-go').innerHTML = 'START HOLD<span class="tri"></span>';
-    const final = this.root.querySelector('#tm-final');
-    final.classList.remove('hidden');
+    this.session = null;
+    this.stopLoop();
+    this.elapsed = null;
+    this.lastResult = result;
     if (!result) {
-      final.textContent = 'No hits detected — check the mic level meter and try again.';
+      this.el.result.innerHTML = '<div class="card tm-note"><p class="t-body">No hits heard. Check the mic meter and try again.</p></div>';
+      this.el.foot.replaceChildren();
+      this.setState('result');
+      announce('No hits heard.');
       return;
     }
-    const base = store.get('baseline');
-    let verdict = `mean ${result.mean >= 0 ? '+' : ''}${result.mean.toFixed(1)} ms · spread ${result.sd.toFixed(1)} ms · ${result.pocketPct.toFixed(0)}% in pocket (${result.n} hits)${this.lastRun.clickOn ? '' : ' · click OFF after bar 1'}`;
-    if (base) {
-      const dSd = result.sd - base.sd;
-      verdict += ` — baseline spread ${base.sd.toFixed(1)} ms (${dSd >= 0 ? '+' : ''}${dSd.toFixed(1)})`;
-    }
-    if (result.warning) verdict += ` — NOTE: ${result.warning}`;
-    final.textContent = verdict;
-    this.lastResult = result;
-    this.root.querySelector('#tm-baseline').classList.remove('hidden');
+    const run = this.lastRun;
     store.addRun({
       kind: 'timing',
-      label: `${this.lastRun.clickOn ? 'steady hold' : 'click-off hold'} ÷${this.lastRun.subdivision}`,
+      label: `Hold · ${gridOf(run.subdivision).word} · click ${run.clickOn ? 'on' : 'off'}`,
       meter: '4/4',
-      bpmStart: this.lastRun.bpm,
-      bpmEnd: this.lastRun.bpm,
+      bpmStart: run.bpm,
+      bpmEnd: run.bpm,
       n: result.n,
       mean: +result.mean.toFixed(2),
       sd: +result.sd.toFixed(2),
       pocketPct: +result.pocketPct.toFixed(1),
       unaligned: result.unaligned,
     });
-    // the session is finished — clear it so activate() resumes adopting the
-    // working tempo (a feel pick elsewhere moves preferredBpm; holding a
-    // stale session reference here used to block that forever)
-    this.session = null;
+    this.renderResult(result);
+    this.setState('result');
+    this.renderBaselineButton();
+    const main = this.root.closest('main');
+    if (main) main.scrollTop = 0;
+    announce(this.el.cv.getAttribute('aria-label'));
+  }
+
+  renderResult(r) {
+    const pocket = this.runPocket;
+    const sdText = r.sd.toFixed(1);
+    const base = store.get('baseline');
+    let vs = '';
+    if (base && Number.isFinite(base.sd)) {
+      const delta = r.sd - base.sd;
+      vs = `<p class="tm-vs"><span class="chip">BASELINE ±${base.sd.toFixed(1)}</span>`
+        + `<span class="tm-vs__delta">${nbsp(Math.abs(delta).toFixed(1), 'ms')} ${delta < 0 ? 'tighter' : 'wider'}</span></p>`;
+    }
+    const drift = this.drift(this.lastRun.seconds);
+    const fact = factLine('timing', { offsets: this.recent, pocketMs: pocket, drift });
+    const heroSize = sdText.length + 1 > 5 ? ' tm-hero__num--long' : '';
+    this.el.result.innerHTML = `
+      <div class="hero tm-hero">
+        <p class="hero__cap">SPREAD · ${r.n} ${r.n === 1 ? 'HIT' : 'HITS'}</p>
+        <p class="tm-hero__num${heroSize}"><b><span aria-hidden="true">±${sdText}</span><span class="sr-only">plus or minus ${sdText}</span></b><span class="unit">ms</span></p>
+        <p class="hero__def">How tightly the hits group.</p>
+      </div>
+      ${vs}
+      <p class="fact" role="status">${fact}</p>`;
+
+    const avg = Math.round(Math.abs(r.mean));
+    const avgWord = avg === 0 ? '' : ` ${dirWord(r.mean).toUpperCase()}`;
+    const k = this.recent.filter((d) => Math.abs(d) <= pocket).length;
+    const longest = Math.round(this.longestInPocket());
+    const foot = [`Longest in pocket <span id="tm-steady">${nbsp(longest, 's')}</span>`,
+      `${plural(r.unaligned, 'off-grid hit')} not counted`];
+    if (!this.lastRun.clickOn) foot.push('click off after bar 1');
+    this.el.foot.innerHTML = `
+      <div class="stat-strip tm-rtiles">
+        <div class="statbox"><b>${avg}<i class="unit">ms</i></b><span aria-hidden="true">AVG${avgWord}</span><em class="sr-only">average${avgWord.toLowerCase()}</em></div>
+        <div class="statbox"><b>${Math.round(r.pocketPct)}<i class="unit">%</i></b><span>IN POCKET</span><em>${k} of ${r.n}</em></div>
+        <div class="statbox"><b class="tm-drift tm-rdrift">—</b><span class="tm-rdrift-label">DRIFT</span></div>
+      </div>
+      ${r.warning ? '<div class="card tm-note"><p class="t-body tm-note__text"></p></div>' : ''}
+      <p class="tm-foot">${foot.join(' · ')}</p>`;
+    if (r.warning) this.el.foot.querySelector('.tm-note__text').textContent = r.warning;
+    this.setDriftTile(this.el.foot.querySelector('.tm-rdrift'), this.el.foot.querySelector('.tm-rdrift-label'), drift);
+
+    const avgSpoken = avg === 0 ? 'average 0 ms' : `average ${nbsp(avg, 'ms')}${avgWord.toLowerCase()}`;
+    this.el.cv.setAttribute('aria-label', `Spread ${nbsp(sdText, 'ms')}, ${avgSpoken}, ${Math.round(r.pocketPct)}% in pocket`);
+  }
+
+  removeBaselineButton() {
+    const b = this.root.querySelector('#tm-baseline');
+    if (b) b.remove();
+  }
+
+  // first baseline: a tap; replacing one: a hold
+  renderBaselineButton() {
+    this.removeBaselineButton();
+    if (!this.lastResult) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'tm-baseline';
+    b.className = 'btn btn--secondary tm-baseline';
+    this.el.bar.insertBefore(b, this.el.go);
+    if (store.get('baseline')) {
+      b.classList.add('hold');
+      b.innerHTML = '<span class="tm-baseline__main">BASELINE</span><span class="btn__sub hold__label">HOLD TO REPLACE</span>';
+      holdToConfirm(b, () => this.saveBaseline(), { label: 'HOLD TO REPLACE' });
+    } else {
+      b.innerHTML = '<span class="tm-baseline__main">SET BASELINE</span>';
+      b.addEventListener('click', () => this.saveBaseline());
+    }
   }
 
   saveBaseline() {
-    if (!this.lastResult) return;
+    const r = this.lastResult;
+    const b = this.root.querySelector('#tm-baseline');
+    if (!r || !b || b.classList.contains('is-set')) return;
     store.set('baseline', {
       bpm: this.lastRun.bpm,
       subdivision: this.lastRun.subdivision,
-      mean: this.lastResult.mean,
-      sd: this.lastResult.sd,
-      pocketPct: this.lastResult.pocketPct,
+      mean: r.mean,
+      sd: r.sd,
+      pocketPct: r.pocketPct,
       date: new Date().toISOString().slice(0, 10),
     });
-    const b = this.root.querySelector('#tm-baseline');
-    b.textContent = 'BASELINE SAVED ✓';
-    setTimeout(() => { b.innerHTML = 'SAVE AS MY BASELINE &#10003;'; }, 2000);
+    // a fresh node: the hold listeners stay with the old one
+    const set = document.createElement('button');
+    set.type = 'button';
+    set.id = 'tm-baseline';
+    set.className = 'btn btn--secondary tm-baseline is-set';
+    set.setAttribute('aria-disabled', 'true');
+    set.innerHTML = `<span class="tm-baseline__main">BASELINE SET</span><span class="btn__sub">${icon('check')}today</span>`;
+    b.replaceWith(set);
+    set.focus();
+    announce(`Baseline set: ±${nbsp(r.sd.toFixed(1), 'ms')}.`);
+  }
+
+  // ------------------------------------------------------------ the chart
+  // y: −60…+60 ms, early (negative) up; x: 0…hold seconds of audio clock
+  drawChart() {
+    const g = this.geom;
+    const cv = this.el && this.el.cv;
+    if (!g || !cv) return;
+    const ctx = cv.getContext('2d');
+    const P = chartPalette();
+    const u = 1 / g.s; // logical units per CSS px
+    const { w, h } = g;
+    ctx.clearRect(0, 0, w, h);
+
+    const live = this.isLiveState();
+    const total = (live || this.state === 'result') && this.lastRun ? this.lastRun.seconds : this.holdSec;
+    const pocket = this.pocketForChart();
+    const L = 34 * u;
+    const R = w - 8 * u;
+    const TOP = 9 * u;
+    const BOT = h - 22 * u;
+    const clampDev = (d) => Math.max(-Y_MAX, Math.min(Y_MAX, d));
+    const yOf = (d) => TOP + ((clampDev(d) + Y_MAX) / (2 * Y_MAX)) * (BOT - TOP);
+    const xOf = (t) => L + Math.max(0, Math.min(1, t / total)) * (R - L);
+    const mono = (size, weight = 400) => `${weight} ${size * u}px ${P.mono}`;
+
+    // pocket band with hairline edges
+    ctx.fillStyle = P.tint;
+    ctx.fillRect(L, yOf(-pocket), R - L, yOf(pocket) - yOf(-pocket));
+    ctx.strokeStyle = 'rgba(20, 18, 16, .3)';
+    ctx.lineWidth = u;
+    for (const d of [-pocket, pocket]) {
+      ctx.beginPath();
+      ctx.moveTo(L, Math.round(yOf(d) / u) * u + 0.5 * u);
+      ctx.lineTo(R, Math.round(yOf(d) / u) * u + 0.5 * u);
+      ctx.stroke();
+    }
+
+    // y gridlines + tick labels
+    ctx.font = mono(11);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let d = -Y_MAX; d <= Y_MAX; d += 20) {
+      const y = yOf(d);
+      if (d !== 0) {
+        ctx.strokeStyle = P.rule;
+        ctx.lineWidth = u;
+        ctx.beginPath();
+        ctx.moveTo(L, y);
+        ctx.lineTo(R, y);
+        ctx.stroke();
+      }
+      ctx.fillStyle = P.ink60;
+      ctx.fillText(fmtSigned(d, 0), L - 6 * u, y);
+    }
+    // zero = the click
+    ctx.strokeStyle = P.ink;
+    ctx.lineWidth = 2 * u;
+    ctx.beginPath();
+    ctx.moveTo(L, yOf(0));
+    ctx.lineTo(R, yOf(0));
+    ctx.stroke();
+
+    // x ticks every 10 s; labels thinned so they never collide
+    ctx.font = mono(11);
+    ctx.textBaseline = 'alphabetic';
+    const labelW = ctx.measureText(nbsp(total, 's')).width;
+    const step = [10, 20, 30, 60].find((st) => (st / total) * (R - L) >= labelW + 16 * u) || 60;
+    ctx.strokeStyle = P.ink;
+    ctx.lineWidth = u;
+    const labels = [];
+    for (let t = 0; t <= total + 1e-6; t += 10) {
+      const x = xOf(t);
+      ctx.beginPath();
+      ctx.moveTo(x, BOT);
+      ctx.lineTo(x, BOT + 4 * u);
+      ctx.stroke();
+      if (t % step === 0) labels.push({ t, x });
+    }
+    const span = (l) => {
+      const tw = ctx.measureText(nbsp(l.t, 's')).width;
+      const left = l.t === 0 ? l.x : l.t >= total ? l.x - tw : l.x - tw / 2;
+      return [left, left + tw];
+    };
+    const end = labels.length ? span(labels[labels.length - 1]) : [Infinity, Infinity];
+    let right = -Infinity;
+    ctx.fillStyle = P.ink60;
+    labels.forEach((l, i) => {
+      const [a, b] = span(l);
+      const last = i === labels.length - 1;
+      if (!last && (a < right + 6 * u || b > end[0] - 6 * u)) return;
+      ctx.textAlign = l.t === 0 ? 'left' : l.t >= total ? 'right' : 'center';
+      ctx.fillText(nbsp(l.t, 's'), l.x, h - 4 * u);
+      right = b;
+    });
+    ctx.strokeStyle = P.ink;
+    ctx.beginPath();
+    ctx.moveTo(L, BOT + 0.5 * u);
+    ctx.lineTo(R, BOT + 0.5 * u);
+    ctx.stroke();
+
+    // direction words, drawn under the data so no hit is ever hidden
+    ctx.font = `700 ${13 * u}px ${P.label}`;
+    ctx.fillStyle = P.ink;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    const tri = (x, y, up) => {
+      const s = 4.5 * u;
+      ctx.beginPath();
+      if (up) { ctx.moveTo(x - s, y + s); ctx.lineTo(x + s, y + s); ctx.lineTo(x, y - s); }
+      else { ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y - s); ctx.lineTo(x, y + s); }
+      ctx.closePath();
+      ctx.fill();
+    };
+    const earlyW = ctx.measureText('EARLY').width;
+    ctx.fillText('EARLY', R - 4 * u, TOP + 8 * u);
+    tri(R - 4 * u - earlyW - 9 * u, TOP + 8 * u + 6.5 * u, true);
+    ctx.textBaseline = 'bottom';
+    const lateW = ctx.measureText('LATE').width;
+    ctx.fillText('LATE', R - 4 * u, BOT - 8 * u);
+    tri(R - 4 * u - lateW - 9 * u, BOT - 8 * u - 6.5 * u, false);
+
+    // elapsed cursor while live: real audio-clock time, not decoration
+    if (this.state === 'running' && this.elapsed !== null) {
+      const x = xOf(this.elapsed);
+      ctx.strokeStyle = 'rgba(20, 18, 16, .3)';
+      ctx.lineWidth = u;
+      ctx.beginPath();
+      ctx.moveTo(x, TOP);
+      ctx.lineTo(x, BOT);
+      ctx.stroke();
+    }
+
+    const pts = this.trace;
+    this.el.hint.classList.toggle('hidden', live || pts.length > 0);
+    if (!pts.length) return;
+
+    // every counted hit; beyond ±60 a hit becomes an arrowhead astride the edge
+    for (const p of pts) {
+      const x = xOf(p.relT);
+      if (Math.abs(p.dev) > Y_MAX) {
+        ctx.fillStyle = P.ink;
+        tri(x, p.dev < 0 ? TOP : BOT, p.dev < 0);
+        continue;
+      }
+      const inPocket = Math.abs(p.dev) <= pocket;
+      ctx.beginPath();
+      ctx.arc(x, yOf(p.dev), (inPocket ? 2.6 : 3.2) * u, 0, Math.PI * 2);
+      ctx.fillStyle = inPocket ? P.dotStrong : P.ink;
+      ctx.fill();
+      if (inPocket) {
+        ctx.strokeStyle = P.white;
+        ctx.lineWidth = u;
+        ctx.stroke();
+      }
+    }
+
+    // rolling mean of the last 6
+    ctx.strokeStyle = P.ink;
+    ctx.lineWidth = 2 * u;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+      const x = xOf(p.relT);
+      const y = yOf(p.rolling);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    if (live) {
+      const last = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.arc(xOf(last.relT), yOf(last.dev), 5 * u, 0, Math.PI * 2);
+      ctx.fillStyle = P.ink;
+      ctx.fill();
+      ctx.strokeStyle = P.white;
+      ctx.lineWidth = 2 * u;
+      ctx.stroke();
+    }
   }
 }
