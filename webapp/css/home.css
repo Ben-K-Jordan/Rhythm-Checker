@@ -1,78 +1,104 @@
-/* Home screen. */
+/* Home: hub tile, tool tiles, run strip, player feel. */
 
-/* Pre-v3 look of the shared .statbox and .stat-strip on this screen (scoped with :where so
-   specificity matches the old global rules). Delete when this screen moves to v3. */
-:where(#mode-home) .statbox {
-  flex: 1;
-  border: 2px solid var(--ink);
-  box-shadow: 3px 3px 0 var(--ink);
-  background: #fff;
-  padding: 5px;
-  text-align: center;
-  min-width: 0;
-  min-height: auto;
-}
-:where(#mode-home) .statbox b {
-  display: block;
-  font-family: var(--display-font);
-  font-weight: 400;
-  font-size: 20px;
-  line-height: .9;
-  letter-spacing: normal;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-:where(#mode-home) .statbox span {
-  display: inline; margin-top: 0; white-space: normal; overflow: visible; text-overflow: clip;
-  font: 700 7.5px var(--mono-font); letter-spacing: .04em; color: var(--ink60); text-transform: uppercase;
-}
-:where(#mode-home) .statbox.ink { background: var(--ink); color: var(--paper); }
-:where(#mode-home) .statbox.red { background: var(--red); color: #fff; }
-:where(#mode-home) .statbox.green { background: var(--green); color: #fff; }
-:where(#mode-home) .statbox.amber { background: var(--amber); color: var(--ink); }
-:where(#mode-home) .statbox.ink span, :where(#mode-home) .statbox.red span, :where(#mode-home) .statbox.green span { color: inherit; }
-:where(#mode-home) .statbox.amber span { color: var(--ink); }
-:where(#mode-home) .stat-strip { position: relative; display: flex; grid-template-columns: none; gap: 8px; padding: 12px 14px 0; flex: none; }
+.home { position: relative; padding-top: 36px; padding-bottom: var(--s4); }
 
-/* -------------------------------------------------------------- 4a: home */
-.home-title {
-  position: relative; padding: 12px 14px 0; flex: none;
-  font-family: var(--display-font); font-size: 52px; line-height: .82; letter-spacing: 1px;
+/* --------------------------------------------------------- 100% HONEST burst
+   Fixed (placed by home.js) so it can sit over the hazard tape. */
+.home-burst {
+  position: fixed; z-index: calc(var(--z-header) + 1);
+  width: 76px; height: 76px;
+  pointer-events: none;
+  transform: rotate(10deg);
+  --star: polygon(50% 1%, 61.5% 22.3%, 84.6% 15.4%, 77.7% 38.5%, 99% 50%, 77.7% 61.5%, 84.6% 84.6%, 61.5% 77.7%, 50% 99%, 38.5% 77.7%, 15.4% 84.6%, 22.3% 61.5%, 1% 50%, 22.3% 38.5%, 15.4% 15.4%, 38.5% 22.3%);
 }
-.home-title span { color: var(--red); text-shadow: 3px 3px 0 var(--ink); }
-.feel-wrap { position: relative; padding: 14px 14px 0; flex: none; }
-.feel-label { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
-.feel-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
-.feel-card {
-  border: 2px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink);
-  padding: 7px 6px; text-align: left;
+.home-burst::before { content: ''; position: absolute; inset: 0; background: var(--ink); clip-path: var(--star); }
+.home-burst__fill {
+  position: absolute; inset: 3px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--amber); color: var(--ink);
+  clip-path: var(--star);
 }
-.feel-card:active { background: var(--amber); }
-.feel-card.on { background: var(--red); color: #fff; }
-.feel-name { font-family: var(--display-font); font-size: 16px; line-height: .9; }
-.feel-genre { font: 700 7px var(--mono-font); margin-top: 3px; color: var(--ink60); }
-.feel-card.on .feel-genre { color: #fff; opacity: .85; }
-.feel-bpm { font: 700 8px var(--mono-font); margin-top: 4px; }
-.modules {
-  position: relative; flex: 1; min-height: 0; padding: 14px 14px 0;
-  display: flex; flex-direction: column; gap: 8px;
+.home-burst__fill b { font: 400 var(--t-label)/1.05 var(--display-font); letter-spacing: .02em; }
+.home-burst.is-off { visibility: hidden; }
+
+/* ------------------------------------------------------------ first run */
+.home-first {
+  position: relative;
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding-top: calc(var(--s3) + 4px);
 }
+.home-first::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--amber); }
+.home-first__top { display: flex; align-items: center; gap: var(--s3); }
+.home-first__kicker { font: 600 var(--t-label)/1.15 var(--label-font); letter-spacing: .08em; color: var(--ink60); }
+.home-first__title { font: 400 26px/1 var(--display-font); letter-spacing: .01em; }
+.home-first__body { font: 400 var(--t-body)/1.4 var(--mono-font); }
+.home-first__go { width: 100%; margin-top: var(--s1); }
+.home-first__go .icon { width: 16px; height: 16px; }
+
+/* ------------------------------------------------------------- hub tile */
 .hero-tile {
-  border: 2px solid var(--ink); background: var(--ink); color: var(--paper);
-  box-shadow: 4px 4px 0 var(--red);
-  padding: 10px 12px; display: flex; align-items: center; gap: 12px; flex: none;
-  width: 100%;
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2);
+  width: 100%; min-height: 150px;
+  padding: 14px var(--s4);
+  background: var(--ink); color: var(--paper);
+  border: var(--border);
+  box-shadow: var(--sh-hub);
+  text-align: left;
 }
-.hero-tile:active { box-shadow: 2px 2px 0 var(--red); }
-.hero-name { flex: 1; text-align: left; font-family: var(--display-font); font-size: 22px; line-height: .9; }
-.hero-arrow { font-family: var(--display-font); font-size: 22px; color: var(--red); }
-.module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
-.module-tile {
-  border: 2px solid var(--ink); background: #fff; box-shadow: 3px 3px 0 var(--ink);
-  padding: 9px; display: flex; flex-direction: column; justify-content: space-between;
-  align-items: flex-start; gap: 14px; min-height: 96px;
-}
-.module-tile:active { background: var(--amber); }
-.module-name { font-family: var(--display-font); font-size: 18px; line-height: .9; text-align: left; }
+.hero-tile:active { transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--red); }
+.hero-tile__row { display: flex; align-items: center; gap: var(--s3); width: 100%; }
+.hero-tile__icon { flex: none; width: 40px; height: 40px; }
+.hero-tile__name { font: 400 var(--t-hub)/1 var(--display-font); letter-spacing: .02em; }
+.hero-tile__go { margin-left: auto; display: inline-flex; color: var(--red); }
+.hero-tile__go .icon { width: 30px; height: 30px; }
+.hero-tile__what { font: 400 var(--t-body)/1.35 var(--mono-font); }
+.hero-tile__last { max-width: 100%; height: 30px; gap: 0; border-color: var(--amber); }
+.hero-tile__last > span { flex: none; }
+.hero-tile__last > .hero-tile__rud { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-.module-tile { min-height: 130px; }
+/* ------------------------------------------------------------ tool tiles */
+.home-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 10px; }
+.module-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  min-width: 0; min-height: 128px;
+  padding: 10px 10px 10px 12px;
+  background: var(--white); color: var(--ink);
+  border: var(--border);
+  box-shadow: var(--sh-card);
+  text-align: left;
+}
+.module-tile:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.module-tile__name { display: flex; align-items: center; gap: 7px; font: 400 var(--t-tile-name)/1 var(--display-font); letter-spacing: .01em; }
+.module-tile__name svg { flex: none; width: 24px; height: 24px; }
+.module-tile__what { flex: 1 0 auto; font: 400 var(--t-body)/1.3 var(--mono-font); color: var(--ink60); }
+.module-tile .chip { max-width: 100%; letter-spacing: .05em; }
+
+/* -------------------------------------------------------------- run strip */
+.home-stats .statbox { padding-inline: var(--s2); }
+.home-stats .statbox span { letter-spacing: .04em; }
+.home-stats .statbox b .unit { margin-left: 0; }
+.home-stats .statbox--long b { font-size: var(--t-stat-4); }
+
+/* ----------------------------------------------------------- player feel */
+.home-feel { display: flex; flex-direction: column; gap: var(--s2); }
+.home-feel .sec-head__aside { margin-left: 0; text-align: left; }
+.home-feel__seg > button { gap: 4px; padding: 6px 2px; }
+.feel-name { font: 400 18px/1 var(--display-font); letter-spacing: .03em; }
+.home-feel__seg .seg__sub { letter-spacing: -.03em; }
+
+/* ---------------------------------------------------------------- footer */
+.home-foot { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.home-foot__bars {
+  flex: 1; height: 22px;
+  background:
+    repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 7px, var(--ink) 7px 8px, transparent 8px 11px),
+    repeating-linear-gradient(90deg, transparent 0 4px, var(--ink) 4px 5px, transparent 5px 13px);
+}
+.home-foot__text { flex: none; font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .1em; white-space: nowrap; }
+
+@media (max-width: 384px) {
+  .home-stats .statbox--long b { font-size: 21px; }
+}
+@media (max-width: 370px) {
+  .home-feel__seg .seg__sub { font-size: var(--t-axis); }
+}
