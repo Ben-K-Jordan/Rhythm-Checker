@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#f2ecdd">
-<meta name="description" content="Honest drum practice: all 40 rudiments judged hit by hit, a drum tuner voiced to real players, and timing analysis — on-device, offline, free.">
+<meta name="description" content="Honest drum practice: all 40 rudiments measured hit by hit, a drum tuner and a timing check. Everything stays on your phone.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="RhythmChk">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -37,54 +37,73 @@
 
 <noscript>
   <p style="font: 700 15px/1.5 sans-serif; padding: 24px; text-align: center">
-    Rhythm Checker needs JavaScript — it listens to your drums and measures every
-    hit in real time, entirely on this device. Nothing is ever uploaded.
+    Rhythm Checker needs JavaScript. It listens to your drums and measures every
+    hit on this phone. Nothing is uploaded.
   </p>
 </noscript>
 
 <div id="start-overlay" class="poster">
   <div class="poster-dots red-dots" aria-hidden="true"></div>
   <div class="poster-dots blue-dots" aria-hidden="true"></div>
-  <div class="poster-vu"><div class="vu" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
   <div class="poster-hazard" aria-hidden="true"></div>
-  <div class="poster-masthead">
-    <div class="mast-line">RHYTHM</div>
-    <div class="mast-line checker">CHECKER</div>
-  </div>
+  <h1 class="poster-masthead" aria-label="Rhythm Checker">
+    <span class="mast-line">RHYTHM</span>
+    <span class="mast-line checker">CHECKER</span>
+  </h1>
+  <p class="poster-dateline">DRUM PRACTICE THAT LISTENS · FREE · OFFLINE</p>
   <div class="poster-lineup">
-    <div class="starburst" aria-hidden="true">
-      <svg viewBox="0 0 100 100"><polygon points="50,2 60,26 86,18 74,42 98,50 74,58 86,82 60,74 50,98 40,74 14,82 26,58 2,50 26,42 14,18 40,26" fill="#e8b23a" stroke="#141210" stroke-width="2.5"/></svg>
-      <div class="starburst-label">100%<br>HONEST</div>
+    <div class="poster-bills">
+      <p class="lineup-kicker">TONIGHT</p>
+      <div class="starburst" aria-hidden="true">
+        <svg viewBox="0 0 100 100"><polygon points="50,2 60,26 86,18 74,42 98,50 74,58 86,82 60,74 50,98 40,74 14,82 26,58 2,50 26,42 14,18 40,26" fill="#e8b23a" stroke="#141210" stroke-width="2.5"/></svg>
+        <div class="starburst-label">100%<br>HONEST</div>
+      </div>
+      <button type="button" class="bill bill-1" data-goto="rudiments">RUDIMENTS</button>
+      <div class="bill bill-2">
+        <button type="button" data-goto="tuner">TUNER</button>
+        <b aria-hidden="true"></b>
+        <button type="button" data-goto="timing">TIMING</button>
+      </div>
+      <div class="bill bill-2">
+        <button type="button" data-goto="calibrate">CALIBRATE</button>
+        <b aria-hidden="true"></b>
+        <button type="button" data-goto="history">HISTORY</button>
+      </div>
+      <div class="bill bill-3">NOTHING LEAVES THIS PHONE</div>
     </div>
-    <button class="bill bill-1" data-goto="rudiments">RUDIMENTS</button>
-    <button class="bill bill-2"><span data-goto="tuner">TUNER</span> <b>·</b> <span data-goto="timing">TIMING</span></button>
-    <button class="bill bill-2"><span data-goto="calibrate">CALIBRATE</span> <b>·</b> <span data-goto="history">HISTORY</span></button>
-    <button class="bill bill-3"><span data-goto="settings">SETTINGS</span> <b>·</b> NOTHING UPLOADED, EVER</button>
   </div>
-  <div class="poster-cta-row">
-    <button id="start-btn" class="cta poster-cta">TAP TO START<span class="tri"></span></button>
+  <div id="start-denied" class="card poster-denied hidden">
+    <h2 class="poster-denied__title">MIC IS BLOCKED</h2>
+    <p id="start-error" class="poster-error"></p>
   </div>
-  <p id="start-error" class="poster-error"></p>
-  <div class="poster-footer"><div class="barcode" aria-hidden="true"></div></div>
+  <div class="poster-foot">
+    <div class="barcode" aria-hidden="true"></div>
+    <p class="poster-priming"><span>Uses the mic to hear your drums.</span> <span>Nothing is recorded or uploaded.</span></p>
+    <button id="start-btn" type="button" class="btn btn--primary poster-cta"><span class="poster-cta__label">TAP TO START</span><svg class="icon icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6 3.5v17L20.5 12z"/></svg></button>
+    <button id="start-nomic" type="button" class="btn btn--quiet poster-nomic hidden">OPEN WITHOUT MIC</button>
+  </div>
 </div>
 
 <div id="app" class="hidden">
   <header class="chrome">
     <div class="chrome-row">
-      <div class="chrome-left">
-        <button id="nav-back" class="chrome-btn hidden">&#8592; HOME</button>
-        <button id="chrome-gear-left" class="gear-btn" title="settings" aria-label="settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#141210" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-      </div>
-      <div class="wordmark"><span>RHY/CHK</span>
-        <div class="vu" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      </div>
-      <div class="chrome-right">
-        <div class="meter" title="mic level"><div id="mic-level"></div></div>
-      </div>
+      <button id="nav-back" type="button" class="btn btn--secondary nav-back is-home"><svg class="icon icon-back" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter" d="M20 12H6M11.5 5.5L5 12l6.5 6.5"/></svg>HOME</button>
+      <div class="brand"><span class="rc-stamp" aria-hidden="true">RC</span><span class="wordmark">RHYTHM CHECKER</span></div>
+      <button id="chrome-meter" type="button" class="meter is-off" aria-label="Mic off">
+        <span id="mic-level" class="meter__bars" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="meter__notch hidden"></span></span>
+        <span class="meter__label">MIC OFF</span>
+      </button>
+      <button id="chrome-gear-left" type="button" class="gear-btn" title="Settings" aria-label="Settings">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
     </div>
-    <div class="hazard" aria-hidden="true"></div>
+    <div class="hazard-tape chrome-hazard" aria-hidden="true"></div>
+    <div id="live-banner" class="live" role="status">
+      <div class="live__box"><span class="live__dot" aria-hidden="true"></span><span id="live-text">LIVE</span></div>
+      <span class="live__end" aria-hidden="true">
+        <span class="meter live__meter"><span class="meter__bars"><i></i><i></i><i></i><i></i></span></span>
+      </span>
+    </div>
   </header>
 
   <main>
@@ -94,27 +113,54 @@
     <section id="mode-timing" class="mode"></section>
     <section id="mode-calibrate" class="mode"></section>
     <section id="mode-history" class="mode"></section>
+    <section id="mode-nomic" class="mode nomic" aria-labelledby="nomic-title">
+      <div class="screen">
+        <div class="title-row"><h1 id="nomic-title" class="stamp">TUNER</h1></div>
+        <div class="card nomic__card">
+          <h2 id="nomic-head" class="nomic__head">MIC IS BLOCKED</h2>
+          <p id="nomic-text" class="nomic__text"></p>
+        </div>
+      </div>
+      <div class="bar">
+        <button id="nomic-retry" type="button" class="btn btn--primary"><span class="nomic-retry__label">TRY AGAIN</span><svg class="icon icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6 3.5v17L20.5 12z"/></svg></button>
+      </div>
+    </section>
   </main>
 
-  <div id="drawer-scrim" class="hidden"></div>
-  <aside id="settings" class="hidden">
-    <div class="drawer-handle" aria-hidden="true"></div>
-    <div class="drawer-head">
-      <h2>SETTINGS</h2>
-      <button id="settings-close" aria-label="close">&#10005;</button>
+  <div id="drawer-scrim" class="scrim hidden"></div>
+  <aside id="settings" class="sheet hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="sheet__hazard" aria-hidden="true"></div>
+    <div class="sheet__head">
+      <h2 id="settings-title">SETTINGS</h2>
+      <button id="settings-close" type="button" class="sheet__close" aria-label="Close settings"><svg class="icon icon-close" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter" d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <div class="drawer-hazard hazard" aria-hidden="true"></div>
     <div id="settings-body"></div>
   </aside>
 </div>
 
-<div id="mic-lost" class="overlay hidden" style="position:fixed;inset:0;z-index:50">
-  <h1>Microphone lost</h1>
-  <p id="mic-lost-reason" class="warn-text"></p>
-  <button id="mic-lost-btn" class="cta">Tap to reconnect</button>
+<div id="mic-lost" class="mic-lost hidden" role="dialog" aria-modal="true" aria-labelledby="mic-lost-title">
+  <div class="mic-lost__hazard" aria-hidden="true"></div>
+  <div class="mic-lost__body">
+    <div class="title-row"><h1 id="mic-lost-title" class="stamp">MIC LOST</h1></div>
+    <div class="card mic-lost__card">
+      <p id="mic-lost-reason"></p>
+      <p id="mic-lost-run" class="mic-lost__run hidden">Your run was stopped and not saved.</p>
+    </div>
+    <div id="mic-lost-steps" class="card mic-lost__card hidden">
+      <p id="mic-lost-error"></p>
+      <p>Still nothing? Close the app fully, then open it again.</p>
+    </div>
+  </div>
+  <div class="bar">
+    <button id="mic-lost-home" type="button" class="btn btn--secondary">HOME</button>
+    <button id="mic-lost-btn" type="button" class="btn btn--primary"><span class="mic-lost-btn__label">RECONNECT</span><svg class="icon icon-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6 3.5v17L20.5 12z"/></svg></button>
+  </div>
 </div>
 
-<footer><span id="diag" class="dim"></span></footer>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+<div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
+
+<footer><span id="diag" class="diag"></span></footer>
 
 <script type="module" src="js/app.js"></script>
 </body>

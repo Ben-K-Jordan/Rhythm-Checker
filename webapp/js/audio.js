@@ -43,11 +43,8 @@ export class MicEngine extends EventTarget {
             channelCount: 1,
           },
         });
-      } catch (err) {
-        throw new Error(
-          'Microphone access was blocked. Allow the mic in your browser settings ' +
-          `and reload. (${err.name || err})`,
-        );
+      } catch {
+        throw new Error('The mic is blocked. In iPhone Settings, allow the microphone for Safari, then reopen the app.');
       }
       this._stream = stream;
       await this._ensureContext();
@@ -72,8 +69,8 @@ export class MicEngine extends EventTarget {
       this._apply(this._lastOpts || {});
       node.port.onmessage = (e) => this._onBlock(e.data, sr);
       for (const track of stream.getTracks()) {
-        track.addEventListener('ended', () => this._lost('the microphone was taken away'));
-        track.addEventListener('mute', () => this._lost('the microphone went silent'));
+        track.addEventListener('ended', () => this._lost('Another app took the mic.'));
+        track.addEventListener('mute', () => this._lost('The mic went silent.'));
       }
       this.running = true;
       this.dispatchEvent(new Event('started'));
@@ -119,7 +116,7 @@ export class MicEngine extends EventTarget {
         await Promise.race([
           this.ctx.resume(),
           new Promise((_, rej) => {
-            setTimeout(() => rej(new Error('Audio could not restart — tap to try again.')), 1500);
+            setTimeout(() => rej(new Error('Audio did not restart. Tap RECONNECT to try again.')), 1500);
           }),
         ]);
       }
@@ -146,7 +143,7 @@ export class MicEngine extends EventTarget {
     const ctxDead = this.ctx && this.ctx.state !== 'running';
     const trackDead = this._stream
       && this._stream.getTracks().some((t) => t.readyState === 'ended' || t.muted);
-    if (ctxDead || trackDead) this._lost('audio was interrupted');
+    if (ctxDead || trackDead) this._lost('iPhone paused the audio: a call, the lock screen or another app.');
   }
 
   _lost(reason) {
