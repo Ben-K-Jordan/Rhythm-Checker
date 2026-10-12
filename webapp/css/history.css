@@ -1,83 +1,121 @@
-/* History screen. */
+/* History screen: stat tiles, filter, spread chart, heatmap, run list, run sheet. */
 
-/* Pre-v3 look of the shared .statbox and .stat-strip on this screen (scoped with :where so
-   specificity matches the old global rules). Delete when this screen moves to v3. */
-:where(#mode-history) .statbox {
-  flex: 1;
-  border: 2px solid var(--ink);
-  box-shadow: 3px 3px 0 var(--ink);
-  background: #fff;
-  padding: 5px;
-  text-align: center;
-  min-width: 0;
-  min-height: auto;
+.hist { padding-bottom: var(--s6); }
+.hist-body { display: flex; flex-direction: column; gap: var(--s3); }
+.hist-csv .icon { width: 16px; height: 16px; }
+.hist .statbox { padding-inline: 9px; }
+
+/* ------------------------------------------------------------ chart cards */
+.hist-card { display: flex; flex-direction: column; gap: 10px; }
+.hist-caption { min-height: 16px; font: 400 var(--t-caption)/1.35 var(--mono-font); color: var(--ink); }
+
+.spread-plot { position: relative; height: var(--h-trend); cursor: pointer; touch-action: manipulation; }
+.spread-plot svg { display: block; width: 100%; height: var(--h-trend); overflow: visible; }
+.sp text { font-family: var(--mono-font); }
+.sp-grid { stroke: var(--rule); stroke-width: 1; }
+.sp-zero { stroke: var(--ink); stroke-width: 1.5; }
+.sp-tick { font-size: var(--t-axis); fill: var(--ink60); }
+.sp-base { stroke: var(--ink60); stroke-width: 1; }
+.sp-base-label {
+  font-size: var(--t-axis); fill: var(--ink60);
+  paint-order: stroke; stroke: var(--white); stroke-width: 4px; stroke-linejoin: round;
 }
-:where(#mode-history) .statbox b {
-  display: block;
-  font-family: var(--display-font);
-  font-weight: 400;
-  font-size: 20px;
-  line-height: .9;
-  letter-spacing: normal;
-  font-variant-numeric: tabular-nums;
+.sp-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.sp-dot { fill: var(--ink); stroke: var(--white); stroke-width: 1; }
+.sp-sel { fill: none; stroke: var(--ink); stroke-width: 2; }
+.sp-last {
+  font-size: 13px; font-weight: 700; fill: var(--ink);
+  paint-order: stroke; stroke: var(--white); stroke-width: 4px; stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- heatmap
+   10 week columns x 7 day rows of 26 x 18 cells, 3 px gaps. */
+.heat-grid {
+  display: grid;
+  grid-template-columns: 14px auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px; row-gap: 4px;
+  justify-content: start;
+}
+.heat-months {
+  grid-column: 2; grid-row: 1;
+  display: grid; grid-template-columns: repeat(10, 26px); column-gap: 3px;
+  font: 400 var(--t-axis)/1.3 var(--mono-font); color: var(--ink60);
   white-space: nowrap;
 }
-:where(#mode-history) .statbox span {
-  display: inline; margin-top: 0; white-space: normal; overflow: visible; text-overflow: clip;
-  font: 700 7.5px var(--mono-font); letter-spacing: .04em; color: var(--ink60); text-transform: uppercase;
+.heat-days {
+  grid-column: 1; grid-row: 2;
+  display: grid; grid-template-rows: repeat(7, 18px); row-gap: 3px;
+  font: 400 var(--t-axis)/18px var(--mono-font); color: var(--ink60);
 }
-:where(#mode-history) .statbox.ink { background: var(--ink); color: var(--paper); }
-:where(#mode-history) .statbox.red { background: var(--red); color: #fff; }
-:where(#mode-history) .statbox.green { background: var(--green); color: #fff; }
-:where(#mode-history) .statbox.amber { background: var(--amber); color: var(--ink); }
-:where(#mode-history) .statbox.ink span, :where(#mode-history) .statbox.red span, :where(#mode-history) .statbox.green span { color: inherit; }
-:where(#mode-history) .statbox.amber span { color: var(--ink); }
-:where(#mode-history) .stat-strip { position: relative; display: flex; grid-template-columns: none; gap: 8px; padding: 12px 14px 0; flex: none; }
-
-/* ------------------------------------------------------- 8a: history */
-.heat-card {
-  position: relative; margin: 11px 14px 0; border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink); background: #fff; padding: 8px 10px; flex: none;
-}
-.heat-head { display: flex; justify-content: space-between; align-items: center; }
-.heat-legend { font: 700 7.5px var(--mono-font); color: var(--ink60); display: flex; align-items: center; gap: 3px; }
-.heat-legend i, .heatmap i {
-  display: block; width: 100%; aspect-ratio: 1.6; background: #e4dccb; min-width: 10px;
-}
-.heat-legend i { width: 10px; height: 7px; aspect-ratio: auto; }
 .heatmap {
-  display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr);
-  gap: 3px; margin-top: 8px;
+  grid-column: 2; grid-row: 2;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 18px);
+  grid-auto-columns: 26px;
+  gap: 3px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
-.heatmap i.l1, .heat-legend i.l1 { background: rgba(224, 48, 30, .32); }
-.heatmap i.l2, .heat-legend i.l2 { background: rgba(224, 48, 30, .62); }
-.heatmap i.l3, .heat-legend i.l3 { background: var(--red); }
-.heatmap i.future { background: transparent; }
-.log-filters { position: relative; display: flex; gap: 6px; padding: 11px 14px 0; flex: none; align-items: center; flex-wrap: wrap; }
-.log-list { position: relative; flex: 1; min-height: 0; margin: 9px 14px 0; display: flex; flex-direction: column; gap: 7px; }
-.log-row {
-  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); background: #fff;
-  padding: 7px 10px; display: flex; align-items: center; gap: 9px; min-height: 44px;
+.heatmap i, .heat-legend .sw {
+  display: block;
+  background: var(--heat0);
+  box-shadow: inset 0 0 0 1px rgba(20, 18, 16, .18);
 }
-.log-date { display: flex; flex-direction: column; flex: none; width: 46px; }
-.log-date b { font: 700 10px var(--mono-font); }
-.log-date i { font-style: normal; font: 400 8px var(--mono-font); color: var(--ink60); }
-.log-tag {
-  font: 700 8px var(--mono-font); padding: 2px 5px; letter-spacing: .5px; flex: none;
-  color: #fff; background: var(--ink);
+.heatmap i.h1, .heat-legend .sw.h1 { background: var(--heat1); }
+.heatmap i.h2, .heat-legend .sw.h2 { background: var(--heat2); }
+.heatmap i.h3, .heat-legend .sw.h3 { background: var(--heat3); }
+.heatmap i.is-future { background: none; box-shadow: none; }
+.heatmap i.is-today { position: relative; box-shadow: inset 0 0 0 1px rgba(20, 18, 16, .18), 0 0 0 2px var(--white), 0 0 0 4px var(--ink); }
+.heatmap i.is-sel { position: relative; z-index: 1; box-shadow: inset 0 0 0 2px var(--white), 0 0 0 2px var(--ink); }
+.heat-legend {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  font: 400 var(--t-axis)/1.3 var(--mono-font); color: var(--ink60);
 }
-.log-tag.blue { background: var(--blue); }
-.log-tag.green { background: var(--green); }
-.log-title { flex: 1; font: 400 11px var(--mono-font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-badge {
-  font: 700 10px var(--mono-font); border: 2px solid var(--ink); padding: 3px 6px; flex: none;
-  background: #fff; box-shadow: 2px 2px 0 var(--ink);
-}
-.log-empty { font: 400 11px var(--mono-font); color: var(--ink60); padding: 14px 4px; }
-.log-more {
-  margin: 10px 14px 0; padding: 8px 0 2px; border-top: 2px dashed rgba(20, 18, 16, .3);
-  font: 700 9px var(--mono-font); color: var(--ink60); letter-spacing: 1px; width: calc(100% - 28px);
-  text-align: center;
-}
+.heat-key { display: inline-flex; align-items: center; gap: 5px; }
+.heat-legend .sw { width: 16px; height: 11px; }
 
-.log-filters .pill { padding: 4px 7px; font-size: 10px; }
+/* --------------------------------------------------------------- run list */
+.log-list { display: flex; flex-direction: column; gap: var(--s2); }
+.log-row { grid-template-columns: 56px minmax(0, 1fr) auto; align-items: start; color: var(--ink); }
+.log-row:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+.log-date b { display: block; font: 700 var(--t-label)/1.25 var(--mono-font); white-space: nowrap; }
+.log-date span { display: block; font: 400 var(--t-axis)/1.35 var(--mono-font); color: var(--ink60); }
+.log-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.log-title { font: 700 var(--t-control)/1.2 var(--label-font); letter-spacing: .02em; overflow-wrap: anywhere; }
+.log-meta { font: 400 var(--t-caption)/1.5 var(--mono-font); color: var(--ink60); }
+.log-meta .nw { white-space: nowrap; }
+.log-tag {
+  display: inline-block; margin-right: 6px; padding: 0 5px;
+  border: 1.5px solid var(--ink); color: var(--ink);
+  font: 600 var(--t-axis)/15px var(--label-font); letter-spacing: .08em;
+  vertical-align: 1px;
+}
+.log-badge--acc {
+  display: inline-block; padding: 0 5px;
+  background: var(--tint); color: var(--ink);
+  font: 700 var(--t-caption)/18px var(--mono-font);
+  white-space: nowrap;
+}
+.log-val { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.log-val .log-badge { font: 700 20px/1 var(--mono-font); letter-spacing: -.02em; white-space: nowrap; }
+.log-unit { font: 600 var(--t-caption)/1 var(--label-font); letter-spacing: .04em; color: var(--ink60); white-space: nowrap; }
+.hist-more { align-self: flex-start; }
+
+.hist-empty { padding-top: var(--s2); }
+
+/* --------------------------------------------------------------- run sheet */
+.hist-sheet__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: var(--s3) var(--gutter) 0;
+}
+.hist-sheet__head h2 { min-width: 0; overflow-wrap: anywhere; }
+.hist-sheet__body {
+  display: flex; flex-direction: column; gap: var(--s3);
+  padding: var(--s3) var(--gutter) var(--s6);
+  overflow-y: auto;
+}
+.hist-sheet__when { font: 400 var(--t-caption)/1.35 var(--mono-font); color: var(--ink60); }
+.hist-accents { font: 400 var(--t-label)/1.4 var(--mono-font); }
+.hist-accents b { font: 700 var(--t-label)/1 var(--label-font); letter-spacing: .08em; margin-right: 4px; }
