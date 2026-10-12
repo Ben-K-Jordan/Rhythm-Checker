@@ -21,17 +21,17 @@ The project is two tools that share one engine (see `docs/PLAN.md`):
 
 <table>
   <tr>
-    <td align="center"><img src="docs/media/start.gif" width="240" alt="Start poster"><br><sub><b>Start</b>: the poster. Mic on, everything stays on this phone.</sub></td>
-    <td align="center"><img src="docs/media/home.gif" width="240" alt="Practice home"><br><sub><b>Home</b>: what the data says, every tool one tap away.</sub></td>
-    <td align="center"><img src="docs/media/tuner.gif" width="240" alt="Tuner"><br><sub><b>Tuner</b>: four players' targets sized to your drums, batter and reso heads.</sub></td>
+    <td align="center"><img src="docs/media/start.gif" width="240" alt="Start poster"><br><sub><b>Start</b>: the poster. Mic on, and nothing leaves this phone.</sub></td>
+    <td align="center"><img src="docs/media/home.gif" width="240" alt="Practice home"><br><sub><b>Home</b>: every tool one tap away, each with its latest number.</sub></td>
+    <td align="center"><img src="docs/media/tuner.gif" width="240" alt="Tuner"><br><sub><b>Tuner</b>: Hz and cents against your own target, batter and reso.</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/media/rudiments.gif" width="240" alt="Rudiment highway"><br><sub><b>Rudiments</b>: the highway. Every hit judged with its signed ms error.</sub></td>
-    <td align="center"><img src="docs/media/timing.gif" width="240" alt="Timing"><br><sub><b>Timing</b>: you vs the click in any meter, odd groupings included.</sub></td>
-    <td align="center"><img src="docs/media/history.gif" width="240" alt="History"><br><sub><b>History</b>: spread per session. Falling is winning.</sub></td>
+    <td align="center"><img src="docs/media/rudiments.gif" width="240" alt="Rudiment highway"><br><sub><b>Rudiments</b>: the highway, R over L. Every hit placed early or late in ms.</sub></td>
+    <td align="center"><img src="docs/media/timing.gif" width="240" alt="Timing"><br><sub><b>Timing</b>: hold a tempo against the click and see where you drift.</sub></td>
+    <td align="center"><img src="docs/media/history.gif" width="240" alt="History"><br><sub><b>History</b>: spread per run over time, and every day you played.</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/media/calibrate.gif" width="240" alt="Calibrate"><br><sub><b>Calibrate</b>: trigger floor plus latency, measured once per phone.</sub></td>
+    <td align="center"><img src="docs/media/calibrate.gif" width="240" alt="Calibrate"><br><sub><b>Calibrate</b>: mic threshold plus latency, measured once per phone.</sub></td>
   </tr>
 </table>
 
@@ -49,36 +49,44 @@ To run it locally instead:
 cd webapp && python -m http.server 8000   # then open http://localhost:8000
 ```
 
-* **Tuner**: tap the head, read the fundamental in Hz, note, and cents. Every
-  drum carries two targets, batter and reso, with the gap between the heads
-  shown in semitones and what that gap does to the feel. One tap loads a
-  player's whole setup, sized to your exact drums — rock at John Bonham, punk
-  at Travis Barker, metal at Joey Jordison, djent at Tomas Haake. It writes
-  their batter and reso targets, seeds that player's working tempo into the
-  trainer and timing screens, and floats their signature rudiments to the top
-  of the rudiment picker (Haake's 3/5/7 groupings, Bonham's single-stroke
-  triplets): their ballpark, your ears and hands finish it. Lug mode logs a
-  pass around the drum and marks the lugs that are off, and a fold-out crib
-  sheet covers how to get a clean reading at soundcheck.
-* **Rudiments**: a falling-note highway across all 40 PAS rudiments
-  (paradiddles, rolls, flams, drags, ratamacues) synced to a sample-accurate
-  metronome. Every hit is judged perfect, good, ok, or miss with its signed ms
-  error, streaks, and an honest end-of-run report including per-step means
-  ("your RR doubles run early"). Accents are yours on every one of them: keep
-  the rudiment's written accents, accent the pulses, strip them all, or tap
-  your own onto the pattern. The groove bar makes the practice
-  variables one-tap adjustable: big BPM steps, tap tempo, time signatures
-  from 2/4 to 12/8 with odd groupings (7/8 as 2+2+3, 3+2+2, or 2+3+2), lead
-  hand switch, and a **tempo ramp** (+5 BPM every 4 bars) whose report breaks
-  the spread down per tempo, showing the exact BPM where the rudiment falls
-  apart.
-* **Timing**: free play against the click (same groove bar: any meter, any
-  tempo) with a live early/late strip and running mean, spread, and pocket.
-  Save a great day as your baseline.
-* **History**: every completed run is analyzed and saved automatically on the
-  device. Spread trend across sessions, per-run table, CSV export.
-* **Calibrate**: measures your device's fixed audio latency by tapping along
-  with clicks, then subtracts it from every score. Run it once per device.
+* **Tuner**: tap the head, read the fundamental in Hz, note, and cents on a
+  gauge whose green zone is your own tolerance. Every drum carries two
+  targets, batter and reso, with the gap between the heads shown in
+  semitones. One tap loads a player feel, sized to your exact drums: rock at
+  John Bonham, punk at Travis Barker, metal at Joey Jordison, djent at Tomas
+  Haake. It writes their batter and reso targets, seeds that player's working
+  tempo into Rudiments and Timing, and floats their signature rudiments to the
+  top of the picker (Haake's 3/5/7 groupings, Bonham's single-stroke
+  triplets). Every load comes with UNDO, and NONE clears it. Lug mode logs a
+  pass around the drum (set how many lugs it has) and marks each lug that sits
+  outside your tolerance.
+* **Rudiments**: a note highway across all 40 PAS rudiments (paradiddles,
+  rolls, flams, drags, ratamacues) synced to a sample-accurate metronome,
+  with the right hand's lane above the left's. Every hit gets its signed ms
+  offset, early or late, on a strip that shows the real counting window.
+  The result card leads with your spread, then a one-line fact drawn from
+  the data (for example "R4 sat 9.0 ms later than the other strokes") and a
+  per-stroke breakdown. Grade words (perfect, good, ok) and hit streaks are
+  off by default; switch on Settings > Grade words if you want them.
+  Accents are yours on every rudiment: keep the written accents, accent the
+  beats, strip them all, or tap your own onto the pattern. Setup covers
+  tempo with tap tempo, time signatures from 2/4 to 12/8 with odd groupings
+  (7/8 as 2+2+3, 3+2+2, or 2+3+2), lead hand, and a **tempo ramp** (+5 BPM
+  every 4 bars) whose result breaks the spread down per tempo, so you can see
+  the BPM where your spread widens.
+* **Timing**: hold a tempo against the click in any meter. While you play,
+  one big number shows how far the last hit landed from the click, and a
+  chart plots every hit over time with your pocket as a band. The result
+  shows spread, average, time in the pocket, and drift in ms per minute.
+  Set any run as your baseline, and later runs at the same tempo show how
+  their spread compares.
+* **History**: every finished run is saved on the device. Spread per run
+  over time (rudiments and timing kept apart), a ten-week heatmap of the days
+  you played, days in a row, a sheet for every run, and CSV export.
+* **Calibrate**: set the mic threshold (hits under it never count), then
+  play along with a few clicks so the app can measure this phone's latency.
+  The correction, shown as for example −8 ms, is applied to every hit. Run it
+  once per phone.
 
 The scope is deliberately lean. Through v2.2 the app also carried a full
 show-night flow — pre-show readiness checks, live set monitoring, a stamped
@@ -89,13 +97,14 @@ intact in the git history.
 The look is a photocopied gig poster: cream newsprint, hard ink borders, one
 loud red, hazard stripes, offset shadows with zero blur, and newsprint grain
 over everything. Type is Anton for the shouting, Oswald for the labels, and
-Space Mono for every number. A four-bar level meter ticks in the header next
-to the wordmark, the hazard tape crawls, and the tuner needle swings. All of
-it is drawn in CSS and SVG with no raster assets (the app icon aside), runs
-GPU-composited so the audio thread never feels it, and under Reduce Motion
-(which iOS Low-Power Mode also triggers) pares back to just those two small
-identity loops — the level bars and the hazard tape — with the flashy motion
-switched off.
+Space Mono for every number. v3 ("Stage Monitor") makes the run screens read
+like a floor monitor. Once you press PLAY, the header turns into a hazard-tape
+LIVE banner, the live number is 120 px Space Mono, and the only control left
+is STOP. Nothing on screen is smaller than 11 px, every control is at least
+44 px, and anything that looks like an instrument moves only with real data.
+Under Reduce Motion (which iOS Low-Power Mode also triggers) the hazard tape
+holds still. The tokens, components and copy rules are in
+[`docs/DESIGN.md`](docs/DESIGN.md).
 
 ## The deep analyzer
 
