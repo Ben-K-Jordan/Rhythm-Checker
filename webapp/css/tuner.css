@@ -1,88 +1,159 @@
-/* Tuner screen. */
+/* Tuner screen: pitch (reading + gauge + player feel) and lugs. */
 
-/* ---------------------------------------------------------- 5a: tuner */
-.drum-chips { position: relative; display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px 0; flex: none; }
-.head-row { position: relative; display: flex; align-items: center; gap: 7px; padding: 10px 14px 0; flex: none; }
-.head-spacer { flex: 1; }
-.gauge-card {
-  position: relative; margin: 9px 14px 0; border: 2px solid var(--ink);
-  box-shadow: 4px 4px 0 var(--ink); background: #fff; padding: 8px 12px 6px; flex: none;
-}
-.gauge-state {
-  position: relative; z-index: 2; margin: 0 auto 2px; width: fit-content;
-  background: #fff; padding: 1px 8px;
-  font: 700 10px var(--mono-font); letter-spacing: 1px; color: var(--ink60);
-}
-.gauge-state.good { color: var(--green); }
-.gauge-state.off { color: var(--red); }
-.gauge-stage { position: relative; height: 108px; max-width: 260px; margin: 0 auto; }
-.gauge-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.gauge-needle {
-  position: absolute; left: 50%; bottom: 7%; width: 4px; height: 78%;
-  background: var(--ink); transform-origin: bottom center;
-  transform: translateX(-50%) rotate(0deg);
-  transition: transform .3s cubic-bezier(.2, 1.2, .4, 1);
-}
-.gauge-needle.idle { animation: swingN 2.6s ease-in-out infinite; }
-.gauge-pivot {
-  position: absolute; left: 50%; bottom: 4%; width: 16px; height: 16px;
-  border-radius: 50%; background: var(--red); border: 2px solid var(--ink);
-  transform: translateX(-50%);
-}
-.gauge-flat, .gauge-sharp {
-  position: absolute; bottom: 0; z-index: 2;
-  font: 700 8px var(--mono-font); color: var(--red);
-  background: #fff; padding: 1px 3px; line-height: 1;
-}
-.gauge-flat { left: 0; }
-.gauge-sharp { right: 0; }
-.gauge-read { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 6px; }
-.gauge-cents { font-family: var(--display-font); font-size: 34px; line-height: .9; }
-.gauge-cents.good { color: var(--green); }
-.gauge-cents.off { color: var(--amber-text); }
-.gauge-note-wrap { display: flex; flex-direction: column; }
-.gauge-note { font: 700 11px var(--mono-font); }
-.gauge-target { font: 700 8px var(--mono-font); color: var(--ink60); }
-.heads-line { font: 400 9px var(--mono-font); color: var(--ink60); text-align: center; margin-top: 5px; min-height: 1.2em; }
-.tuner-status { font: 700 9px var(--mono-font); color: var(--amber-text); text-align: center; min-height: 1.2em; margin-top: 2px; }
-.tuning-stack { position: relative; flex: 1; min-height: 0; margin: 8px 14px 0; display: flex; flex-direction: column; gap: 7px; }
-.feel-row {
-  flex: 1; display: flex; align-items: center; gap: 10px;
-  border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); background: #fff;
-  padding: 8px 12px; min-height: 52px; width: 100%; text-align: left;
-}
-.feel-row.on { background: var(--red); color: #fff; box-shadow: 4px 4px 0 var(--ink); }
-.fr-dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; flex: none; }
-.feel-row.on .fr-dot { background: #fff; }
-.fr-body { flex: 1; display: flex; flex-direction: column; }
-.fr-name { font-family: var(--display-font); font-size: 22px; line-height: .9; }
-.fr-voice { font: 700 7.5px var(--mono-font); margin-top: 2px; opacity: .8; }
-.fr-target { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
-.fr-target b { font-family: var(--display-font); font-weight: 400; font-size: 22px; line-height: .9; }
-.fr-target b i { font-style: normal; font-size: 11px; }
-.fr-target em { font-style: normal; font: 700 8px var(--mono-font); opacity: .8; }
-.tuner-actions { position: relative; display: flex; gap: 8px; padding: 11px 14px 0; flex: none; }
-.tuner-actions .btn { flex: 1; font-size: 18px; }
-.tuner-actions .btn.red { flex: 1.3; font-size: 20px; box-shadow: 4px 4px 0 var(--ink); }
-.lug-panel { position: relative; margin: 11px 14px 0; flex: 1; min-height: 0; }
-.lug-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
-.lug {
-  display: flex; flex-direction: column; align-items: center; min-width: 56px;
-  border: 2px solid var(--ink); padding: 4px; background: #fff;
-  font-variant-numeric: tabular-nums; box-shadow: 2px 2px 0 var(--ink);
-}
-.lug span { color: var(--ink60); font: 700 8px var(--mono-font); }
-.lug b { font: 700 11px var(--mono-font); }
-.lug i { font-style: normal; font: 700 9px var(--mono-font); }
-.lug.good { border-color: var(--green); }
-.lug.warn { background: #fdf3d7; }
-.lug.bad { background: #fbe0dc; border-color: var(--red); }
-.lug-foot { display: flex; align-items: center; gap: 10px; }
-.lug-verdict { font: 700 9px var(--mono-font); color: var(--ink60); }
+.tuner { padding-bottom: var(--s4); }
 
-.feel-row { padding: 6px 12px; min-height: 46px; }
-.tuning-stack { gap: 5px; }
-.tuner-actions { padding-top: 9px; }
-.fr-name { font-size: 18px; }
-.gauge-read { border-top: 2px solid var(--ink); margin-top: 6px; padding-top: 6px; }
-.head-row .drop { font: 600 13px var(--label-font); padding: 7px 28px 7px 12px; min-width: 112px; }
+/* ------------------------------------------------------------ setup rows */
+.tuner-modes { flex: none; width: 172px; }
+
+.drum-chips > .tuner-editkit {
+  flex: none;
+  display: inline-flex; flex-direction: row; align-items: center; gap: 6px;
+  min-height: var(--hit);
+  padding: 0 var(--s4);
+  background: var(--white);
+  font: 700 var(--t-control)/1 var(--label-font);
+  letter-spacing: .05em;
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
+  white-space: nowrap;
+  scroll-snap-align: start;
+}
+.drum-chips > .tuner-editkit .icon { width: 12px; height: 12px; }
+
+.tuner-headrow { position: relative; }
+
+/* --------------------------------------------------------------- reading */
+.tuner-read { display: flex; flex-direction: column; }
+.tuner-mon {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s2);
+  min-height: 104px;
+}
+.tuner-mon .monitor { min-width: 0; }
+.tuner-mon .monitor.is-idle .unit { visibility: hidden; }
+.tuner-mon .monitor.is-idle b { color: var(--ink60); }
+.tuner-dir {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  padding-bottom: 8px;
+  text-align: right;
+}
+.tuner-dir .dir { white-space: nowrap; }
+.tuner-hzline {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  column-gap: var(--s2); row-gap: 4px;
+  margin-top: 10px;
+}
+.tuner-hzline:not(:has(> :not(.hidden))) { display: none; }
+#gauge-note { font: 700 22px/1.15 var(--mono-font); white-space: nowrap; }
+#gauge-note .tuner-note { font-weight: 400; color: var(--ink60); }
+.tuner-hzline #gauge-target {
+  margin-left: auto;
+  font: 600 var(--t-control)/1.2 var(--label-font);
+  letter-spacing: .04em;
+  color: var(--ink60);
+  white-space: nowrap;
+}
+.tuner-status { margin-top: var(--s2); font: 400 var(--t-body)/1.4 var(--mono-font); }
+.tuner-pair { margin-top: 6px; font: 400 var(--t-label)/1.4 var(--mono-font); color: var(--ink60); }
+
+/* a reading older than --d-stale steps back to secondary ink (never opacity on text) */
+.tuner-read.is-stale :is(#gauge-cents, .unit, #gauge-state, #gauge-note) { color: var(--ink60); transition: color 200ms linear; }
+
+.tuner-notarget { display: flex; align-items: center; min-height: 64px; }
+.tuner-notarget p { font: 400 var(--t-body)/1.4 var(--mono-font); }
+
+/* ----------------------------------------------------------------- gauge */
+.gauge-card { position: relative; height: var(--h-gauge); padding: 11px 12px; }
+.gauge-stage { height: 150px; }
+.gauge-stage svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.gauge-legend {
+  position: absolute; top: 10px; left: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 400 var(--t-caption)/1 var(--mono-font);
+  color: var(--green-ink);
+}
+.gauge-legend i { width: 14px; height: 10px; background: var(--green); }
+.gauge-end {
+  position: absolute; bottom: 10px;
+  font: 700 var(--t-label)/1 var(--label-font);
+  letter-spacing: .08em;
+}
+.gauge-end--flat { left: 12px; }
+.gauge-end--sharp { right: 12px; }
+
+.g-track { fill: none; stroke: var(--tint); stroke-width: 12; }
+.g-zone { fill: none; stroke: var(--green); stroke-width: 12; }
+.g-cap { fill: none; stroke: var(--ink); stroke-width: 3; }
+.g-tick { stroke: var(--ink); stroke-width: 1; }
+.g-tick--major { stroke-width: 2; }
+/* 13 user units = 11.5 CSS px at the 150 px stage (scale 150/170) */
+.g-label { font: 400 13px var(--mono-font); fill: var(--ink60); }
+.g-hand line { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.g-pin { fill: var(--ink); }
+.g-pivot { fill: var(--ink); }
+.g-hand.is-stale { opacity: .4; }
+.g-hand.is-idle { opacity: .25; }
+
+/* ---------------------------------------------------------- player feel */
+.tuner-feel { display: flex; flex-direction: column; gap: var(--s2); }
+.tuner-feel .sec-head { justify-content: space-between; }
+.tuner-feel .sec-head__aside { font: 600 var(--t-label)/1.2 var(--label-font); letter-spacing: .06em; }
+.tuner-feel__seg > button { gap: 4px; padding: 6px 2px; }
+.fr-name { font: 400 18px/1 var(--display-font); letter-spacing: .03em; }
+
+/* ------------------------------------------------------------------ lugs */
+.lug-panel { display: flex; flex-direction: column; gap: var(--s3); padding: 14px; }
+.lug-top { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: var(--s3); align-items: center; }
+.lug-ring { position: relative; width: 132px; height: 132px; }
+.lug-ring::before, .lug-ring::after {
+  content: ''; position: absolute; border-radius: 50%;
+}
+.lug-ring::before { inset: 14px; border: var(--border); }
+.lug-ring::after { inset: 32px; border: 1px solid var(--rule); }
+.lug-ring__head {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font: 600 var(--t-label)/1 var(--label-font);
+  letter-spacing: .08em;
+  color: var(--ink60);
+}
+.lug-dot {
+  position: absolute; z-index: 1;
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border: var(--border); border-radius: 50%;
+  background: var(--white);
+  font: 700 13px/1 var(--mono-font);
+}
+.lug-dot.is-empty { color: var(--ink60); }
+.lug-dot.is-out { background: var(--ink); color: var(--paper); }
+.lug-dot.is-next { background: var(--amber); border-style: dashed; }
+
+.lug-verdict { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); min-width: 0; }
+.lug-progress { align-self: flex-end; font-family: var(--mono-font); font-weight: 700; letter-spacing: 0; }
+.lug-hero .hero__cap { margin-bottom: 4px; }
+.lug-hero b { display: block; }
+.lug-median { margin-top: 6px; font: 400 var(--t-body)/1.3 var(--mono-font); }
+
+.lug-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.lug-cell {
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 0; min-height: 70px;
+  padding: 7px 8px;
+  border: var(--border);
+  background: var(--white);
+}
+.lug-cell__lab {
+  display: flex; justify-content: space-between; gap: 4px;
+  font: 600 var(--t-caption)/1 var(--label-font);
+  letter-spacing: .08em;
+  color: var(--ink60);
+  white-space: nowrap;
+}
+.lug-cell b { font: 700 20px/1.1 var(--mono-font); letter-spacing: -.02em; white-space: nowrap; }
+.lug-cell i { font: 700 var(--t-control)/1 var(--mono-font); font-style: normal; white-space: nowrap; }
+.lug-cell.is-empty b { font: 700 var(--t-control)/1.45 var(--label-font); letter-spacing: .05em; }
+.lug-cell.is-empty i { color: var(--ink60); }
+.lug-cell.is-next { border-style: dashed; }
+.lug-cell.is-out { background: var(--ink); color: var(--paper); }
+.lug-cell.is-out .lug-cell__lab { color: var(--paper); }
+.lug-cell__word { color: var(--amber); }
+.lug-line { font: 400 var(--t-body)/1.4 var(--mono-font); }
