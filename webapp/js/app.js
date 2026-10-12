@@ -17,7 +17,7 @@ import { notationModel } from './notation.js';
 import { CalibrateMode } from './calibrate.js';
 import { HistoryMode } from './history.js';
 
-const VERSION = '2.3.0';
+const VERSION = '3.0.0';
 
 const SCREENS = ['home', 'tuner', 'rudiments', 'timing', 'calibrate', 'history'];
 const LISTENING = { tuner: 'TUNER', rudiments: 'RUDIMENTS', timing: 'TIMING', calibrate: 'CALIBRATE' };
@@ -100,10 +100,10 @@ function onPopState(e) {
 
 function initModes() {
   modes.tuner = new TunerMode($('#mode-tuner'), mic);
-  modes.timing = new TimingMode($('#mode-timing'), mic);
-  modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic);
+  modes.timing = new TimingMode($('#mode-timing'), mic, nav);
+  modes.rudiments = new RudimentsMode($('#mode-rudiments'), mic, nav);
   modes.calibrate = new CalibrateMode($('#mode-calibrate'), mic);
-  modes.history = new HistoryMode($('#mode-history'));
+  modes.history = new HistoryMode($('#mode-history'), nav);
   modes.home = new HomeMode($('#mode-home'), nav);
 }
 
@@ -508,7 +508,7 @@ async function reconnectMic() {
     $('#chrome-gear-left').focus();
     return;
   }
-  $('#mic-lost-error').textContent = error ? error.message : 'Audio did not restart. Tap RECONNECT to try again.';
+  $('#mic-lost-error').textContent = error ? error.message : 'Audio did not restart. Reload the app to get the mic back.';
   $('#mic-lost-steps').classList.remove('hidden');
   btn.dataset.reload = '1';
   setBusy(btn, 'RELOAD APP', false);

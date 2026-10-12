@@ -194,15 +194,7 @@ canvas { max-width: 100%; height: auto; display: block; }
 
 /* -------------------------------------------------------------- keyframes
    Verbatim from the prototype style block. */
-@keyframes vu { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 @keyframes hz { to { background-position: 34px 0; } }
-@keyframes flick { 0%, 17%, 19%, 54%, 56%, 100% { opacity: 1; } 18%, 55% { opacity: .35; } }
-@keyframes glow { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
-@keyframes breathe { 0%, 100% { transform: rotate(-10deg) scale(1); } 50% { transform: rotate(-10deg) scale(1.08); } }
-@keyframes swingN { 0%, 100% { transform: translateX(-50%) rotate(-23deg); } 50% { transform: translateX(-50%) rotate(13deg); } }
-@keyframes scanx { 0% { left: 2%; } 100% { left: 98%; } }
-@keyframes ping { 0% { left: 6%; opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { left: 82%; opacity: 0; } }
-@keyframes staple { 0% { transform: translateY(-14px) rotate(5deg); opacity: 0; } 70% { opacity: 1; } 100% { transform: translateY(0) rotate(-1.6deg); opacity: 1; } }
 @keyframes hz-scroll { to { background-position: var(--hazard-tile) 0; } }
 @keyframes holdsweep { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes disclose { from { max-height: 0; padding-block: 0; } to { max-height: 480px; } }
@@ -228,106 +220,6 @@ main {
 
 /* -------------------------------------------------------- shared components */
 
-.title-stamp { /* module page title */
-  font-family: var(--display-font);
-  font-size: 38px;
-  line-height: .86;
-  text-shadow: 3px 3px 0 var(--red);
-  transform: rotate(-1.6deg);
-  transform-origin: 0 100%;
-  text-transform: uppercase;
-  align-self: flex-start;
-  margin: 10px 14px 0;
-  animation: staple .45s steps(4, end) backwards;
-}
-
-.chip-stamp { /* stamped mini section label */
-  font: 700 9px var(--mono-font);
-  background: var(--ink);
-  color: var(--paper);
-  padding: 3px 6px;
-  letter-spacing: 1px;
-  align-self: flex-start;
-  flex: none;
-  text-transform: uppercase;
-}
-.chip-stamp.warn { background: var(--amber); color: var(--ink); border: 2px solid var(--ink); }
-
-.chip-stamp.set { background: var(--green); color: #fff; border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
-
-.cta { /* full-width Anton bar, the loudest element on a page */
-  width: 100%;
-  background: var(--red);
-  color: #fff;
-  border: 2px solid var(--ink);
-  box-shadow: 5px 5px 0 var(--ink);
-  font-family: var(--display-font);
-  font-size: 24px;
-  letter-spacing: 2px;
-  text-align: center;
-  padding: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  text-transform: uppercase;
-}
-.cta:active { background: var(--ink); }
-.cta:disabled { background: var(--cream3); color: var(--ink40); box-shadow: 3px 3px 0 var(--ink); animation: none; }
-.cta .tri {
-  display: inline-block;
-  width: 0; height: 0;
-  border-left: 14px solid #fff;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-}
-.cta:disabled .tri { border-left-color: var(--ink40); }
-.btn { /* mid-size bordered button */
-  border: 2px solid var(--ink);
-  box-shadow: 3px 3px 0 var(--ink);
-  background: #fff;
-  font-family: var(--display-font);
-  font-size: 17px;
-  letter-spacing: .5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  text-transform: uppercase;
-}
-.btn:active { background: var(--amber); }
-.btn.amber { background: var(--amber); }
-.btn.red { background: var(--red); color: #fff; }
-.btn.green { background: var(--green); color: #fff; box-shadow: 4px 4px 0 var(--ink); }
-
-.pill { /* Oswald toggle chip */
-  font: 600 11px var(--label-font);
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  padding: 5px 8px;
-  border: 2px solid var(--ink);
-  box-shadow: 2px 2px 0 var(--ink);
-  background: #fff;
-}
-.pill:active { background: var(--amber); }
-.pill.on { background: var(--ink); color: var(--paper); }
-.drop { /* dropdown pill: native select disguised */
-  font: 600 11px var(--label-font);
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  border: 2px solid var(--ink);
-  box-shadow: 2px 2px 0 var(--ink);
-  background: #fff;
-  padding: 4px 22px 4px 9px;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6'%3E%3Cpath d='M0 0h8L4 6z' fill='%23141210' opacity='.6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 7px center;
-}
-.drop.amber { background-color: var(--amber); }
-.drop.red { background-color: var(--red); color: #fff; }
 
 /* holdToConfirm progress (kept from the old system — safety on show day) */
 button.holding { position: relative; overflow: hidden; }
@@ -404,7 +296,7 @@ main:has(> .mode.active .bar) { padding-bottom: 0; }
 }
 
 /* ------------------------------------------------------------- buttons
-   Always pair .btn with a modifier: a bare .btn keeps the pre-v3 look. */
+   Always pair .btn with a modifier; a bare .btn has no look of its own. */
 .btn--primary, .btn--secondary, .btn--quiet, .btn--danger {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
@@ -758,6 +650,7 @@ h1.stamp, .stamp {
   font: 400 var(--t-body)/1.4 var(--mono-font);
 }
 body:not(:has(.mode.active .bar)) .toast { bottom: calc(var(--gutter) + env(safe-area-inset-bottom)); }
+body:has(.mode.active .bar > .bar__reason:not(.hidden):not(:empty)) .toast { bottom: calc(var(--h-bar) + 36px + env(safe-area-inset-bottom)); }
 .toast__text { flex: 1; min-width: 0; }
 .toast__action {
   flex: none;

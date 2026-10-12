@@ -116,7 +116,7 @@ export class MicEngine extends EventTarget {
         await Promise.race([
           this.ctx.resume(),
           new Promise((_, rej) => {
-            setTimeout(() => rej(new Error('Audio did not restart. Tap RECONNECT to try again.')), 1500);
+            setTimeout(() => rej(new Error('Audio did not restart. Reload the app to get the mic back.')), 1500);
           }),
         ]);
       }
