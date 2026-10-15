@@ -89,6 +89,43 @@ function avgText(mean, caps = false) {
 // ------------------------------------------------------- spread chart (SVG)
 const SP = { h: 120, l: 36, r: 10, t: 14, b: 22, cap: 80 };
 
+// One series per run kind. A line only ever joins runs of the same kind, and
+// a kind keeps its mark on every filter: rudiments ink circles, timing red
+// squares. A kind this build does not know (hand-edited backup) gets hollow
+// rings with no line, since nothing says those runs belong together.
+const SERIES = {
+  rudiment: { name: 'RUDIMENTS', word: 'Rudiments', cls: 'sp-s--rud', shape: 'circle', line: true },
+  timing: { name: 'TIMING', word: 'Timing', cls: 'sp-s--tim', shape: 'square', line: true },
+  other: { name: 'OTHER', word: 'Other runs', cls: 'sp-s--other', shape: 'circle', line: false },
+};
+const seriesOf = (r) => (r.kind === 'rudiment' || r.kind === 'timing' ? r.kind : 'other');
+
+// run indexes per series, series in their fixed order (legend, description)
+function seriesGroups(runs) {
+  const groups = new Map(Object.keys(SERIES).map((k) => [k, []]));
+  runs.forEach((r, i) => groups.get(seriesOf(r)).push(i));
+  for (const [k, idx] of groups) if (!idx.length) groups.delete(k);
+  return groups;
+}
+
+function markSvg(kind, [x, y], clamped, big) {
+  const cls = `sp-dot ${SERIES[kind].cls}`;
+  // clamped: an arrowhead pinned to the top edge
+  if (clamped) return `<path class="${cls}" d="M${(x - 5).toFixed(1)} ${(y + 4).toFixed(1)}h10l-5 -8z"/>`;
+  const r = big ? 5.5 : 4;
+  if (SERIES[kind].shape === 'square') {
+    return `<rect class="${cls}" x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${2 * r}" height="${2 * r}"/>`;
+  }
+  return `<circle class="${cls}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/>`;
+}
+
+// legend key: a short stroke of the series line with its mark on it
+function keySvg(kind) {
+  const s = SERIES[kind];
+  const line = s.line ? `<line class="sp-line ${s.cls}" x1="1" x2="23" y1="7" y2="7"/>` : '';
+  return `<svg class="sp-key" width="24" height="14" viewBox="0 0 24 14" aria-hidden="true" focusable="false">${line}${markSvg(kind, [12, 7], false, false)}</svg>`;
+}
+
 function spreadGeometry(runs, w, baseSd) {
   const pw = w - SP.l - SP.r, ph = SP.h - SP.t - SP.b;
   const hi = Math.max(10, ...runs.map((r) => r.sd), ...(baseSd === null ? [] : [baseSd]));
@@ -118,23 +155,33 @@ function boxHitsLine(box, pts) {
 const overlaps = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 
 // First candidate [x, baselineY, anchor] whose text box stays inside `bounds`
-// and clear of the line, its dots and the boxes in `avoid`.
-function placeLabel(cands, width, height, pts, avoid, bounds) {
+// and clear of every line in `paths`, their dots and the boxes in `avoid`.
+// ok is false when no candidate is clear; the fallback is then the first one
+// that at least stays inside the plot and off the other labels (the text's
+// white halo keeps it legible over a line), else the first candidate.
+function placeLabel(cands, width, height, paths, avoid, bounds) {
   const boxOf = ([ax, ay, anchor]) => {
     const x0 = anchor === 'end' ? ax - width : ax;
     return [x0, ay - height, x0 + width, ay + 3];
   };
+  const inside = (box) => box[0] >= bounds[0] && box[2] <= bounds[2] && box[1] >= bounds[1] && box[3] <= bounds[3];
+  let fallback = null;
   for (const c of cands) {
     const box = boxOf(c);
-    if (box[0] < bounds[0] || box[2] > bounds[2] || box[1] < bounds[1] || box[3] > bounds[3]) continue;
-    if (boxHitsLine([box[0] - 4, box[1] - 4, box[2] + 4, box[3] + 4], pts)) continue;
-    if (avoid.some((b) => overlaps(b, box))) continue;
-    return { c, box };
+    if (!inside(box) || avoid.some((b) => overlaps(b, box))) continue;
+    const pad = [box[0] - 4, box[1] - 4, box[2] + 4, box[3] + 4];
+    if (paths.some((pts) => boxHitsLine(pad, pts))) {
+      if (!fallback) fallback = { c, box, ok: false };
+      continue;
+    }
+    return { c, box, ok: true };
   }
-  return { c: cands[0], box: boxOf(cands[0]) };
+  return fallback || { c: cands[0], box: boxOf(cands[0]), ok: false };
 }
 
-function spreadSvg(runs, g, baseSd, sel) {
+// baseSd: the timing baseline, drawn only when the chart shows timing alone.
+// endLabel: false on ALL, where the legend row carries the latest values.
+function spreadSvg(runs, g, baseSd, sel, endLabel) {
   const { w, top, step } = g;
   const right = SP.l + g.pw, bottom = SP.t + g.ph;
   const bounds = [SP.l, 1, w - 1, bottom - 2];
@@ -147,26 +194,44 @@ function spreadSvg(runs, g, baseSd, sel) {
   const yb = baseSd === null ? null : g.y(baseSd);
   if (yb !== null) parts.push(`<line class="sp-base" x1="${SP.l}" x2="${right}" y1="${yb.toFixed(1)}" y2="${yb.toFixed(1)}"/>`);
   const pts = runs.map((r, i) => [g.x(i), g.y(r.sd)]);
-  if (pts.length > 1) parts.push(`<polyline class="sp-line" points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>`);
-  pts.forEach(([x, y], i) => {
-    const last = i === pts.length - 1;
-    if (runs[i].sd > top) {
-      // clamped: an arrowhead pinned to the top edge
-      parts.push(`<path class="sp-dot" d="M${(x - 5).toFixed(1)} ${(y + 4).toFixed(1)}h10l-5 -8z"/>`);
-    } else {
-      parts.push(`<circle class="sp-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${last ? 5.5 : 4}"/>`);
+  const groups = seriesGroups(runs);
+  // what a label must stay clear of: each series' own line, or lone dots
+  const paths = [];
+  for (const [k, idx] of groups) {
+    const line = idx.map((i) => pts[i]);
+    if (!SERIES[k].line) { line.forEach((p) => paths.push([p])); continue; }
+    paths.push(line);
+    if (line.length > 1) {
+      parts.push(`<polyline class="sp-line ${SERIES[k].cls}" points="${line.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"/>`);
     }
-  });
+  }
+  // marks after every line, so another kind's line never crosses over a mark
+  for (const [k, idx] of groups) {
+    idx.forEach((i, j) => parts.push(markSvg(k, pts[i], runs[i].sd > top, j === idx.length - 1)));
+  }
   if (sel !== null && pts[sel]) {
     parts.push(`<circle class="sp-sel" cx="${pts[sel][0].toFixed(1)}" cy="${pts[sel][1].toFixed(1)}" r="8.5"/>`);
   }
-  // last value label: above-left of the last dot unless the line is there
-  const [lx, ly] = pts[pts.length - 1];
-  const label = `${spreadText(runs[runs.length - 1].sd)}${NBSP}ms`;
-  const last = placeLabel([
-    [lx - 10, ly - 10, 'end'], [lx - 10, ly + 20, 'end'], [lx - 14, ly + 5, 'end'],
-    [lx - 10, ly - 24, 'end'], [lx - 10, ly + 34, 'end'], [lx + 12, ly - 10, 'start'], [lx + 12, ly + 20, 'start'],
-  ], label.length * 7.9, 11, pts, [], bounds);
+  // endLabel (one kind on the chart): its latest value, above-left of the
+  // last mark unless the line is there. With two kinds no number goes in the
+  // plot: their end marks sit side by side at the right edge, and a value
+  // between them reads as either kind's. The legend row names each kind's
+  // latest value instead.
+  const placed = [];
+  const labels = [];
+  const only = endLabel && groups.size === 1 ? [...groups][0] : null;
+  if (only && SERIES[only[0]].line) {
+    const i = only[1][only[1].length - 1];
+    const [lx, ly] = pts[i];
+    const label = `${spreadText(runs[i].sd)}${NBSP}ms`;
+    const p = placeLabel([
+      [lx - 10, ly - 10, 'end'], [lx - 10, ly + 20, 'end'], [lx - 14, ly + 5, 'end'],
+      [lx - 10, ly - 24, 'end'], [lx - 10, ly + 34, 'end'],
+      [lx + 12, ly - 10, 'start'], [lx + 12, ly + 20, 'start'],
+    ], label.length * 7.9, 11, paths, placed, bounds);
+    placed.push(p.box);
+    labels.push(`<text class="sp-last" x="${p.c[0].toFixed(1)}" y="${p.c[1].toFixed(1)}" text-anchor="${p.c[2]}">${label}</text>`);
+  }
   if (yb !== null) {
     const text = `baseline ${spreadText(baseSd)}`;
     const mid = SP.l + g.pw / 2;
@@ -174,10 +239,10 @@ function spreadSvg(runs, g, baseSd, sel) {
       [SP.l + 4, yb - 5, 'start'], [SP.l + 4, yb + 14, 'start'], [mid, yb - 5, 'middle'], [mid, yb + 14, 'middle'],
       [right - 4, yb - 5, 'end'], [right - 4, yb + 14, 'end'],
     ].map(([x, y, a]) => (a === 'middle' ? [x - (text.length * 6.6) / 2, y, 'start'] : [x, y, a])),
-    text.length * 6.6, 9, pts, [last.box], bounds);
+    text.length * 6.6, 9, paths, placed, bounds);
     parts.push(`<text class="sp-base-label" x="${base.c[0].toFixed(1)}" y="${base.c[1].toFixed(1)}" text-anchor="${base.c[2]}">${text}</text>`);
   }
-  parts.push(`<text class="sp-last" x="${last.c[0].toFixed(1)}" y="${last.c[1].toFixed(1)}" text-anchor="${last.c[2]}">${label}</text>`);
+  parts.push(...labels);
   const first = validDate(runs[0]), lastD = validDate(runs[runs.length - 1]);
   const a = first ? monthDay(first) : '', b = lastD ? monthDay(lastD) : '';
   if (runs.length > 1 && a && a !== b) parts.push(`<text class="sp-tick" x="${SP.l}" y="${SP.h - 5}">${a}</text>`);
@@ -209,6 +274,19 @@ function heatCells(runs) {
 
 const heatLabel = (c) => `${monthDay(c.day)} · ${plural(c.n, 'run', 'runs')}`;
 
+// a run's identity across an import (stored runs carry no id)
+const runKey = (r) => JSON.stringify([r.date, r.kind, r.label, r.sd, r.mean, r.n]);
+
+// a selector for the same control after a re-render
+function focusSelector(el) {
+  if (el.id) return `#${el.id}`;
+  if (el.dataset.f) return `.hist-filter [data-f="${el.dataset.f}"]`;
+  if (el.dataset.to) return `[data-to="${el.dataset.to}"]`;
+  if (el.classList.contains('log-row')) return `.log-row[data-i="${el.dataset.i}"]`;
+  for (const c of ['spread-plot', 'heatmap']) if (el.classList.contains(c)) return `.${c}`;
+  return null;
+}
+
 function monthLabels(cells) {
   const marks = [];
   for (let col = 0; col < 10; col++) {
@@ -237,6 +315,42 @@ export class HistoryMode {
   deactivate() {
     this.closeSheet(false);
     if (this.ro) { this.ro.disconnect(); this.ro = null; }
+  }
+
+  // The shell calls this after RESET ALL, an import or closing Settings: the
+  // store may have changed under the screen. Redraw from it with the same
+  // filter (and SEE ALL state). An open run sheet stays open, rebuilt from the
+  // stored run, only while that run still exists; otherwise it closes.
+  refresh() {
+    const open = this.sheet;
+    const active = document.activeElement;
+    const had = !!active && active !== document.body && this.root.contains(active);
+    const inSheet = had && !!open && open.sheet.contains(active);
+    const sel = had && !inSheet ? focusSelector(active) : null;
+    const run = open ? this.findRun(open.run) : null;
+    this.render();
+    if (run) {
+      const i = Array.isArray(this.shown) ? this.shown.indexOf(run) : -1;
+      this.openSheet(run, i < 0 ? null : this.root.querySelector(`.log-row[data-i="${i}"]`), { focus: inSheet });
+    }
+    if (had && (!document.activeElement || document.activeElement === document.body)) this.refocus(sel);
+  }
+
+  // the stored run a sheet was opened on: the same object, or after an import
+  // replaced every object, the run with the same date, kind, label and numbers
+  findRun(r) {
+    if (!r) return null;
+    const all = store.get('runs') || [];
+    if (all.includes(r)) return r;
+    const key = runKey(r);
+    return all.find((x) => x && runKey(x) === key) || null;
+  }
+
+  // focus a control on this screen after the one that had it went away
+  refocus(sel) {
+    const ok = (el) => el && el.isConnected && !el.disabled && !el.closest('[inert]') && el.getClientRects().length;
+    const el = [sel && this.root.querySelector(sel), this.root.querySelector('.hist-filter button.on')].find(ok);
+    if (el) el.focus({ preventScroll: true });
   }
 
   go(name) {
@@ -305,7 +419,9 @@ export class HistoryMode {
           <h2 class="sec-head__stamp" id="hist-spread-h">SPREAD PER RUN</h2>
           <span class="sec-head__aside">lower = tighter</span>
         </div>
-        <div class="spread-plot" tabindex="0" role="slider" aria-labelledby="hist-spread-h"></div>
+        <div class="sp-legend" aria-hidden="true" hidden></div>
+        <div class="spread-plot" tabindex="0" role="slider" aria-labelledby="hist-spread-h" aria-describedby="hist-spread-desc"></div>
+        <p class="sr-only" id="hist-spread-desc"></p>
         <p class="hist-caption spread-caption"></p>
       </section>
       <section class="card hist-card" aria-labelledby="hist-heat-h">
@@ -322,7 +438,7 @@ export class HistoryMode {
       <div class="log-list">${shown.map((r, i) => this.rowHtml(r, i)).join('')}</div>
       ${runs.length > PAGE ? `<button id="hist-more" type="button" class="btn btn--quiet hist-more">${this.showAll ? 'SHOW LESS' : `SEE ALL ${runs.length}`}</button>` : ''}`;
 
-    this.setupSpread(body.querySelector('.spread-plot'), runs.slice(-SPREAD_RUNS));
+    this.setupSpread(body.querySelector('.spread-plot'), runs.slice(-SPREAD_RUNS), runs.length);
     this.setupHeat(body.querySelector('.heat-grid'), runs);
     body.querySelectorAll('.log-row').forEach((row) => {
       row.addEventListener('click', () => this.openSheet(this.shown[+row.dataset.i], row));
@@ -360,26 +476,63 @@ export class HistoryMode {
       </button>`;
   }
 
-  setupSpread(host, runs) {
+  setupSpread(host, runs, total) {
+    // the baseline is a timing number: it is drawn only when the chart shows
+    // timing runs alone, never under rudiments or a mix of both
     const baseline = store.get('baseline');
-    const baseSd = this.filter !== 'rudiment' && baseline ? num(baseline.sd) : null;
+    const baseSd = this.filter === 'timing' && baseline ? num(baseline.sd) : null;
+    const mixed = this.filter === 'all';
+    const groups = seriesGroups(runs);
     const caption = this.root.querySelector('.spread-caption');
+
+    // ALL: one legend row per kind (its mark and line, its name, its latest
+    // value, all ink text), since two end marks share the plot's right edge.
+    // A single-kind filter already says which kind is plotted.
+    const ms = (sd) => `${spreadText(sd)}${NBSP}ms`;
+    const legend = this.root.querySelector('.sp-legend');
+    legend.hidden = !mixed;
+    legend.innerHTML = mixed
+      ? [...groups].map(([k, idx]) => `<span class="sp-legend__key">${keySvg(k)}<span class="sp-legend__name">${SERIES[k].name}</span><span class="sp-legend__val">last <b>${ms(runs[idx[idx.length - 1]].sd)}</b></span></span>`).join('')
+      : '';
+
+    // text alternative for the picture: what is plotted, per series
+    const seriesText = (k, idx, named) => {
+      const sds = idx.map((i) => runs[i].sd);
+      const lo = Math.min(...sds), hi = Math.max(...sds);
+      const range = idx.length > 1 ? `, ${ms(lo)} to ${ms(hi)}` : '';
+      return `${named ? `${SERIES[k].word}: ` : ''}${plural(idx.length, 'run', 'runs')}${range}, latest ${ms(runs[idx[idx.length - 1]].sd)}.`;
+    };
+    const order = runs.length > 1 ? ', oldest to newest' : '';
+    const scope = total > runs.length ? `Latest ${runs.length} of ${total} runs` : plural(runs.length, 'run', 'runs');
+    const desc = mixed
+      ? [`${scope}${order}, lower is tighter.${groups.size > 1 ? ' Each kind is plotted on its own.' : ''}`,
+        ...[...groups].map(([k, idx]) => seriesText(k, idx, true))]
+      : [`${SERIES[this.filter] ? SERIES[this.filter].word : 'Runs'}${order}, lower is tighter.`,
+        ...[...groups].map(([k, idx]) => seriesText(k, idx, false)),
+        ...(baseSd === null ? [] : [`Timing baseline ${ms(baseSd)}.`])];
+    this.root.querySelector('#hist-spread-desc').textContent = desc.join(' ');
+
     let sel = runs.length - 1;
     let width = 0;
     let geo = null;
     const draw = () => {
       width = host.clientWidth || 326;
       geo = spreadGeometry(runs, width, baseSd);
-      host.innerHTML = spreadSvg(runs, geo, baseSd, sel);
+      host.innerHTML = spreadSvg(runs, geo, baseSd, sel, !mixed);
     };
     const pick = (i) => {
       sel = Math.max(0, Math.min(runs.length - 1, i));
       const r = runs[sel], d = validDate(r);
-      const text = `${d ? `${monthDay(d)} · ` : ''}${typeof r.label === 'string' && r.label ? `${r.label} · ` : ''}${spreadText(r.sd)}${NBSP}ms`;
+      const text = [
+        d ? monthDay(d) : null,
+        mixed ? SERIES[seriesOf(r)].name : null,
+        typeof r.label === 'string' && r.label ? r.label : null,
+        ms(r.sd),
+      ].filter(Boolean).join(' · ');
       caption.textContent = text;
       host.setAttribute('aria-valuenow', String(sel + 1));
       host.setAttribute('aria-valuetext', text);
-      if (geo) host.innerHTML = spreadSvg(runs, geo, baseSd, sel);
+      if (geo) host.innerHTML = spreadSvg(runs, geo, baseSd, sel, !mixed);
     };
     host.setAttribute('aria-valuemin', '1');
     host.setAttribute('aria-valuemax', String(runs.length));
@@ -448,7 +601,9 @@ export class HistoryMode {
   }
 
   // ------------------------------------------------------------ run sheet
-  openSheet(r, opener) {
+  // focus: false when re-opened by refresh() while focus is elsewhere (the
+  // Settings sheet), which must keep it
+  openSheet(r, opener, { focus = true } = {}) {
     if (!r) return;
     this.closeSheet(false);
     const d = validDate(r);
@@ -500,14 +655,14 @@ export class HistoryMode {
       .filter((el) => el && !el.inert);
     behind.forEach((el) => { el.inert = true; });
     const close = sheet.querySelector('.sheet__close');
-    this.sheet = { scrim, sheet, behind, opener };
+    this.sheet = { scrim, sheet, behind, opener, run: r };
     close.addEventListener('click', () => this.closeSheet(true));
     scrim.addEventListener('click', () => this.closeSheet(true));
     sheet.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') { ev.preventDefault(); this.closeSheet(true); }
       if (ev.key === 'Tab') { ev.preventDefault(); close.focus(); }
     });
-    close.focus();
+    if (focus) close.focus();
   }
 
   closeSheet(restoreFocus) {
@@ -516,8 +671,14 @@ export class HistoryMode {
     this.sheet = null;
     s.scrim.remove();
     s.sheet.remove();
+    // clear exactly what openSheet set, even under an inert #app (the mic-lost
+    // overlay): nothing else would ever clear the header's flag. Elements that
+    // were already inert when the sheet opened are not in `behind`.
     s.behind.forEach((el) => { el.inert = false; });
-    if (restoreFocus && s.opener && s.opener.isConnected) s.opener.focus();
+    if (!restoreFocus) return;
+    // the row it opened from can be gone (refresh re-rendered the list)
+    if (s.opener && s.opener.isConnected) s.opener.focus();
+    else this.refocus(null);
   }
 
   exportCsv() {

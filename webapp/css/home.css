@@ -82,9 +82,20 @@
 /* ----------------------------------------------------------- player feel */
 .home-feel { display: flex; flex-direction: column; gap: var(--s2); }
 .home-feel .sec-head__aside { margin-left: 0; text-align: left; }
+/* four player cards in one row; NONE is a 44 px row across the bottom (the
+   BPM sub-lines leave no room for a fifth column at 390 px) */
+.home-feel__seg { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .home-feel__seg > button { gap: 4px; padding: 6px 2px; }
+.home-feel__seg > .feel-none {
+  grid-column: 1 / -1;
+  flex-direction: row; gap: 10px;
+  min-height: var(--hit);
+  padding: 6px var(--s3);
+  border-left: 0; border-top: var(--border);
+}
 .feel-name { font: 400 18px/1 var(--display-font); letter-spacing: .03em; }
 .home-feel__seg .seg__sub { letter-spacing: -.03em; }
+.home-feel__seg > .feel-none .seg__sub { letter-spacing: 0; }
 
 /* ---------------------------------------------------------------- footer */
 .home-foot { display: flex; align-items: center; gap: 10px; min-height: 24px; }

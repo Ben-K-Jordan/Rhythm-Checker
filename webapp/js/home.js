@@ -61,6 +61,22 @@ const ICON = {
 const BURST_SIZE = 76;
 const BURST_LIFT = 18; // px the burst reaches up over the hazard tape
 
+// The feel strip's last choice: no player feel. Same id and name as the
+// Tuner's NONE so both strips read the same.
+const NONE = 'none';
+
+// Everything a feel UNDO writes back (feel.js restoreFeel), as one string:
+// while it still matches, the UNDO is still an undo of the last pick only.
+const UNDO_KEYS = ['feel', 'kit', 'preferredBpm', 'grooveRud'];
+const undoStamp = () => JSON.stringify(UNDO_KEYS.map((k) => store.get(k) ?? null));
+
+// what to put focus back on after a re-render replaced the focused control
+function focusSelector(el) {
+  if (el.dataset.nav) return `[data-nav="${el.dataset.nav}"]`;
+  if (el.dataset.feel) return `.home-feel__seg [data-feel="${el.dataset.feel}"]`;
+  return null;
+}
+
 export class HomeMode {
   constructor(root, nav) {
     this.root = root;
@@ -85,6 +101,24 @@ export class HomeMode {
     // UNDO belongs to this screen: other screens would keep showing the
     // targets it is about to put back
     this.closeFeelToast();
+  }
+
+  // The shell calls this after RESET ALL, an import or closing Settings: the
+  // store may have changed under the screen, so read it again. A pending feel
+  // UNDO stays while what it would put back over is untouched (Settings just
+  // opened and closed); after a reset, import or kit edit it would overwrite
+  // that change with a kit from before it, so then it goes.
+  refresh() {
+    if (this.feelToast && this.feelToast.stamp !== undoStamp()) this.closeFeelToast();
+    const active = document.activeElement;
+    const had = !!active && active !== document.body && this.root.contains(active);
+    const sel = had ? focusSelector(active) : null;
+    this.render();
+    if (had && (!document.activeElement || document.activeElement === document.body)) {
+      const el = (sel && this.root.querySelector(sel)) || this.root.querySelector('.hero-tile');
+      if (el) el.focus({ preventScroll: true });
+    }
+    requestAnimationFrame(() => this.placeBurst());
   }
 
   render() {
@@ -141,19 +175,34 @@ export class HomeMode {
         </div>
       </div>`;
 
+    const strip = this.root.querySelector('.home-feel__seg');
+    const feel = store.get('feel');
     const feelSeg = seg(
-      this.root.querySelector('.home-feel__seg'),
-      Object.entries(FEELS).map(([id, f]) => ({ value: id, label: f.label, sub: f.bpm, data: { feel: id } })),
-      store.get('feel'),
+      strip,
+      [
+        ...Object.entries(FEELS).map(([id, f]) => ({ value: id, label: f.label, sub: f.bpm, data: { feel: id } })),
+        // NONE drops the feel only: kit targets, tempo and runs stay as they are
+        { value: NONE, label: 'NONE', sub: 'kit targets stay', data: { feel: NONE }, aria: 'NONE, no player feel. Kit targets stay.' },
+      ],
+      FEELS[feel] ? feel : NONE,
       (id) => this.pickFeel(id),
     );
     for (const b of feelSeg.buttons) {
-      b.classList.add('feel-card');
+      // the four player cards stay .feel-card (the harness counts four)
+      b.classList.add(b.dataset.feel === NONE ? 'feel-none' : 'feel-card');
       const name = document.createElement('span');
       name.className = 'feel-name';
       name.append(b.firstChild);
       b.prepend(name);
     }
+    // seg() ignores a tap on the option it already shows. Here that tap means
+    // "load it again": it puts the feel's targets back after hand-tuning.
+    // Capture runs before seg's own handler, so .on still names the selection.
+    strip.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || !strip.contains(b) || !b.classList.contains('on')) return;
+      if (b.dataset.feel !== NONE) this.pickFeel(b.dataset.feel);
+    }, true);
     this.placeBurst();
   }
 
@@ -193,25 +242,46 @@ export class HomeMode {
     ].join('');
   }
 
+  // A fresh pick and a tap on the selected card both land here: either way
+  // the feel's targets and tempo are written again, with UNDO.
   pickFeel(id) {
+    if (id === NONE) {
+      this.clearFeel();
+      return;
+    }
     const f = FEELS[id];
     const snapshot = applyFeel(id);
     if (!f || !snapshot) return;
     const tiles = this.root.querySelector('.home-tiles');
     if (tiles) tiles.innerHTML = this.tilesHTML(store.get('runs') || []);
     const n = snapshot.hits;
-    const text = `${f.label} loaded · ${f.genre} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`;
+    this.feelUndoToast(
+      `${f.label} loaded · ${f.genre} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`,
+      () => restoreFeel(snapshot),
+    );
+  }
+
+  // NONE: forget the feel, keep everything it wrote (kit targets, tempo, runs)
+  clearFeel() {
+    const prev = store.get('feel');
+    if (!FEELS[prev]) return; // already none
+    store.set('feel', null);
+    this.feelUndoToast('Feel cleared. Kit targets kept.', () => store.set('feel', prev));
+  }
+
+  feelUndoToast(text, undo) {
     this.feelToast = {
       text,
+      stamp: undoStamp(),
       handle: toast(text, {
         action: 'UNDO',
         onAction: () => {
           this.feelToast = null;
-          restoreFeel(snapshot);
+          undo();
           this.render();
           // the UNDO button just vanished with the toast; keep focus on the strip
           if (!document.activeElement || document.activeElement === document.body) {
-            const card = this.root.querySelector('.feel-card.on') || this.root.querySelector('.feel-card');
+            const card = this.root.querySelector('.home-feel__seg > button.on') || this.root.querySelector('.home-feel__seg > button');
             if (card) card.focus();
           }
         },
