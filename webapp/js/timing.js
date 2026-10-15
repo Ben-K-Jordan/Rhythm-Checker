@@ -975,13 +975,16 @@ export class TimingMode {
       ctx.closePath();
       ctx.fill();
     };
-    const earlyW = ctx.measureText('EARLY').width;
-    ctx.fillText('EARLY', R - 4 * u, TOP + 8 * u);
-    tri(R - 4 * u - earlyW - 9 * u, TOP + 8 * u + 6.5 * u, true);
-    ctx.textBaseline = 'bottom';
-    const lateW = ctx.measureText('LATE').width;
-    ctx.fillText('LATE', R - 4 * u, BOT - 8 * u);
-    tri(R - 4 * u - lateW - 9 * u, BOT - 8 * u - 6.5 * u, false);
+    // an empty, idle plot shows the hint instead, which says the same thing
+    if (live || this.trace.length) {
+      const earlyW = ctx.measureText('EARLY').width;
+      ctx.fillText('EARLY', R - 4 * u, TOP + 8 * u);
+      tri(R - 4 * u - earlyW - 9 * u, TOP + 8 * u + 6.5 * u, true);
+      ctx.textBaseline = 'bottom';
+      const lateW = ctx.measureText('LATE').width;
+      ctx.fillText('LATE', R - 4 * u, BOT - 8 * u);
+      tri(R - 4 * u - lateW - 9 * u, BOT - 8 * u - 6.5 * u, false);
+    }
 
     // elapsed cursor while live: real audio-clock time, not decoration
     if (this.state === 'running' && this.elapsed !== null) {

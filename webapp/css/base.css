@@ -248,7 +248,8 @@ main:has(> .mode.active .bar) {
 /* while a toast shows, ui.js toast() sets body.has-toast and --toast-space
    (its height + 16): the screen grows by that much, so whatever sits under
    the toast can be scrolled clear of it. On .screen, not main, so the
-   sticky .bar stays at the bottom. */
+   sticky .bar stays at the bottom. toast() keeps it after the toast closes
+   until dropping it can no longer move the page. */
 body.has-toast main > .mode.active > .screen { padding-bottom: var(--toast-space); }
 .screen {
   display: flex; flex-direction: column; gap: var(--s3);
@@ -665,7 +666,7 @@ h1.stamp, .stamp {
 }
 body:not(:has(.mode.active .bar)) .toast { bottom: calc(var(--gutter) + env(safe-area-inset-bottom)); }
 body:has(.mode.active .bar > .bar__reason:not(.hidden):not(:empty)) .toast { bottom: calc(var(--h-bar) + 36px + env(safe-area-inset-bottom)); }
-.toast__text { flex: 1; min-width: 0; }
+.toast__text { flex: 1; min-width: 0; text-wrap: pretty; }
 .toast__action {
   flex: none;
   min-width: var(--hit); min-height: var(--hit);

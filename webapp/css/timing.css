@@ -162,9 +162,10 @@
 #mode-timing .statbox b.tm-drift .unit { font-size: var(--t-caption); letter-spacing: 0; }
 #mode-timing .statbox b.tm-drift.is-long { font-size: 22px; }
 #mode-timing .statbox em { margin-top: 2px; white-space: nowrap; }
-/* live tiles keep the sub-line row ("k of n", "later") from the first frame,
-   so they never grow mid-run; same height as the result tiles */
-.tm-tiles .statbox em { min-height: 1.3em; }
+/* live tiles carry no sub-line, so they stay the 76 px of Rudiments' live
+   tiles and clear STOP; the signed ms/min carries the drift's direction and
+   the result tiles add "later" / "earlier" */
+.tm-tiles .statbox em { display: none; }
 /* 320 px: a 3-glyph drift ("−20 ms/min") and "105 of 115" fit their tiles */
 @media (max-width: 359px) {
   #mode-timing .stat-strip .statbox { padding-inline: 6px; }

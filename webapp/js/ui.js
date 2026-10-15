@@ -233,9 +233,35 @@ function toastEl() {
 }
 
 // One toast at a time; a new one replaces the old. Returns {close}.
-export function toast(text, { action = null, onAction = null, ms = 6000 } = {}) {
+// A toast floats over the end of the screen. While one is up, body.has-toast
+// pads the screen (and the settings sheet) by --toast-space, so whatever it
+// covers can be scrolled clear; `keepClear` is the block the user just acted
+// on, scrolled up out from under it. The pad is only dropped when that cannot
+// move the page: if the screen is scrolled into it, it stays until the user
+// scrolls back out, so nothing ever jumps on its own when a toast times out.
+const SCROLLERS = 'main, #settings-body';
+let releaseToastSpace = null;
+
+function holdToastSpace() {
+  if (releaseToastSpace) releaseToastSpace();
+  const body = document.body;
+  const space = parseFloat(getComputedStyle(body).getPropertyValue('--toast-space')) || 0;
+  const scrollers = [...document.querySelectorAll(SCROLLERS)].filter((sc) => sc.getClientRects().length);
+  const clamps = () => scrollers.some((sc) => sc.scrollTop > sc.scrollHeight - sc.clientHeight - space);
+  if (!clamps()) { body.classList.remove('has-toast'); return; }
+  const check = () => { if (!clamps()) releaseToastSpace(); };
+  releaseToastSpace = () => {
+    for (const sc of scrollers) sc.removeEventListener('scroll', check);
+    releaseToastSpace = null;
+    if (!document.querySelector('#toast:not(.hidden)')) body.classList.remove('has-toast');
+  };
+  for (const sc of scrollers) sc.addEventListener('scroll', check, { passive: true });
+}
+
+export function toast(text, { action = null, onAction = null, ms = 6000, keepClear = null } = {}) {
   const el = toastEl();
   clearTimeout(toastTimer);
+  if (releaseToastSpace) releaseToastSpace();
   el.replaceChildren();
   const msg = document.createElement('span');
   msg.className = 'toast__text';
@@ -245,6 +271,7 @@ export function toast(text, { action = null, onAction = null, ms = 6000 } = {}) 
     clearTimeout(toastTimer);
     el.classList.add('hidden');
     el.replaceChildren();
+    holdToastSpace();
   };
   if (action) {
     const btn = document.createElement('button');
@@ -258,6 +285,19 @@ export function toast(text, { action = null, onAction = null, ms = 6000 } = {}) 
     el.appendChild(btn);
   }
   el.classList.remove('hidden');
+  document.body.style.setProperty('--toast-space', `${el.offsetHeight + 16}px`);
+  document.body.classList.add('has-toast');
+  if (keepClear) {
+    requestAnimationFrame(() => {
+      if (!keepClear.isConnected || el.classList.contains('hidden')) return;
+      const sc = keepClear.closest(SCROLLERS);
+      const r = keepClear.getBoundingClientRect();
+      const top = el.getBoundingClientRect().top - 8;
+      // just far enough that it ends above the toast, never so far its top leaves the scroller
+      const by = Math.min(r.bottom - top, sc ? r.top - sc.getBoundingClientRect().top : 0);
+      if (sc && by > 0) sc.scrollTop += by;
+    });
+  }
   if (ms > 0) toastTimer = setTimeout(close, ms);
   return { close };
 }

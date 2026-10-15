@@ -545,9 +545,15 @@ export class TunerMode {
   }
 
   // one head of this drum read, the other not yet
+  // until both heads are read, ask for the other one; then sum up the pair in
+  // one line here, above the gauge (the full comparison sits under it)
   pairPrompt() {
     const m = this.heads[this.drumId || 'free'] || {};
-    if (m.batter && m.reso) return '';
+    if (m.batter && m.reso) {
+      const st = 12 * Math.log2(m.reso / m.batter);
+      if (Math.abs(st) < 0.3) return 'Batter and reso at the same pitch.';
+      return `Reso ${nbsp(Math.abs(st).toFixed(1), 'semitones')} ${st > 0 ? 'above' : 'below'} batter.`;
+    }
     return m.batter ? PAIR_RESO : m.reso ? PAIR_BATTER : '';
   }
 
@@ -570,7 +576,8 @@ export class TunerMode {
 
   // A narrow phone can't hold a 120 px number beside SHARP or IN TUNE: step
   // down the monitor sizes until the number, its unit and the direction word
-  // sit side by side with the row's gap between them.
+  // sit side by side with the row's gap between them. Fit against the widest
+  // word, not the current one, so -27 FLAT and +14 SHARP come out the same size.
   fitMonitor(el, value) {
     const steps = MONITOR_STEPS.slice(MONITOR_STEPS.indexOf(monitorSize(value)));
     const row = el.closest('.tuner-mon');
@@ -578,8 +585,22 @@ export class TunerMode {
     el.style.fontSize = `${steps[0]}px`;
     if (!dir || !row.clientWidth) return; // not on screen: activate() renders again
     const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
-    const fits = () => el.parentElement.scrollWidth + gap + dir.getBoundingClientRect().width <= row.clientWidth;
+    const dirW = Math.max(dir.getBoundingClientRect().width, this.widestDirWord());
+    const fits = () => el.parentElement.scrollWidth + gap + dirW <= row.clientWidth;
     for (let i = 1; i < steps.length && !fits(); i++) el.style.fontSize = `${steps[i]}px`;
+  }
+
+  // width of the widest direction word in the .dir font, measured once
+  widestDirWord() {
+    if (this._dirWordW) return this._dirWordW;
+    const word = this.root.querySelector('#gauge-state');
+    if (!word || !document.fonts.check('30px Anton')) return 0;
+    const cs = getComputedStyle(word);
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const track = parseFloat(cs.letterSpacing) || 0;
+    this._dirWordW = Math.max(...['SHARP', 'FLAT', 'IN TUNE'].map((w) => ctx.measureText(w).width + track * w.length));
+    return this._dirWordW;
   }
 
   updateReadout() {
@@ -719,12 +740,15 @@ export class TunerMode {
     let text = '';
     if (m.batter && m.reso) {
       const st = 12 * Math.log2(m.reso / m.batter);
+      // the semitone gap is in the status slot above the gauge; this line
+      // gives both readings and what the gap does, so any part of it that
+      // shows above the bar still reads as a whole fact
       const how = Math.abs(st) < 0.3
-        ? 'same pitch: longest sustain'
+        ? 'Same pitch: longest sustain.'
         : st > 0
-          ? 'reso above: the pitch bends down after the hit'
-          : 'reso below: shorter, fatter';
-      text = `Batter ${nbsp(m.batter.toFixed(1), 'Hz')} · reso ${nbsp(m.reso.toFixed(1), 'Hz')} · ${Math.abs(st).toFixed(1)} semitones apart, ${how}`;
+          ? 'Reso above: the pitch bends down after the hit.'
+          : 'Reso below: shorter, fatter.';
+      text = `Batter ${nbsp(m.batter.toFixed(1), 'Hz')} · reso ${nbsp(m.reso.toFixed(1), 'Hz')}. ${how}`;
     }
     el.textContent = text;
     el.classList.toggle('hidden', !text);
@@ -888,29 +912,13 @@ export class TunerMode {
   }
 
   // toast() keeps one toast on screen; remember which one is ours. `clear` is
-  // the block the user just acted on: it is scrolled up out from under the toast.
+  // the block the user just acted on: toast() scrolls it out from under itself.
   showToast(text, opts, clear = null) {
-    const handle = toast(text, opts);
+    const handle = toast(text, { ...opts, keepClear: clear });
     const box = document.getElementById('toast');
     // toast() builds a fresh text node per call: while that node is still in
     // the document, the toast on screen is this one
     this._toast = { handle, el: box && box.querySelector('.toast__text') };
-    if (!box) return;
-    // tuner.css reserves this much room under the last block while a toast is
-    // up, so every block can be scrolled clear of it
-    this.root.style.setProperty('--toast-h', `${Math.ceil(box.getBoundingClientRect().height)}px`);
-    this.keepClearOfToast(clear, box);
-  }
-
-  // Scroll <main> just far enough that `el` ends 8 px above the toast, never
-  // so far that its top leaves the screen.
-  keepClearOfToast(el, box) {
-    const main = this.root.closest('main');
-    if (!el || !main || !el.getClientRects().length) return;
-    const r = el.getBoundingClientRect();
-    const over = r.bottom - (box.getBoundingClientRect().top - 8);
-    const by = Math.min(over, r.top - main.getBoundingClientRect().top);
-    if (by > 0) main.scrollTop += by;
   }
 
   // close our toast, never one another screen has raised since

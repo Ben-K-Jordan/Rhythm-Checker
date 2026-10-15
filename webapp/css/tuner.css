@@ -1,12 +1,6 @@
 /* Tuner screen: pitch (reading + gauge + player feel) and lugs. */
 
 .tuner { padding-bottom: var(--s4); }
-/* A toast floats above the bar, over the end of the screen. While one is up,
-   reserve its height (--toast-h, set by tuner.js) plus the 8 px it sits above
-   the bar, so the feel rows and the gauge can scroll clear of it. */
-body:has(#toast:not(.hidden)) #mode-tuner.active > .tuner {
-  padding-bottom: calc(var(--toast-h, 56px) + 8px + var(--s4));
-}
 
 /* ------------------------------------------------------------ setup rows */
 .tuner-modes { flex: none; width: 172px; }

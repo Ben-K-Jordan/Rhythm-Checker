@@ -83,13 +83,15 @@ export function rudimentNotationSVG(rud, opts = {}) {
   const { grid, beats } = rud;
 
   // opts.width: room available; short phrases stretch to fill it, long ones
-  // keep their minimum beat width and scroll
-  const padL = opts.width ? 16 : 40;
+  // keep their minimum beat width and scroll. opts.padL / opts.beatW: a caller
+  // that lines the noteheads up with something else (the sticking pucks)
+  // passes the exact geometry instead.
+  const padL = opts.padL ?? (opts.width ? 16 : 40);
   const padR = 16;
   const minBeatW = Math.max(70, grid * 12);
-  const beatW = opts.width
+  const beatW = opts.beatW ?? (opts.width
     ? Math.max(minBeatW, Math.min(170, (opts.width - padL - padR) / beats))
-    : minBeatW;
+    : minBeatW);
   const width = padL + beats * beatW + padR;
   const beatX = (b) => padL + b * beatW;
   const noteX = (b, s) => beatX(b) + (s / grid) * beatW + 6;
