@@ -97,17 +97,67 @@
 .tuner-feel .sec-head { justify-content: space-between; }
 .tuner-feel .sec-head__aside { font: 600 var(--t-label)/1.2 var(--label-font); letter-spacing: .06em; }
 .tuner-feel__seg > button { gap: 4px; padding: 6px 2px; }
-.fr-name { font: 400 18px/1 var(--display-font); letter-spacing: .03em; }
+/* four feels share the width; NONE closes the row at tap-target width */
+.tuner-feel__seg { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)) var(--hit); }
+.fr-name { font: 400 18px/1 var(--display-font); letter-spacing: .02em; white-space: nowrap; }
+.tuner-feel__seg > .feel-none { padding: 6px 0; font: 700 var(--t-label)/1 var(--label-font); letter-spacing: .06em; }
+/* JORDISON needs a 69 px cell at 18 px: below 390 px the names step down */
+@media (max-width: 389px) {
+  .fr-name { font-size: 16px; }
+}
+/* narrowest phones: NONE takes its own row under the four feels */
+@media (max-width: 359px) {
+  .tuner-feel__seg { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tuner-feel__seg > .feel-none { grid-column: 1 / -1; min-height: var(--hit); border-left: 0; border-top: var(--border); }
+}
 
 /* ------------------------------------------------------------------ lugs */
 .lug-panel { display: flex; flex-direction: column; gap: var(--s3); padding: 14px; }
-.lug-top { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: var(--s3); align-items: center; }
+
+/* lug count stepper: − N + , remembered per drum */
+.lug-count { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.lug-count__label {
+  min-width: 0;
+  font: 600 var(--t-label)/1.15 var(--label-font);
+  letter-spacing: .08em;
+  color: var(--ink60);
+}
+.lug-count__ctl {
+  flex: none;
+  display: grid; grid-template-columns: var(--hit) 48px var(--hit);
+  border: var(--border);
+  background: var(--white);
+  box-shadow: var(--sh-ctl);
+}
+.lug-count__btn {
+  display: grid; place-items: center;
+  min-width: var(--hit); min-height: var(--hit);
+  background: var(--white); color: var(--ink);
+}
+.lug-count__btn .icon { width: 18px; height: 18px; }
+.lug-count__btn:active { background: var(--tint); }
+.lug-count__btn[aria-disabled="true"] { background: var(--cream3); color: var(--ink60); cursor: default; }
+.lug-count__n {
+  display: grid; place-items: center;
+  border-inline: var(--border);
+  font: 700 20px/1 var(--mono-font);
+}
+
+.lug-top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s3); align-items: center; }
+/* ring geometry mirrors lugGeom() in tuner.js: 132 box, slots 26 (<= 10 lugs),
+   22 (11-12), and a 148 box with 20 px slots (13-16) */
 .lug-ring { position: relative; width: 132px; height: 132px; }
 .lug-ring::before, .lug-ring::after {
   content: ''; position: absolute; border-radius: 50%;
 }
 .lug-ring::before { inset: 14px; border: var(--border); }
 .lug-ring::after { inset: 32px; border: 1px solid var(--rule); }
+.lug-ring--m::before { inset: 12px; }
+.lug-ring--m .lug-dot { width: 22px; height: 22px; font-size: 12px; }
+.lug-ring--s { width: 148px; height: 148px; }
+.lug-ring--s::before { inset: 11px; }
+.lug-ring--s::after { inset: 36px; }
+.lug-ring--s .lug-dot { width: 20px; height: 20px; font-size: var(--t-axis); letter-spacing: -.04em; }
 .lug-ring__head {
   position: absolute; inset: 0;
   display: grid; place-items: center;
@@ -127,10 +177,19 @@
 .lug-dot.is-out { background: var(--ink); color: var(--paper); }
 .lug-dot.is-next { background: var(--amber); border-style: dashed; }
 
-.lug-verdict { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); min-width: 0; }
+.lug-verdict {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); min-width: 0;
+  container-type: inline-size;
+}
 .lug-progress { align-self: flex-end; font-family: var(--mono-font); font-weight: 700; letter-spacing: 0; }
+.lug-hero { max-width: 100%; }
 .lug-hero .hero__cap { margin-bottom: 4px; }
-.lug-hero b { display: block; }
+/* the number fits its column: Space Mono glyphs are .6 em, the ¢ and its
+   gap take ~20 px; --glyphs (sign + digits) comes from tuner.js */
+.lug-hero b {
+  display: block;
+  font-size: min(var(--t-hero), calc((100cqi - 20px) / (var(--glyphs, 3) * .6)));
+}
 .lug-median { margin-top: 6px; font: 400 var(--t-body)/1.3 var(--mono-font); }
 
 .lug-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }

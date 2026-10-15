@@ -11,6 +11,9 @@ const TONE_SKIP = 0.025;
 const TONE_WINDOW = 0.35;
 const STALE_MS = 8000;      // --d-stale
 const LUG_WINDOW = 15;      // cents from the median before a lug is called out
+const LUG_MIN = 3, LUG_MAX = 16, LUG_DEFAULT = 6;
+const REF_LEN = 1.5;        // s the LISTEN tone sounds
+const REF_TAIL = 0.25;      // s after it stops before the mic is trusted again
 
 // gauge geometry (spec 8.3): viewBox 300 x 170, centre (150,160), r 118, ±50¢ ↔ ±70°
 const GX = 150, GY = 160, GR = 118, GSPAN = 70;
@@ -36,6 +39,17 @@ function median(arr) {
 function listWords(nums) {
   if (nums.length < 2) return String(nums[0]);
   return `${nums.slice(0, -1).join(', ')} and ${nums[nums.length - 1]}`;
+}
+
+// minus / plus for the lug stepper, drawn like ui.js icons (the bundled
+// fonts' minus sits low and thin next to their plus)
+const stepIcon = (d) => '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+  + `<path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" d="${d}"/></svg>`;
+
+// a stored lug count, or null when there is none worth trusting
+function lugCountOf(v) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  return Math.max(LUG_MIN, Math.min(LUG_MAX, Math.round(v)));
 }
 
 // ------------------------------------------------------------------ gauge
@@ -90,17 +104,26 @@ function gaugeSVG(tol) {
 
 // --------------------------------------------------------------- lug diagram
 // HTML, not SVG: each slot is a real box, so its number sits on its own fill.
+// More lugs means smaller slots on a wider ring (sizes mirror tuner.css), so
+// neighbours never overlap: 16 slots still leave a gap between dots.
+function lugGeom(n) {
+  if (n <= 10) return { box: 132, ring: 52, dot: 26, cls: '' };
+  if (n <= 12) return { box: 132, ring: 54, dot: 22, cls: ' lug-ring--m' };
+  return { box: 148, ring: 63, dot: 20, cls: ' lug-ring--s' };
+}
+
 function lugDiagram(n, taps, next, outIdx, head) {
-  const c = 66, ring = 52, half = 13;
+  const g = lugGeom(n);
+  const c = g.box / 2, half = g.dot / 2;
   const slots = [];
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
-    const x = c + ring * Math.sin(a) - half, y = c - ring * Math.cos(a) - half;
+    const x = c + g.ring * Math.sin(a) - half, y = c - g.ring * Math.cos(a) - half;
     const cls = i === next ? 'is-next' : outIdx.has(i) ? 'is-out' : i < taps ? 'is-done' : 'is-empty';
     slots.push(`<span class="lug-dot ${cls}" style="left:${f1(x)}px;top:${f1(y)}px">${i + 1}</span>`);
   }
   return `
-    <div class="lug-ring" role="img" aria-label="Lug pass, ${taps} of ${n} lugs tapped">
+    <div class="lug-ring${g.cls}" role="img" aria-label="Lug pass, ${taps} of ${n} lugs tapped">
       <span class="lug-ring__head" aria-hidden="true">${head === 'reso' ? 'RESO' : 'BATTER'}</span>
       ${slots.join('')}
     </div>`;
@@ -118,6 +141,11 @@ export class TunerMode {
     this.status = null;  // persistent status line; null = the idle instruction
     this.lugTaps = [];
     this.lugNext = 0;
+    this.lugPassN = null; // slot count the current lug pass was tapped against
+    this._epoch = 0;      // bumps whenever a hit still being analysed would land somewhere else
+    this._ref = null;     // LISTEN tone on the audio clock: {osc, from, until}
+    this._refTimer = null;
+    this._toast = null;   // the toast this screen raised: {handle, el}
     this._ticker = null;
     this._lastState = '';
     this.render();
@@ -130,13 +158,6 @@ export class TunerMode {
     return r && r.drumId === this.drumId && r.head === this.head ? r.hz : null;
   }
 
-  set lastHz(hz) {
-    this.reading = hz === null || hz === undefined
-      ? null
-      : { drumId: this.drumId, head: this.head, hz, at: performance.now() };
-    if (this.reading) this.startTicker();
-  }
-
   activate() {
     this.mic.setDetectorOptions({ refractory: 0.3, threshold: 5, minLevel: 0.012 });
     // Home's player feel or the settings sheet may have retuned the kit
@@ -146,33 +167,56 @@ export class TunerMode {
 
   deactivate() {
     this.stopTicker();
+    this._epoch++;        // a hit still being analysed belongs to this visit only
+    this.stopReference();
+    // UNDO belongs to this screen: once it is gone, other screens would keep
+    // showing the targets an UNDO from here is about to put back
+    this.closeToast();
   }
 
   onOnset(onset) {
     if (!this.root.classList.contains('active')) return;
+    // the phone's own reference tone is not a drum
+    if (this.hearsReference(onset.time)) return;
     this._lastOnsetTime = onset.time;
-    setTimeout(() => {
-      const next = this._lastOnsetTime > onset.time ? this._lastOnsetTime : null;
-      const dur = Math.min(TONE_WINDOW, (next ? next - 0.01 - onset.time : Infinity) - TONE_SKIP);
-      const win = dur > 0 ? this.mic.grabWindow(onset.time + TONE_SKIP, dur) : null;
-      if (!win) return;
-      const pre = this.mic.grabWindow(onset.time - TONE_WINDOW - 0.01, TONE_WINDOW);
-      const hz = estimatePitch(win, this.mic.audioContext.sampleRate, pre);
-      if (hz === null) {
-        this.flashStatus('No clear pitch. Let the head ring.');
-        announce('No clear pitch. Let the head ring.');
-        return;
-      }
-      this.status = null;
-      if (this.mode === 'lug') {
-        this.addLugTap(hz);
-      } else {
-        this.lastHz = hz;
-        const key = this.drumId || 'free';
-        this.heads[key] = { ...(this.heads[key] || {}), [this.head]: hz };
-      }
-      this.updateReadout();
-    }, (TONE_SKIP + TONE_WINDOW) * 1000 + 60);
+    // the hit belongs to what was selected when it landed, not to whatever
+    // is selected ~0.4 s later when the analysis finishes
+    const take = { drumId: this.drumId, head: this.head, mode: this.mode, epoch: this._epoch };
+    setTimeout(() => this.analyse(onset, take), (TONE_SKIP + TONE_WINDOW) * 1000 + 60);
+  }
+
+  // still the same drum, head, mode and pass the hit was struck on?
+  isCurrent(take) {
+    return take.epoch === this._epoch && take.drumId === this.drumId
+      && take.head === this.head && take.mode === this.mode
+      && this.root.classList.contains('active');
+  }
+
+  analyse(onset, take) {
+    // selection changed mid-analysis, or LISTEN started inside the window:
+    // drop it silently rather than file it under the wrong drum
+    if (!this.isCurrent(take) || this.hearsReference(onset.time)) return;
+    const next = this._lastOnsetTime > onset.time ? this._lastOnsetTime : null;
+    const dur = Math.min(TONE_WINDOW, (next ? next - 0.01 - onset.time : Infinity) - TONE_SKIP);
+    const win = dur > 0 ? this.mic.grabWindow(onset.time + TONE_SKIP, dur) : null;
+    if (!win) return;
+    const pre = this.mic.grabWindow(onset.time - TONE_WINDOW - 0.01, TONE_WINDOW);
+    const hz = estimatePitch(win, this.mic.audioContext.sampleRate, pre);
+    if (hz === null) {
+      this.flashStatus('No clear pitch. Let the head ring.');
+      announce('No clear pitch. Let the head ring.');
+      return;
+    }
+    this.status = null;
+    if (take.mode === 'lug') {
+      this.addLugTap(hz);
+    } else {
+      this.reading = { drumId: take.drumId, head: take.head, hz, at: performance.now() };
+      this.startTicker();
+      const key = take.drumId || 'free';
+      this.heads[key] = { ...(this.heads[key] || {}), [take.head]: hz };
+    }
+    this.updateReadout();
   }
 
   drum() {
@@ -202,14 +246,47 @@ export class TunerMode {
     return 'YOUR TARGET';
   }
 
+  // This drum's lug count (kit entry `lugs`), else the last count chosen
+  // anywhere (store `lugCount`), else 6.
   lugSlots() {
-    const n = Math.round(Number(store.get('lugCount')));
-    return Number.isFinite(n) ? Math.max(3, Math.min(16, n)) : 6;
+    const d = this.drum();
+    return (d && lugCountOf(d.lugs)) ?? lugCountOf(store.get('lugCount')) ?? LUG_DEFAULT;
+  }
+
+  setLugCount(n) {
+    const next = lugCountOf(n);
+    if (next === null || next === this.lugSlots()) return;
+    const d = this.drum();
+    if (d) store.updateDrum(d.id, { lugs: next });
+    // also the fallback for drums without their own count, and what survives
+    // a relaunch while the store's kit validation keeps only known fields
+    store.set('lugCount', next);
+    const had = this.lugTaps.length > 0;
+    this.resetLugPass(); // taps against the old count no longer map to lugs
+    this.updateReadout();
+    announce(had ? `${next} lugs. Lug pass cleared.` : `${next} lugs.`);
+  }
+
+  // The pass is only valid for the count it was tapped against: a count
+  // changed from anywhere (stepper, UNDO, import) starts it over.
+  syncLugPass() {
+    const n = this.lugSlots();
+    if (n !== this.lugPassN) {
+      if (this.lugTaps.length) this.resetLugPass();
+      this.lugPassN = n;
+    }
+    return n;
+  }
+
+  resetLugPass() {
+    this.lugTaps = [];
+    this.lugNext = 0;
+    this.lugPassN = this.lugSlots();
+    this._epoch++; // a tap still being analysed belongs to the old pass
   }
 
   addLugTap(hz) {
-    const n = this.lugSlots();
-    if (this.lugTaps.length > n) this.lugTaps.length = n;
+    const n = this.syncLugPass();
     if (this.lugTaps.length < n) {
       this.lugTaps.push(hz);
       this.lugNext = this.lugTaps.length % n;
@@ -225,11 +302,14 @@ export class TunerMode {
     this.status = null;
     this.lugTaps = [];
     this.lugNext = 0;
+    this.lugPassN = null;
     this._lastState = '';
+    this._epoch++;
   }
 
   setDrum(id) {
     if (id === this.drumId) return;
+    this.stopReference(); // that tone was the last drum's target
     this.drumId = id;
     this.clearReading();
     this.render();
@@ -238,6 +318,7 @@ export class TunerMode {
   setHead(head) {
     const h = head === 'reso' ? 'reso' : 'batter';
     if (h === this.head) return;
+    this.stopReference();
     this.head = h;
     this.clearReading(); // a lug pass is per head too
     this.render();
@@ -246,6 +327,7 @@ export class TunerMode {
   setMode(mode) {
     this.mode = mode === 'lug' ? 'lug' : 'fund';
     this.status = null;
+    this._epoch++; // a pitch hit still being analysed must not become lug 1
     this.render();
   }
 
@@ -311,15 +393,27 @@ export class TunerMode {
 
     if (lug) {
       $('#lug-clear').addEventListener('click', () => {
-        this.lugTaps = [];
-        this.lugNext = 0;
+        this.resetLugPass();
         this.status = null;
         this.updateReadout();
+        // START OVER hides with the empty pass: keep focus on the pass, not <body>
+        $('#lug-panel').focus();
+        announce('Lug pass cleared.');
       });
+      // aria-disabled, not disabled, at the ends: focus stays on the button
+      const step = (d) => (e) => {
+        if (e.currentTarget.getAttribute('aria-disabled') === 'true') return;
+        this.setLugCount(this.lugSlots() + d);
+      };
+      $('#lug-less').addEventListener('click', step(-1));
+      $('#lug-more').addEventListener('click', step(1));
     } else {
+      // plain buttons, not seg(): tapping the feel that is already on
+      // re-applies it (its targets and tempo come back, with UNDO)
       this.root.querySelectorAll('.feel-row').forEach((b) => {
         b.addEventListener('click', () => this.pickFeel(b.dataset.feel));
       });
+      $('#tuner-feel-none').addEventListener('click', () => this.clearFeel());
       $('#tuner-listen').addEventListener('click', () => this.playReference());
       $('#tuner-save').addEventListener('click', () => this.save());
     }
@@ -356,6 +450,9 @@ export class TunerMode {
       return `<button type="button" class="feel-row${on ? ' on' : ''}" data-feel="${id}" aria-pressed="${on}" aria-label="${esc(aria)}">`
         + `<span class="fr-name">${f.label}</span><span class="seg__sub">${sub}</span></button>`;
     }).join('');
+    // NONE drops the feel label only: targets, tempo and runs stay as they are
+    const off = !(feel && FEELS[feel]);
+    const none = `<button type="button" class="feel-none${off ? ' on' : ''}" id="tuner-feel-none" data-feel="none" aria-pressed="${off}" aria-label="NONE, no player feel. Kit targets stay.">NONE</button>`;
     return `
       <section class="tuner-read">
         <div class="monitor__cap tuner-cap hidden" id="tuner-cap"></div>
@@ -382,13 +479,21 @@ export class TunerMode {
           <h2 class="sec-head__stamp" id="tuner-feel-title">PLAYER FEEL</h2>
           ${tunable ? `<span class="sec-head__aside">RETUNES ALL ${tunable} DRUMS</span>` : ''}
         </div>
-        <div class="seg seg--tall tuner-feel__seg" role="group" aria-labelledby="tuner-feel-title">${rows}</div>
+        <div class="seg seg--tall tuner-feel__seg" role="group" aria-labelledby="tuner-feel-title">${rows}${none}</div>
       </section>`;
   }
 
   lugHTML() {
     return `
-      <div id="lug-panel" class="card lug-panel">
+      <div id="lug-panel" class="card lug-panel" role="group" aria-label="Lug pass" tabindex="-1">
+        <div class="lug-count" role="group" aria-labelledby="lug-count-label">
+          <span class="lug-count__label" id="lug-count-label">LUGS ON THIS DRUM</span>
+          <div class="lug-count__ctl">
+            <button type="button" id="lug-less" class="lug-count__btn" aria-label="Fewer lugs" aria-describedby="lug-count">${stepIcon('M5 12h14')}</button>
+            <span id="lug-count" class="lug-count__n">${this.lugSlots()}</span>
+            <button type="button" id="lug-more" class="lug-count__btn" aria-label="More lugs" aria-describedby="lug-count">${stepIcon('M5 12h14M12 5v14')}</button>
+          </div>
+        </div>
         <div class="lug-top">
           <div class="lug-diagram" id="lug-diagram"></div>
           <div id="lug-verdict" class="lug-verdict">
@@ -421,7 +526,9 @@ export class TunerMode {
     const el = this.root.querySelector('#tuner-status');
     if (!el) return;
     const idle = this.mode === 'fund' && this.lastHz === null;
-    const text = this.status || (idle ? this.idleText() : '');
+    // while LISTEN plays, say why taps are not being read
+    const playing = this._refTimer !== null && this._ref ? this._ref.msg : '';
+    const text = playing || this.status || (idle ? this.idleText() : '');
     el.textContent = text;
     el.classList.toggle('hidden', !text);
   }
@@ -574,8 +681,8 @@ export class TunerMode {
   renderLugs() {
     const list = this.root.querySelector('#lug-list');
     if (!list) return;
-    const n = this.lugSlots();
-    if (this.lugTaps.length > n) this.lugTaps.length = n;
+    const n = this.syncLugPass();
+    this.renderLugCount(n);
     const taps = this.lugTaps;
     const k = taps.length;
     const next = k < n ? k : this.lugNext % n;
@@ -614,7 +721,8 @@ export class TunerMode {
     const spread = this.root.querySelector('#lug-spread');
     spread.innerHTML = `±${worst}<i class="unit">¢</i>`;
     spread.setAttribute('aria-label', `plus or minus ${worst} cents`);
-    spread.style.fontSize = String(worst).length > 2 ? '64px' : '';
+    // tuner.css sizes the number to fit its column (a 16-lug ring is wider)
+    spread.style.setProperty('--glyphs', String(String(worst).length + 1));
     this.root.querySelector('#lug-median').textContent = `median ${nbsp(med.toFixed(1), 'Hz')}`;
 
     const outList = [...out].sort((a, b) => a - b).map((i) => i + 1);
@@ -624,6 +732,16 @@ export class TunerMode {
         ? `Lug ${outList[0]} sits outside ±${LUG_WINDOW}¢. Adjust it and go round again.`
         : `Lugs ${listWords(outList)} sit outside ±${LUG_WINDOW}¢. Adjust them and go round again.`;
     return this.renderLugBar(k);
+  }
+
+  renderLugCount(n) {
+    const out = this.root.querySelector('#lug-count');
+    if (!out) return;
+    out.textContent = String(n);
+    const less = this.root.querySelector('#lug-less');
+    const more = this.root.querySelector('#lug-more');
+    less.setAttribute('aria-disabled', String(n <= LUG_MIN));
+    more.setAttribute('aria-disabled', String(n >= LUG_MAX));
   }
 
   renderLugBar(k) {
@@ -653,61 +771,133 @@ export class TunerMode {
       // nothing in the kit has a role to retune: leave the store exactly as it was
       restoreFeel(snapshot);
       this.render();
-      toast('No drums named snare, rack, floor or kick.', { action: 'EDIT KIT', onAction: () => this.openKit() });
+      this.showToast('No drums named snare, rack, floor or kick.', { action: 'EDIT KIT', onAction: () => this.openKit() });
       return;
     }
     this.render();
     const n = snapshot.hits;
-    toast(`${f.label} loaded · ${f.voice} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`, {
+    this.showToast(`${f.label} loaded · ${f.voice} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`, {
       action: 'UNDO',
       onAction: () => {
         restoreFeel(snapshot);
         this.render();
-        this.focusAfterUndo('.feel-row.on, .feel-row');
+        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none');
+      },
+    });
+  }
+
+  // NONE: forget the feel, keep everything it wrote (kit targets, tempo, runs)
+  clearFeel() {
+    const prev = store.get('feel');
+    if (!prev) return; // already none
+    store.set('feel', null);
+    this.render();
+    this.showToast('Feel cleared. Kit targets kept.', {
+      action: 'UNDO',
+      onAction: () => {
+        store.set('feel', prev);
+        this.render();
+        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none');
       },
     });
   }
 
   save() {
+    const r = this.reading;
     const d = this.drum();
-    const hz = this.lastHz;
-    if (!d || hz === null) return;
-    const key = this.head === 'reso' ? 'resoHz' : 'targetHz';
+    // lastHz is null unless the reading was measured on this very drum + head
+    if (!d || !r || this.lastHz === null) return;
+    const hz = r.hz;
+    const head = r.head;
+    const key = head === 'reso' ? 'resoHz' : 'targetHz';
     const prev = d[key] ?? null;
-    const head = this.head;
-    store.updateDrum(d.id, { [key]: r1(hz) });
+    store.updateDrum(r.drumId, { [key]: r1(hz) });
     this.render();
-    toast(`Saved ${hzText(hz)} · ${d.name} ${head}`, {
+    this.showToast(`Saved ${hzText(hz)} · ${d.name} ${head}`, {
       action: 'UNDO',
       onAction: () => {
-        store.updateDrum(d.id, { [key]: prev });
+        store.updateDrum(r.drumId, { [key]: prev });
         this.render();
-        this.focusAfterUndo('#tuner-save');
+        this.focusAfterUndo('#tuner-save', '[data-head].on');
       },
     });
   }
 
   // the UNDO button vanished with its toast; keep keyboard focus on this screen
-  focusAfterUndo(sel) {
+  focusAfterUndo(...sels) {
     if (document.activeElement && document.activeElement !== document.body) return;
-    const el = this.root.querySelector(sel);
-    if (el && !el.disabled) el.focus();
+    for (const sel of sels) {
+      const el = this.root.querySelector(sel);
+      if (el && !el.disabled) { el.focus(); return; }
+    }
   }
 
-  // the reference tone: hear the target before you chase it
+  // toast() keeps one toast on screen; remember which one is ours
+  showToast(text, opts) {
+    const handle = toast(text, opts);
+    // toast() builds a fresh text node per call: while that node is still in
+    // the document, the toast on screen is this one
+    this._toast = { handle, el: document.querySelector('#toast .toast__text') };
+  }
+
+  // close our toast, never one another screen has raised since
+  closeToast() {
+    const t = this._toast;
+    this._toast = null;
+    if (t && t.el && t.el.isConnected) t.handle.close();
+  }
+
+  // the reference tone: hear the target before you chase it. The mic hears
+  // it too, so hits are ignored until it has stopped and the room settled.
   playReference() {
     const hz = this.targetHz();
     const ctx = this.mic.audioContext;
     if (!hz || !ctx) return;
+    this.stopReference();
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.frequency.value = hz;
     const t = ctx.currentTime;
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(0.25, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    g.gain.exponentialRampToValueAtTime(0.001, t + REF_LEN - 0.1);
     osc.connect(g).connect(ctx.destination);
     osc.start(t);
-    osc.stop(t + 1.5);
+    osc.stop(t + REF_LEN);
+    this._ref = { osc, from: t, until: t + REF_LEN + this.refTail(ctx), msg: `Playing ${hzText(hz)}. Tap after it stops.` };
+    this._refTimer = setTimeout(() => this.endReference(), (this._ref.until - t) * 1000);
+    this.renderStatus();
+  }
+
+  // the tone's way back into the mic (output + input lag) plus the room ringing
+  refTail(ctx) {
+    const cal = store.get('calibrationMs');
+    const measured = typeof cal === 'number' && cal > 0 ? cal / 1000 : 0;
+    const lag = Math.max((ctx.outputLatency || 0) + (ctx.baseLatency || 0), measured);
+    return REF_TAIL + Math.min(0.5, lag);
+  }
+
+  // would a hit at this audio time be analysed over the tone or its tail?
+  hearsReference(onsetTime) {
+    const r = this._ref;
+    return !!r && onsetTime < r.until && onsetTime + TONE_SKIP + TONE_WINDOW > r.from;
+  }
+
+  // the tone and its tail are over: the status line goes back to normal
+  endReference() {
+    if (this._refTimer === null) return;
+    clearTimeout(this._refTimer);
+    this._refTimer = null;
+    this.renderStatus();
+  }
+
+  stopReference() {
+    const r = this._ref;
+    this.endReference();
+    if (!r) return;
+    try { r.osc.stop(); } catch { /* already stopped */ }
+    const ctx = this.mic.audioContext;
+    // cut short: the tail now runs from here
+    if (ctx) r.until = Math.min(r.until, ctx.currentTime + this.refTail(ctx));
   }
 }
