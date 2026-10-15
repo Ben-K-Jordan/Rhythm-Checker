@@ -239,7 +239,17 @@ button.holding:not(.hold)::after {
    look keep it through the scoped blocks at the top of their own CSS file. */
 
 /* ---------------------------------------------------------------- skeleton */
-main:has(> .mode.active .bar) { padding-bottom: 0; }
+/* scroll-padding: keyboard focus scrolls a control clear of the sticky bar
+   (36 px more for the .bar__reason line) instead of leaving it behind it */
+main:has(> .mode.active .bar) {
+  padding-bottom: 0;
+  scroll-padding-bottom: calc(var(--h-bar) + 36px + env(safe-area-inset-bottom));
+}
+/* while a toast shows, ui.js toast() sets body.has-toast and --toast-space
+   (its height + 16): the screen grows by that much, so whatever sits under
+   the toast can be scrolled clear of it. On .screen, not main, so the
+   sticky .bar stays at the bottom. */
+body.has-toast main > .mode.active > .screen { padding-bottom: var(--toast-space); }
 .screen {
   display: flex; flex-direction: column; gap: var(--s3);
   padding: var(--s3) var(--gutter) 0;
@@ -463,7 +473,7 @@ main:has(> .mode.active .bar) { padding-bottom: 0; }
 .stat-strip--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .statbox {
   min-width: 0; min-height: 76px;
-  padding: 10px 10px 9px;
+  padding: 10px 8px 9px;
   background: var(--white);
   border: var(--border);
   box-shadow: var(--sh-card);
@@ -480,7 +490,7 @@ main:has(> .mode.active .bar) { padding-bottom: 0; }
   display: block;
   margin-top: 7px;
   font: 600 var(--t-label)/1.15 var(--label-font);
-  letter-spacing: .06em;
+  letter-spacing: .02em;
   color: var(--ink60);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -493,6 +503,10 @@ main:has(> .mode.active .bar) { padding-bottom: 0; }
 .statbox.is-empty b { color: var(--ink60); }
 .stat-strip--4 .statbox { min-height: 70px; padding: 9px 8px 8px; }
 .stat-strip--4 .statbox b { font-size: var(--t-stat-4); }
+/* labels never wrap: on narrow phones they shrink (to the 11 px floor) before
+   they would truncate ("DAYS IN A ROW" is the longest 3-up label) */
+@media (max-width: 374px) { .statbox span { font-size: 12px; letter-spacing: 0; } }
+@media (max-width: 359px) { .statbox span { font-size: var(--t-axis); } }
 
 /* section head */
 .sec-head { display: flex; align-items: center; gap: var(--s2); min-height: 24px; }
@@ -673,7 +687,7 @@ body:has(.mode.active .bar > .bar__reason:not(.hidden):not(:empty)) .toast { bot
 }
 .sheet__hazard { height: var(--h-hazard); flex: none; background: var(--hazard); background-size: var(--hazard-tile) var(--hazard-tile); }
 .sheet h2 { font: 400 26px/1 var(--display-font); letter-spacing: .01em; }
-.sheet__close { display: grid; place-items: center; width: var(--hit); height: var(--hit); border: var(--border); background: var(--white); box-shadow: var(--sh-ctl); }
+.sheet__close { flex: none; display: grid; place-items: center; width: var(--hit); height: var(--hit); border: var(--border); background: var(--white); box-shadow: var(--sh-ctl); }
 
 /* header mic meter: 4 bars + label, tap target 44 */
 .meter {

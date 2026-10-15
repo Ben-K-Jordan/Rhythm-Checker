@@ -65,6 +65,7 @@ header.chrome {
   justify-content: center;
   gap: 3px;
   padding: 0;
+  margin-right: var(--s1); /* with the row gap, 8 px to the gear (spec R4) */
 }
 .chrome-row .meter.is-off { padding: 0 2px; }
 .gear-btn {
@@ -95,12 +96,18 @@ body:has(#settings:not(.hidden)) .toast {
   z-index: calc(var(--z-sheet) + 1);
   bottom: calc(var(--gutter) + env(safe-area-inset-bottom));
 }
+/* the sheet keeps room under its last row for the toast (base.css has the
+   same reserve for screens), so a row it covers can be scrolled clear */
+body.has-toast #settings-body { padding-bottom: calc(var(--toast-space) + var(--s2)); }
 
 /* ------------------------------------------------------- start poster */
 .poster {
   position: relative;
   min-height: 100dvh;
-  overflow: hidden;
+  /* body bounds its height: on a phone shorter than the stack the poster
+     scrolls, so TAP TO START is never out of reach */
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background: var(--paper);
@@ -266,6 +273,28 @@ body:has(#settings:not(.hidden)) .toast {
 .poster-cta.btn--primary:not(:disabled) { box-shadow: var(--sh-poster); }
 .poster-cta.is-busy .icon { display: none; }
 .poster-nomic { align-self: center; min-height: var(--hit); }
+
+/* 320 wide: CALIBRATE · HISTORY is wider than the screen at 40 px */
+@media (max-width: 359px) {
+  .bill-2 { gap: var(--s2); }
+  .bill-2 > button { font-size: 34px; }
+}
+/* short phones (SE in Safari, small Androids): the stack tightens so the CTA
+   stays on screen; below ~600 px tall the poster scrolls the rest */
+@media (max-height: 700px) {
+  /* no spare height above the lineup: the burst would climb onto the dateline */
+  .starburst { top: -8px; }
+}
+@media (max-height: 680px) {
+  .poster-masthead { font-size: 64px; }
+  .bill-1 { min-height: 52px; font-size: 46px; }
+  .bill-2 > button { min-height: var(--hit); font-size: 32px; }
+  .poster-lineup { padding-block: var(--s2); }
+}
+@media (max-height: 600px) {
+  .barcode { display: none; }
+  .poster-cta.btn--primary { min-height: var(--h-btn); }
+}
 
 /* ----------------------------------------------- listening tool, mic off */
 .nomic__card { border-top: 4px solid var(--amber); }

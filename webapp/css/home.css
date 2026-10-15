@@ -74,9 +74,9 @@
 .module-tile .chip { max-width: 100%; letter-spacing: .05em; }
 
 /* -------------------------------------------------------------- run strip */
-.home-stats .statbox { padding-inline: var(--s2); }
-.home-stats .statbox span { letter-spacing: .04em; }
 .home-stats .statbox b .unit { margin-left: 0; }
+/* LAST SPREAD is the widest value ("±12.9 ms"): it steps down by its own
+   length (statbox--long = 5+ characters) and by the tile width below */
 .home-stats .statbox--long b { font-size: var(--t-stat-4); }
 
 /* ----------------------------------------------------------- player feel */
@@ -94,8 +94,11 @@
   border-left: 0; border-top: var(--border);
 }
 .feel-name { font: 400 18px/1 var(--display-font); letter-spacing: .03em; }
-.home-feel__seg .seg__sub { letter-spacing: -.03em; }
-.home-feel__seg > .feel-none .seg__sub { letter-spacing: 0; }
+/* "150–190 BPM" needs a hair of negative tracking to clear the dividers;
+   below 360 px the cards drop the unit (home.js .feel-unit) and the aside
+   names it once (.home-feel__unit) */
+.feel-card .seg__sub { letter-spacing: -.03em; }
+.home-feel__unit { display: none; }
 
 /* ---------------------------------------------------------------- footer */
 .home-foot { display: flex; align-items: center; gap: 10px; min-height: 24px; }
@@ -110,6 +113,22 @@
 @media (max-width: 384px) {
   .home-stats .statbox--long b { font-size: 21px; }
 }
+@media (max-width: 374px) {
+  .home-stats .statbox:last-child b { font-size: var(--t-stat-4); }
+  .home-stats .statbox--long:last-child b { font-size: 20px; }
+}
 @media (max-width: 370px) {
   .home-feel__seg .seg__sub { font-size: var(--t-axis); }
+}
+@media (max-width: 359px) {
+  .home-stats .statbox:last-child b { font-size: 20px; }
+  .home-stats .statbox--long:last-child b { font-size: 16px; }
+  /* tile names and chips stay inside their borders at 320 */
+  .module-tile__name { font-size: 22px; }
+  .module-tile__name svg { width: 20px; height: 20px; }
+  .module-tile .chip { padding: 0 6px; letter-spacing: .02em; }
+  .feel-card .feel-name { font-size: 16px; } /* JORDISON fills its card at 18 */
+  .feel-card .seg__sub { letter-spacing: 0; }
+  .feel-card .feel-unit { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .home-feel__unit { display: inline; }
 }

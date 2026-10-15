@@ -474,6 +474,8 @@ function renderSettings(focusId = null) {
       renderSettings('kit-add');
       refreshScreens();
       toast(`${name} removed`, {
+        // + ADD DRUM keeps focus and sits where the toast docks: lift it clear
+        keepClear: $('#kit-add'),
         action: 'UNDO',
         onAction: () => {
           store.set('kit', before);

@@ -6,6 +6,9 @@ import { FEELS, applyFeel, restoreFeel } from './feel.js';
 import { icon, fmtSigned, nbsp, seg, toast, esc, dayNum, streakDays } from './ui.js';
 
 const NBSP = '\u00a0';
+// toast separator: the NBSP keeps each "·" at the end of its line, so no
+// wrapped line starts with one
+const SEP = `${NBSP}· `;
 const DAY = 86400000;
 
 function ageWord(instant) {
@@ -135,7 +138,7 @@ export class HomeMode {
         <section class="home-feel" aria-labelledby="home-feel-title">
           <div class="sec-head">
             <h2 class="sec-head__stamp" id="home-feel-title">PLAYER FEEL</h2>
-            <span class="sec-head__aside">Loads drum targets + tempo</span>
+            <span class="sec-head__aside">Loads drum targets + tempo<span class="home-feel__unit"> (BPM)</span></span>
           </div>
           <div class="seg--tall home-feel__seg" role="group" aria-labelledby="home-feel-title"></div>
         </section>
@@ -165,6 +168,17 @@ export class HomeMode {
       name.className = 'feel-name';
       name.append(b.firstChild);
       b.prepend(name);
+      // the range's unit gets its own span: below 360 px the cards show the
+      // range alone (CSS keeps the unit for screen readers) and the aside
+      // names BPM once
+      const sub = b.querySelector('.seg__sub');
+      const m = b.dataset.feel !== NONE && sub ? /^(.*?)\s*(BPM)$/.exec(sub.textContent) : null;
+      if (m) {
+        const unit = document.createElement('span');
+        unit.className = 'feel-unit';
+        unit.textContent = `${NBSP}${m[2]}`;
+        sub.replaceChildren(m[1], unit);
+      }
     }
     // seg() ignores a tap on the option it already shows. Here that tap means
     // "load it again": it puts the feel's targets back after hand-tuning.
@@ -227,7 +241,7 @@ export class HomeMode {
     if (tiles) tiles.innerHTML = this.tilesHTML(store.get('runs') || []);
     const n = snapshot.hits;
     this.feelUndoToast(
-      `${f.label} loaded · ${f.genre} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`,
+      [`${f.label} loaded`, f.genre, `${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned`, nbsp(f.defaultBpm, 'BPM')].join(SEP),
       () => restoreFeel(snapshot),
     );
   }
@@ -245,6 +259,9 @@ export class HomeMode {
       text,
       stamp: undoStamp(),
       handle: toast(text, {
+        // the strip the user just tapped stays clear of the toast, so the
+        // next tap lands on a card, not on UNDO
+        keepClear: this.root.querySelector('.home-feel__seg'),
         action: 'UNDO',
         onAction: () => {
           this.feelToast = null;

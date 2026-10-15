@@ -48,6 +48,9 @@ const monthDay = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'nu
 const time = (r) => { const d = validDate(r); return d ? d.getTime() : 0; };
 const plural = (n, one, many) => `${n}${NBSP}${n === 1 ? one : many}`;
 const spreadText = (sd) => `±${Math.abs(sd).toFixed(1)}`;
+// "(R-lead)" never breaks after its hyphen: a word joiner (U+2060), not
+// U+2011, which none of the bundled fonts carries
+const keepLead = (label) => label.replace(/\b([RL])-(lead)\b/g, '$1-\u2060$2');
 
 function bpmText(r) {
   const a = num(r.bpmStart), b = num(r.bpmEnd);
@@ -70,8 +73,10 @@ function avgText(mean, caps = false) {
 const SP = { h: 120, l: 36, r: 10, t: 14, b: 22, cap: 80 };
 
 // One series per run kind. A line only ever joins runs of the same kind, and
-// a kind keeps its mark on every filter: rudiments ink circles, timing red
-// squares. A kind this build does not know (hand-edited backup) gets hollow
+// a kind keeps its mark on every filter: rudiments circles, timing squares.
+// A single series is drawn in ink; with both kinds on the chart (sp--multi)
+// timing is an ink60 dashed line, so the kinds differ by mark and dash, not
+// by hue. A kind this build does not know (hand-edited backup) gets hollow
 // rings with no line, since nothing says those runs belong together.
 const SERIES = {
   rudiment: { name: 'RUDIMENTS', word: 'Rudiments', cls: 'sp-s--rud', shape: 'circle', line: true },
@@ -227,7 +232,7 @@ function spreadSvg(runs, g, baseSd, sel, endLabel) {
   const a = first ? monthDay(first) : '', b = lastD ? monthDay(lastD) : '';
   if (runs.length > 1 && a && a !== b) parts.push(`<text class="sp-tick" x="${SP.l}" y="${SP.h - 5}">${a}</text>`);
   if (b) parts.push(`<text class="sp-tick" x="${runs.length > 1 ? right : g.x(0)}" y="${SP.h - 5}" text-anchor="${runs.length > 1 ? 'end' : 'middle'}">${b}</text>`);
-  return `<svg class="sp" width="${w}" height="${SP.h}" viewBox="0 0 ${w} ${SP.h}" aria-hidden="true" focusable="false">${parts.join('')}</svg>`;
+  return `<svg class="sp${groups.size > 1 ? ' sp--multi' : ''}" width="${w}" height="${SP.h}" viewBox="0 0 ${w} ${SP.h}" aria-hidden="true" focusable="false">${parts.join('')}</svg>`;
 }
 
 // --------------------------------------------------------------- heatmap
@@ -449,7 +454,7 @@ export class HistoryMode {
       <button type="button" class="list-row log-row" data-i="${i}" aria-haspopup="dialog">
         <span class="log-date"><b>${mon}</b><span>${wd}</span></span>
         <span class="log-main">
-          <span class="log-title">${esc(typeof r.label === 'string' && r.label ? r.label : (TAG[r.kind] || 'RUN'))}</span>
+          <span class="log-title">${esc(keepLead(typeof r.label === 'string' && r.label ? r.label : (TAG[r.kind] || 'RUN')))}</span>
           <span class="log-meta">${tag}${meta}${acc}</span>
         </span>
         <span class="log-val"><span class="log-badge">${spreadText(r.sd)}</span><span class="log-unit">ms spread</span></span>
@@ -471,6 +476,7 @@ export class HistoryMode {
     const ms = (sd) => `${spreadText(sd)}${NBSP}ms`;
     const legend = this.root.querySelector('.sp-legend');
     legend.hidden = !mixed;
+    legend.classList.toggle('sp--multi', groups.size > 1);
     legend.innerHTML = mixed
       ? [...groups].map(([k, idx]) => `<span class="sp-legend__key">${keySvg(k)}<span class="sp-legend__name">${SERIES[k].name}</span><span class="sp-legend__val">last <b>${ms(runs[idx[idx.length - 1]].sd)}</b></span></span>`).join('')
       : '';
@@ -506,7 +512,7 @@ export class HistoryMode {
       const text = [
         d ? monthDay(d) : null,
         mixed ? SERIES[seriesOf(r)].name : null,
-        typeof r.label === 'string' && r.label ? r.label : null,
+        typeof r.label === 'string' && r.label ? keepLead(r.label) : null,
         ms(r.sd),
       ].filter(Boolean).join(' · ');
       caption.textContent = text;
@@ -614,7 +620,7 @@ export class HistoryMode {
     sheet.innerHTML = `
       <div class="sheet__hazard" aria-hidden="true"></div>
       <div class="hist-sheet__head">
-        <h2 id="hist-sheet-title">${esc(label)}</h2>
+        <h2 id="hist-sheet-title">${esc(keepLead(label))}</h2>
         <button type="button" class="sheet__close" aria-label="Close">${icon('close')}</button>
       </div>
       <div class="hist-sheet__body">

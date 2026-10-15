@@ -3,11 +3,13 @@
 .hist { padding-bottom: var(--s6); }
 .hist-body { display: flex; flex-direction: column; gap: var(--s3); }
 .hist-csv .icon { width: 16px; height: 16px; }
-.hist .statbox { padding-inline: 9px; }
 
 /* ------------------------------------------------------------ chart cards */
 .hist-card { display: flex; flex-direction: column; gap: 10px; }
 .hist-caption { min-height: 16px; font: 400 var(--t-caption)/1.35 var(--mono-font); color: var(--ink); }
+/* a run's caption is one line or two: always keep two, so stepping through
+   the points never moves the cards below */
+.spread-caption { min-height: calc(2 * 1.35em); }
 
 .spread-plot { position: relative; height: var(--h-trend); cursor: pointer; touch-action: manipulation; }
 .spread-plot svg { display: block; width: 100%; height: var(--h-trend); overflow: visible; }
@@ -20,13 +22,16 @@
   font-size: var(--t-axis); fill: var(--ink60);
   paint-order: stroke; stroke: var(--white); stroke-width: 4px; stroke-linejoin: round;
 }
-/* one series per run kind, same mark on every filter: rudiments ink circles,
-   timing red squares (4.55:1 on white), unknown kinds hollow ink60 rings.
+/* one series per run kind, same mark on every filter: rudiments circles,
+   timing squares, unknown kinds hollow ink60 rings. Data is ink (spec 8.5);
+   red is the CTA and the R hand. With both kinds on the chart (.sp--multi,
+   plot and legend) timing steps back to an ink60 dashed line (7.58:1 on
+   white), so mark and dash tell the kinds apart, not hue.
    Marks carry a 2 px white ring so a crossing line never runs through them. */
 .sp-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.sp-line.sp-s--tim { stroke: var(--red); }
+.sp--multi .sp-line.sp-s--tim { stroke: var(--ink60); stroke-dasharray: 5 4; stroke-linecap: butt; }
 .sp-dot { fill: var(--ink); stroke: var(--white); stroke-width: 4; paint-order: stroke; }
-.sp-dot.sp-s--tim { fill: var(--red); }
+.sp--multi .sp-dot.sp-s--tim { fill: var(--ink60); }
 .sp-dot.sp-s--other { fill: var(--white); stroke: var(--ink60); stroke-width: 2; paint-order: normal; }
 .sp-sel { fill: none; stroke: var(--ink); stroke-width: 2; }
 /* ALL: a row per kind above the plot, names padded to RUDIMENTS' 9 characters
@@ -47,17 +52,20 @@
 }
 
 /* ---------------------------------------------------------------- heatmap
-   10 week columns x 7 day rows of 26 x 18 cells, 3 px gaps. */
+   10 week columns x 7 day rows of 26 x 18 cells, 3 px gaps. Under 375 px
+   the card is narrower than the grid: the columns shrink (never the rows)
+   so this week, today's ring included, stays in the card. */
 .heat-grid {
   display: grid;
-  grid-template-columns: 14px auto;
+  grid-template-columns: 14px minmax(0, 1fr);
   grid-template-rows: auto auto;
   column-gap: 8px; row-gap: 4px;
   justify-content: start;
 }
 .heat-months {
   grid-column: 2; grid-row: 1;
-  display: grid; grid-template-columns: repeat(10, 26px); column-gap: 3px;
+  justify-self: start;
+  display: grid; grid-template-columns: repeat(10, minmax(0, 26px)); column-gap: 3px;
   font: 400 var(--t-axis)/1.3 var(--mono-font); color: var(--ink60);
   white-space: nowrap;
 }
@@ -70,8 +78,9 @@
   grid-column: 2; grid-row: 2;
   display: grid;
   grid-auto-flow: column;
+  justify-self: start;
   grid-template-rows: repeat(7, 18px);
-  grid-auto-columns: 26px;
+  grid-auto-columns: minmax(0, 26px);
   gap: 3px;
   cursor: pointer;
   touch-action: manipulation;
