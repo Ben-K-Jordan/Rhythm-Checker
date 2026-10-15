@@ -274,6 +274,11 @@ body:has(#settings:not(.hidden)) .toast {
 .nomic__text:empty { display: none; }
 #nomic-retry.is-busy .icon { display: none; }
 
+/* nav() parks focus on the new screen's title, or the Home panel, when the
+   tapped control went away (app.js landOnScreen). Neither is a control: no ring. */
+main > .mode[tabindex="-1"]:focus,
+main > .mode h1[tabindex="-1"]:focus { outline: none; }
+
 /* --------------------------------------------------------- settings sheet */
 #settings.sheet { box-shadow: 0 -4px 0 var(--ink); border-left: var(--border); border-right: var(--border); }
 .sheet__head {

@@ -41,6 +41,8 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const median = (arr) => { const s = [...arr].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 const ms = (v) => nbsp(Math.abs(v).toFixed(0), 'ms');
 const lateWord = (lag) => (lag >= 0 ? 'late' : 'early');
+// an offset as the phone heard it against the click: "40 ms late", "0 ms"
+const heard = (v) => (Math.abs(v) < 0.5 ? ms(v) : `${ms(v)} ${lateWord(v)}`);
 // the stored value is the measured lag; everything on screen is the correction
 const correction = (lag) => fmtSigned(-lag);
 const dbLabel = (db) => nbsp(fmtSigned(db), 'dB');
@@ -77,8 +79,38 @@ export class CalibrateMode {
 
   activate() {
     this.mic.setDetectorOptions({ refractory: 0.15, threshold: 2.5, minLevel: MODE_FLOOR });
-    if (!this.running) this.render(); // store may have changed elsewhere (Settings reset, import)
+    this.refresh(); // store may have changed elsewhere (Settings reset, import)
     if (!this._raf) { this._last = performance.now(); this._raf = requestAnimationFrame(this._tick); }
+  }
+
+  // Re-read latency and threshold from the store and redraw (app.js calls this
+  // after RESET ALL, an import or closing Settings). A running test is never
+  // touched: only its status chip and threshold summary are repainted.
+  refresh() {
+    if (this.running) {
+      this.paintTestHead();
+      return;
+    }
+    this.cancelAuto(); // a pending AUTO SET must not write over a reset
+    this.liveTrig = null;
+    this.mic.setTriggerFloor(store.get('trigger') || 0); // the line drawn is the line in force
+    // a test result from this visit describes a latency that is no longer
+    // stored ("Applied to every hit" would be false after RESET ALL)
+    if (store.get('calibrationMs') !== this.shownCal) this.outcome = null;
+    this.render();
+  }
+
+  paintTestHead() {
+    const chip = this.root.querySelector('#cal-status');
+    if (chip) chip.outerHTML = this.statusChip(store.get('calibrationMs'));
+    const sum = this.root.querySelector('.cal-sum');
+    if (sum) sum.textContent = `THRESHOLD ${dbLabel(this.thresholdDb())}`;
+  }
+
+  statusChip(cal) {
+    return cal === null
+      ? '<span class="chip chip--warn" id="cal-status">NEEDS TEST</span>'
+      : `<span class="chip chip--ok" id="cal-status">${icon('check')}SET</span>`;
   }
 
   deactivate() {
@@ -176,14 +208,13 @@ export class CalibrateMode {
   render({ refocus = true } = {}) {
     const testing = this.phase === 'testing';
     const cal = store.get('calibrationMs');
+    this.shownCal = cal;
     const hadFocus = refocus && this.root.contains(document.activeElement);
     this.root.innerHTML = `
       <div class="screen cal">
         <div class="title-row">
           <h1 class="stamp">CALIBRATE</h1>
-          ${cal === null
-    ? '<span class="chip chip--warn" id="cal-status">NEEDS TEST</span>'
-    : `<span class="chip chip--ok" id="cal-status">${icon('check')}SET</span>`}
+          ${this.statusChip(cal)}
         </div>
         ${testing ? this.testHtml() : this.idleHtml(cal)}
       </div>
@@ -266,8 +297,10 @@ export class CalibrateMode {
       </section>`;
   }
 
-  // The 8 scored offsets, drawn as corrections (−offset) so the strip reads in
-  // the same sign as the number above it.
+  // The scored hits, each plotted where the phone heard it against its click:
+  // early left (−), late right (+), the sign every other screen uses. The
+  // median is labelled the same way ("40 ms late", as in the detail line);
+  // the latency above is the correction for it, so it carries the other sign.
   hitsHtml() {
     const o = this.outcome;
     if (!o || !o.offsets.length) return '';
@@ -276,7 +309,7 @@ export class CalibrateMode {
     const ROWS = [0, -8, 8, -16, 16, -24, 24];
     const rowEnd = ROWS.map(() => -1);
     const dots = o.offsets
-      .map((p) => ({ v: -p.ms, kept: p.kept }))
+      .map((p) => ({ v: p.ms, kept: p.kept }))
       .sort((a, b) => a.v - b.v)
       .map((p) => {
         const x = at(p.v);
@@ -287,18 +320,23 @@ export class CalibrateMode {
         return `<i class="hits-dot${p.kept ? '' : ' is-dropped'}${out}" style="--x:${x.toFixed(4)};--dy:${ROWS[row]}px"></i>`;
       }).join('');
     const ok = o.kind === 'ok';
-    const med = ok
-      ? `<span class="hits-med__label" style="--x:${at(-o.med).toFixed(4)}">${nbsp(correction(o.med), 'ms')}</span>
-         <i class="hits-bracket" style="--x0:${at(-o.med - o.spread).toFixed(4)};--x1:${at(-o.med + o.spread).toFixed(4)}"></i>
-         <i class="hits-med" style="--x:${at(-o.med).toFixed(4)}"></i>`
-      : '';
-    const label = `${n} test ${n === 1 ? 'hit' : 'hits'}${ok ? `, median ${nbsp(correction(o.med), 'ms')}, spread ±${ms(o.spread)}` : ''}`;
+    let med = '';
+    if (ok) {
+      const x = at(o.med);
+      // near an end the label hangs inward from the line instead of centring on it
+      const edge = x < 0.18 ? ' is-start' : x > 0.82 ? ' is-end' : '';
+      med = `<span class="hits-med__label${edge}" style="--x:${x.toFixed(4)}">${heard(o.med)}</span>
+         <i class="hits-bracket" style="--x0:${at(o.med - o.spread).toFixed(4)};--x1:${at(o.med + o.spread).toFixed(4)}"></i>
+         <i class="hits-med" style="--x:${x.toFixed(4)}"></i>`;
+    }
+    const label = `${n} test ${n === 1 ? 'hit' : 'hits'} vs the click${ok ? `, median ${heard(o.med)}, spread ±${ms(o.spread)}` : ''}`;
     return `
       <div class="cal-hits">
         <div class="sec-head"><span class="sec-head__stamp">YOUR ${n} TEST ${n === 1 ? 'HIT' : 'HITS'}</span></div>
         <div class="hits-plot" role="img" aria-label="${label}">
           <i class="hits-base"></i>
-          ${[0, 0.25, 0.5, 0.75, 1].map((x) => `<i class="hits-tick" style="--x:${x}"></i>`).join('')}
+          ${[0, 0.25, 0.75, 1].map((x) => `<i class="hits-tick" style="--x:${x}"></i>`).join('')}
+          <i class="hits-tick hits-tick--zero" style="--x:0.5"></i>
           <i class="hits-zero" style="--x:0.5"></i>
           ${dots}
           ${med}
@@ -307,6 +345,8 @@ export class CalibrateMode {
           <span class="hits-axis" style="--x:0.5">0</span>
           <span class="hits-axis" style="--x:0.75">+${PLOT_MS / 2}</span>
           <span class="hits-axis hits-axis--end" style="--x:1">+${nbsp(PLOT_MS, 'ms')}</span>
+          <span class="hits-end hits-end--start">EARLY</span>
+          <span class="hits-end hits-end--end">LATE</span>
         </div>
       </div>`;
   }

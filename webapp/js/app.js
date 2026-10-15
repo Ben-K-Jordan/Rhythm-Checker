@@ -42,6 +42,63 @@ function esc(text) {
   return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+// ------------------------------------------------------------ focus floor
+// An action that hides, disables or inerts the focused control must never
+// leave focus on <body>. focusFirst() tries each target in order (selector or
+// element; null skips) and keeps the first that really takes focus.
+// visibility:hidden still has boxes (BACK keeps its slot on Home), so it is
+// checked on its own; the browser drops focus from such a control a moment later.
+function canFocus(el) {
+  return !!el && el !== document.body && el.isConnected && !el.disabled
+    && !el.closest('[inert]') && el.getClientRects().length > 0
+    && getComputedStyle(el).visibility === 'visible';
+}
+
+function focusFirst(...targets) {
+  for (const t of targets) {
+    const el = typeof t === 'string' ? $(t) : t;
+    if (!canFocus(el)) continue;
+    el.focus({ preventScroll: true });
+    if (document.activeElement === el) return el;
+  }
+  return null;
+}
+
+const focusLost = () => !canFocus(document.activeElement);
+
+// the natural target of whatever surface is on top: the settings sheet, the
+// History run sheet (history.js), else the header's settings gear
+function focusTopSurface() {
+  return focusFirst(
+    settingsOpen() ? '#settings-close' : null,
+    '#mode-history.active .hist-sheet .sheet__close',
+    '#chrome-gear-left',
+  );
+}
+
+// focus a non-control (a screen title or panel) for the moment; a tabindex
+// added for it goes again on blur, so later taps never land on it
+function focusStatic(el) {
+  if (!el) return false;
+  const added = !el.hasAttribute('tabindex');
+  if (added) el.setAttribute('tabindex', '-1');
+  if (focusFirst(el)) {
+    if (added) el.addEventListener('blur', () => el.removeAttribute('tabindex'), { once: true });
+    return true;
+  }
+  if (added) el.removeAttribute('tabindex');
+  return false;
+}
+
+// nav() hid the panel holding the tapped control: land on the new screen's
+// title, or on the panel itself where it has none (Home)
+function landOnScreen() {
+  if (!focusLost()) return;
+  const panel = document.querySelector('main > .mode.active');
+  if (panel && (focusStatic(panel.querySelector('h1')) || focusStatic(panel))) return;
+  focusFirst('#chrome-gear-left');
+}
+
 // ------------------------------------------------------------- navigation
 function nav(name, { push = true } = {}) {
   if (!booted) { pendingNav = name; return; }
@@ -68,6 +125,7 @@ function nav(name, { push = true } = {}) {
   if (target && target.activate) target.activate();
   $('main').scrollTop = 0;
   if (push) syncHistory(name);
+  landOnScreen();
 }
 
 // The in-app history is kept at [home] or [home, tool], so the system back
@@ -166,6 +224,17 @@ function levelMeterLoop() {
 }
 
 // -------------------------------------------------- listening tools, mic off
+// Only a permission refusal is "blocked"; any other start failure (no mic,
+// mic busy, insecure page, audio did not restart) is MIC OFF plus its reason.
+function micProblemFor(err) {
+  const blocked = !!err && err.kind === 'blocked';
+  return {
+    head: blocked ? 'MIC IS BLOCKED' : 'MIC OFF',
+    text: (err && err.message) || '',
+    kind: (err && err.kind) || 'other',
+  };
+}
+
 function renderNoMic(name) {
   $('#nomic-title').textContent = LISTENING[name];
   const p = micProblem || { head: 'MIC OFF', text: '' };
@@ -185,14 +254,16 @@ async function retryMic() {
   try {
     await mic.reconnect();
   } catch (err) {
-    micProblem = { head: (micProblem && micProblem.head) || 'MIC IS BLOCKED', text: err.message };
+    micProblem = micProblemFor(err);
   }
   if (mic.running) {
     micUp();
-    nav(currentScreen, { push: false });
+    nav(currentScreen, { push: false }); // lands focus on the tool it opens
     return;
   }
   renderNoMic(currentScreen);
+  // the busy (disabled) button dropped focus to <body>
+  if (focusLost()) focusFirst('#nomic-retry');
 }
 
 function micUp() {
@@ -232,11 +303,13 @@ function closeSettings({ refocus = true } = {}) {
   if (refocus) $('#chrome-gear-left').focus();
 }
 
-// an import, RESET ALL or kit edit replaces data that these screens show
+// An import, RESET ALL or kit edit replaces data the screens show. The tuner
+// keeps the kit list everywhere; the current screen re-reads the store through
+// its refresh(), which redraws setup/idle views and never touches a run.
 function refreshScreens() {
-  if (modes.home && currentScreen === 'home') modes.home.render();
   if (modes.tuner) modes.tuner.render();
-  if (modes.history && currentScreen === 'history') modes.history.render();
+  const m = modes[currentScreen];
+  if (m && m !== modes.tuner && typeof m.refresh === 'function') m.refresh();
 }
 
 function latencyText(cal) {
@@ -505,9 +578,11 @@ async function reconnectMic() {
     micUp();
     hideMicLost();
     if (currentScreen in LISTENING && !shownMode) nav(currentScreen, { push: false });
-    $('#chrome-gear-left').focus();
+    // the header stays inert under an open settings or run sheet
+    focusTopSurface();
     return;
   }
+  if (error) micProblem = micProblemFor(error); // what HOME's mic-off tools show
   $('#mic-lost-error').textContent = error ? error.message : 'Audio did not restart. Reload the app to get the mic back.';
   $('#mic-lost-steps').classList.remove('hidden');
   btn.dataset.reload = '1';
@@ -517,8 +592,10 @@ async function reconnectMic() {
 
 // ------------------------------------------------------------ start poster
 // idle | busy | denied. A retry from the denied card stays on that layout
-// while busy, so the lineup does not flash back in.
-function posterState(state, message = null) {
+// while busy, so the lineup does not flash back in. The denied card names
+// the problem: the iPhone permission steps only when permission was refused
+// (problem.kind 'blocked'), otherwise MIC OFF with the plain reason.
+function posterState(state, problem = null) {
   const overlay = $('#start-overlay');
   const busy = state === 'busy';
   const denied = state === 'denied' || (busy && overlay.dataset.layout === 'denied');
@@ -528,7 +605,11 @@ function posterState(state, message = null) {
   $('#start-denied').classList.toggle('hidden', !denied);
   $('#start-nomic').classList.toggle('hidden', !denied);
   $('#start-nomic').disabled = busy;
-  if (message !== null) $('#start-error').textContent = message;
+  if (problem) {
+    overlay.dataset.micError = problem.kind;
+    $('#start-denied-title').textContent = problem.head;
+    $('#start-error').textContent = problem.text;
+  }
   setBusy($('#start-btn'), busy ? 'STARTING MIC…' : denied ? 'TRY AGAIN' : 'TAP TO START', busy);
   overlay.querySelectorAll('[data-goto]').forEach((b) => {
     b.classList.toggle('on', state === 'busy' && b.dataset.goto === pendingNav);
@@ -543,8 +624,12 @@ async function boot() {
     await mic.start();
   } catch (err) {
     starting = false;
-    posterState('denied', err.message);
-    announce(`MIC IS BLOCKED. ${err.message}`);
+    // OPEN WITHOUT MIC carries the same problem into the listening tools
+    micProblem = micProblemFor(err);
+    posterState('denied', micProblem);
+    // the busy (disabled) CTA or a now-hidden bill dropped focus to <body>
+    if (focusLost()) focusFirst('#start-btn');
+    announce(`${micProblem.head}. ${micProblem.text}`);
     return;
   }
   starting = false;
@@ -592,10 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   $('#start-btn').addEventListener('click', boot);
-  $('#start-nomic').addEventListener('click', () => {
-    micProblem = { head: 'MIC IS BLOCKED', text: $('#start-error').textContent };
-    enterApp('home');
-  });
+  $('#start-nomic').addEventListener('click', () => enterApp('home'));
   document.querySelectorAll('#start-overlay [data-goto]').forEach((el) => {
     el.addEventListener('click', () => {
       pendingNav = el.dataset.goto;
@@ -614,7 +696,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#mic-lost-home').addEventListener('click', () => {
     hideMicLost();
     nav('home');
-    $('#chrome-gear-left').focus();
+    focusTopSurface();
   });
   document.addEventListener('rc:run', onRunState);
   window.addEventListener('popstate', onPopState);

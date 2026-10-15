@@ -3,6 +3,34 @@
 
 import { OnsetDetector } from './dsp.js';
 
+// getUserMedia failures, sorted by DOMException name. The kind travels on the
+// thrown error so the start poster can show the iPhone permission steps only
+// when permission really is the problem; every other kind is a plain reason.
+const MIC_KIND = {
+  NotAllowedError: 'blocked', SecurityError: 'blocked', PermissionDeniedError: 'blocked',
+  NotFoundError: 'missing', DevicesNotFoundError: 'missing',
+  OverconstrainedError: 'missing', ConstraintNotSatisfiedError: 'missing',
+  NotReadableError: 'busy', AbortError: 'busy', TrackStartError: 'busy',
+  TypeError: 'insecure', // no navigator.mediaDevices outside a secure page
+};
+const MIC_TEXT = {
+  blocked: 'The mic is blocked. In iPhone Settings, allow the microphone for Safari, then reopen the app.',
+  missing: 'No mic found on this device.',
+  busy: 'Another app is using the mic. Close it, then try again.',
+  insecure: 'The mic needs a secure page. Open the app from its https address.',
+};
+
+// -> Error with .kind (blocked | missing | busy | insecure | other) and .code
+// (the browser's err.name, kept for diagnostics)
+export function micStartError(err) {
+  const code = (err && err.name) || 'Error';
+  const kind = window.isSecureContext === false ? 'insecure' : MIC_KIND[code] || 'other';
+  const out = new Error(MIC_TEXT[kind] || `The mic did not start (${code}).`, { cause: err });
+  out.kind = kind;
+  out.code = code;
+  return out;
+}
+
 export class MicEngine extends EventTarget {
   constructor() {
     super();
@@ -43,8 +71,8 @@ export class MicEngine extends EventTarget {
             channelCount: 1,
           },
         });
-      } catch {
-        throw new Error('The mic is blocked. In iPhone Settings, allow the microphone for Safari, then reopen the app.');
+      } catch (err) {
+        throw micStartError(err);
       }
       this._stream = stream;
       await this._ensureContext();
