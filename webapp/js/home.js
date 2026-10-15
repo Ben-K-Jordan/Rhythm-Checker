@@ -3,39 +3,10 @@
 
 import { store } from './store.js';
 import { FEELS, applyFeel, restoreFeel } from './feel.js';
-import { icon, fmtSigned, nbsp, seg, toast } from './ui.js';
-
-function escText(text) {
-  const d = document.createElement('div');
-  d.textContent = text;
-  return d.innerHTML;
-}
+import { icon, fmtSigned, nbsp, seg, toast, esc, dayNum, streakDays } from './ui.js';
 
 const NBSP = '\u00a0';
 const DAY = 86400000;
-
-// local calendar day number: an evening run counts for the user's today,
-// not UTC's tomorrow
-function dayNum(instant) {
-  const d = new Date(instant);
-  if (Number.isNaN(d.getTime())) return NaN;
-  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY;
-}
-
-// consecutive practice days ending today or yesterday
-function streakDays(runs) {
-  const days = new Set(runs.map((r) => dayNum(r.date)).filter(Number.isFinite));
-  if (!days.size) return 0;
-  const today = dayNum(Date.now());
-  let start = today;
-  if (!days.has(start)) {
-    if (!days.has(today - 1)) return 0;
-    start = today - 1;
-  }
-  let n = 0;
-  while (days.has(start - n)) n++;
-  return n;
-}
 
 function ageWord(instant) {
   const n = dayNum(Date.now()) - dayNum(instant);
@@ -211,7 +182,7 @@ export class HomeMode {
     for (let i = runs.length - 1; i >= 0 && !lastRud; i--) if (runs[i] && runs[i].kind === 'rudiment') lastRud = runs[i];
     if (!lastRud) return '<span class="chip chip--amber-on-ink hero-tile__last">NO RUNS YET</span>';
     const age = ageWord(lastRud.date);
-    return `<span class="chip chip--amber-on-ink hero-tile__last"><span>LAST${NBSP}·${NBSP}</span><span class="hero-tile__rud">${escText(rudimentName(lastRud.label))}</span>${age ? `<span>${NBSP}·${NBSP}${age}</span>` : ''}</span>`;
+    return `<span class="chip chip--amber-on-ink hero-tile__last"><span>LAST${NBSP}·${NBSP}</span><span class="hero-tile__rud">${esc(rudimentName(lastRud.label))}</span>${age ? `<span>${NBSP}·${NBSP}${age}</span>` : ''}</span>`;
   }
 
   tilesHTML(runs) {
@@ -316,4 +287,3 @@ export class HomeMode {
   }
 }
 
-export { escText };

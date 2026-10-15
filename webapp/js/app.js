@@ -6,7 +6,7 @@ import { MicEngine } from './audio.js';
 import { selftest } from './dsp.js';
 import { store } from './store.js';
 import { holdToConfirm, levelFrac } from './theme.js';
-import { toast, seg, icon, fmtSigned, nbsp, announce } from './ui.js';
+import { toast, seg, icon, fmtSigned, nbsp, announce, esc } from './ui.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
@@ -37,10 +37,6 @@ let skipPops = 0;        // popstates caused by our own history.back()
 let pendingImport = null; // backup text waiting for HOLD TO REPLACE
 
 function $(sel) { return document.querySelector(sel); }
-
-function esc(text) {
-  return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
 
 // ------------------------------------------------------------ focus floor
 // An action that hides, disables or inerts the focused control must never

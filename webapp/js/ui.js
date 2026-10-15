@@ -5,6 +5,37 @@
 const MINUS = '−';
 const NBSP = ' ';
 
+// ----------------------------------------------------------- text + days
+// HTML-escape for text interpolated into markup, attributes included
+export function esc(text) {
+  return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+const DAY = 86400000;
+
+// local calendar day number: an evening run counts for the user's today,
+// not UTC's tomorrow
+export function dayNum(instant) {
+  const d = new Date(instant);
+  if (Number.isNaN(d.getTime())) return NaN;
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY;
+}
+
+// days in a row: consecutive local days with a run, ending today or yesterday
+export function streakDays(runs) {
+  const days = new Set(runs.map((r) => dayNum(r.date)).filter(Number.isFinite));
+  if (!days.size) return 0;
+  const today = dayNum(Date.now());
+  let start = today;
+  if (!days.has(start)) {
+    if (!days.has(today - 1)) return 0;
+    start = today - 1;
+  }
+  let n = 0;
+  while (days.has(start - n)) n++;
+  return n;
+}
+
 // ------------------------------------------------------------------ icons
 // The bundled fonts have no arrows, triangles, ticks or crosses, so every
 // glyph of that kind is inline SVG drawn in currentColor.

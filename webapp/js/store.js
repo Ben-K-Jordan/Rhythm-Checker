@@ -33,6 +33,9 @@ const DEFAULTS = {
 
 const MAX_RUNS = 500;
 
+// a drum's own lug count (the Tuner's lug pass); same range as its stepper
+const validLugs = (v) => Number.isInteger(v) && v >= 3 && v <= 16;
+
 // Field-by-field validation: a drifted or hand-edited backup must degrade to
 // defaults per field, never half-brick the whole app on the next launch.
 function sanitize(data) {
@@ -62,7 +65,8 @@ function sanitize(data) {
       && typeof d.name === 'string'
       && (d.targetHz === null || num(d.targetHz) !== undefined))
       .map((d) => ({ id: d.id, name: d.name, targetHz: d.targetHz,
-        resoHz: d.resoHz === null || num(d.resoHz) !== undefined ? (d.resoHz ?? null) : null }));
+        resoHz: d.resoHz === null || num(d.resoHz) !== undefined ? (d.resoHz ?? null) : null,
+        ...(validLugs(d.lugs) ? { lugs: d.lugs } : {}) }));
     // an explicitly empty kit is a choice and stays empty; an array whose
     // entries were all garbage is corruption and degrades to defaults
     if (kit.length || data.kit.length === 0) clean.kit = kit;
@@ -164,6 +168,7 @@ export const store = {
       if (mine) {
         mine.targetHz = d.targetHz;
         if (d.resoHz === null || typeof d.resoHz === 'number') mine.resoHz = d.resoHz;
+        if (validLugs(d.lugs)) mine.lugs = d.lugs;
       }
       else {
         state.kit = [...state.kit,

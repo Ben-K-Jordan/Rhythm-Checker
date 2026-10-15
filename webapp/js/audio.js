@@ -75,13 +75,23 @@ export class MicEngine extends EventTarget {
         throw micStartError(err);
       }
       this._stream = stream;
-      await this._ensureContext();
-      this._teardownGraph(); // orphans from a previous run on a surviving context
-      const src = this.ctx.createMediaStreamSource(stream);
-      const node = new AudioWorkletNode(this.ctx, 'capture', {
-        numberOfInputs: 1,
-        numberOfOutputs: 0,
-      });
+      let src, node;
+      try {
+        await this._ensureContext();
+        this._teardownGraph(); // orphans from a previous run on a surviving context
+        src = this.ctx.createMediaStreamSource(stream);
+        node = new AudioWorkletNode(this.ctx, 'capture', {
+          numberOfInputs: 1,
+          numberOfOutputs: 0,
+        });
+      } catch (err) {
+        // the mic is open but the audio graph never came up: release it, or
+        // every retry would leave another live capture (and the iOS mic
+        // indicator) behind
+        for (const track of stream.getTracks()) track.stop();
+        this._stream = null;
+        throw err;
+      }
       src.connect(node);
       this._src = src;
       this._node = node;

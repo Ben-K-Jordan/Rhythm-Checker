@@ -102,6 +102,17 @@ check('feel-applies-targets', snareAfterFeel.targetHz === 300 && snareAfterFeel.
   `snare ${snareAfterFeel.targetHz}/${snareAfterFeel.resoHz}`);
 check('feel-card-active', await page.locator('.feel-card.on .feel-name').textContent() === 'BARKER');
 
+// NONE clears the feel but keeps every target it wrote; UNDO brings the feel back
+const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('rhythm-checker-v1')));
+await page.click('#mode-home [data-feel="none"]');
+await page.waitForTimeout(120);
+const afterNone = await stored();
+check('home-feel-none', afterNone.feel === null && afterNone.kit.find((d) => d.id === 'snare').targetHz === 300,
+  `feel=${afterNone.feel}`);
+await page.click('.toast__action');
+await page.waitForTimeout(120);
+check('home-feel-none-undo', (await stored()).feel === 'barker');
+
 // --------------------------------------------------------------------- tuner
 await nav('tuner');
 check('tuner-gauge', await page.locator('.gauge-stage svg path').count() === 5);
@@ -116,6 +127,13 @@ check('tuner-feel-rows', await page.locator('.feel-row').count() === 4);
 await page.click('[data-mode="lug"]');
 await page.waitForTimeout(100);
 check('tuner-lug-mode', await page.locator('#lug-panel:not(.hidden)').count() === 1);
+// the lug count is per drum: taps past it must never wrap onto earlier lugs
+const lugsBefore = Number((await page.locator('#lug-count').textContent()).trim());
+await page.click('#lug-more');
+await page.click('#lug-more');
+const snareLugs = (await stored()).kit.find((d) => d.id === 'snare').lugs;
+check('tuner-lug-count-per-drum', snareLugs === lugsBefore + 2
+  && Number((await page.locator('#lug-count').textContent()).trim()) === lugsBefore + 2, `snare lugs ${snareLugs}`);
 await page.click('[data-mode="fund"]');
 
 // ---------------------------------------------------------------- rudiments
@@ -300,6 +318,10 @@ await page.click('[data-f="rudiment"]');
 await page.waitForTimeout(100);
 check('hist-filter', await page.locator('.log-row').count() === 1);
 await page.click('[data-f="all"]');
+await page.waitForTimeout(100);
+// ALL keeps rudiment and timing spreads apart and draws no timing baseline
+check('hist-all-two-series', await page.locator('.sp-legend:not([hidden]) .sp-legend__key').count() === 2
+  && await page.locator('.sp-base').count() === 0);
 
 // ---------------------------------------------------------------- calibrate
 await nav('calibrate');

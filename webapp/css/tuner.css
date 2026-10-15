@@ -201,7 +201,7 @@
   background: var(--white);
 }
 .lug-cell__lab {
-  display: flex; justify-content: space-between; gap: 4px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 4px; /* "LUG 10 SHARP" wraps at 320 px */
   font: 600 var(--t-caption)/1 var(--label-font);
   letter-spacing: .08em;
   color: var(--ink60);

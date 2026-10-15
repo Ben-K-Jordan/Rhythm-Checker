@@ -2,7 +2,7 @@
 // stat tiles, both charts and the list; a row opens a read-only run sheet.
 
 import { store } from './store.js';
-import { icon, seg, fmtSigned, nbsp } from './ui.js';
+import { icon, seg, fmtSigned, nbsp, esc, streakDays } from './ui.js';
 
 const PAGE = 6;
 const SPREAD_RUNS = 30; // the spread chart plots the most recent runs
@@ -15,12 +15,6 @@ const EMPTY = {
   timing: ['No timing runs yet.', ['timing']],
 };
 const GO = { rudiments: 'PLAY A RUDIMENT', timing: 'HOLD A TEMPO' };
-
-function esc(text) {
-  const d = document.createElement('div');
-  d.textContent = text;
-  return d.innerHTML;
-}
 
 // Only `sd`, `mean`, `date` and `accuracy` are type-checked on load; every
 // other stored field can be anything a hand-edited backup put there.
@@ -43,20 +37,6 @@ function localDayKey(instant) {
 function localDay(offsetDays) {
   const t = new Date();
   return new Date(t.getFullYear(), t.getMonth(), t.getDate() - offsetDays);
-}
-
-function dayKey(offsetDays) {
-  return localDayKey(localDay(offsetDays));
-}
-
-function streakDays(runs) {
-  const days = new Set(runs.map((r) => (r.date ? localDayKey(r.date) : '')));
-  if (!days.size) return 0;
-  const start = days.has(dayKey(0)) ? 0 : days.has(dayKey(1)) ? 1 : -1;
-  if (start < 0) return 0;
-  let n = 0;
-  while (days.has(dayKey(start + n))) n++;
-  return n;
 }
 
 function validDate(r) {

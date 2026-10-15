@@ -5,7 +5,7 @@
 import { estimatePitch, hzToNote, centsBetween } from './dsp.js';
 import { store } from './store.js';
 import { FEELS, applyFeel, restoreFeel, feelTargetFor, roleOf } from './feel.js';
-import { icon, fmtSigned, nbsp, monitorSize, announce, toast, seg } from './ui.js';
+import { icon, fmtSigned, nbsp, monitorSize, announce, toast, seg, esc } from './ui.js';
 
 const TONE_SKIP = 0.025;
 const TONE_WINDOW = 0.35;
@@ -18,12 +18,6 @@ const REF_TAIL = 0.25;      // s after it stops before the mic is trusted again
 // gauge geometry (spec 8.3): viewBox 300 x 170, centre (150,160), r 118, ±50¢ ↔ ±70°
 const GX = 150, GY = 160, GR = 118, GSPAN = 70;
 const NEEDLE = GR - 12;
-
-function esc(text) {
-  const d = document.createElement('div');
-  d.textContent = text;
-  return d.innerHTML;
-}
 
 const r1 = (x) => Math.round(x * 10) / 10;
 // targets read in whole Hz above 100 Hz; kick-range pitches keep a decimal
@@ -781,7 +775,7 @@ export class TunerMode {
       onAction: () => {
         restoreFeel(snapshot);
         this.render();
-        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none');
+        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none', '[data-mode].on');
       },
     });
   }
@@ -797,7 +791,7 @@ export class TunerMode {
       onAction: () => {
         store.set('feel', prev);
         this.render();
-        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none');
+        this.focusAfterUndo('.feel-row.on', '#tuner-feel-none', '[data-mode].on');
       },
     });
   }
@@ -828,7 +822,8 @@ export class TunerMode {
     if (document.activeElement && document.activeElement !== document.body) return;
     for (const sel of sels) {
       const el = this.root.querySelector(sel);
-      if (el && !el.disabled) { el.focus(); return; }
+      // skip hidden targets: in LUGS mode the feel rows exist but are not shown
+      if (el && !el.disabled && el.getClientRects().length) { el.focus(); return; }
     }
   }
 
