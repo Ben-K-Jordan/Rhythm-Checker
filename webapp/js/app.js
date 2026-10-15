@@ -161,6 +161,18 @@ function initModes() {
   modes.home = new HomeMode($('#mode-home'), nav);
 }
 
+// keyboard focus never rests behind the sticky bar: scroll just far enough
+// that the control ends 8 px above it (the bar's own buttons are not in .screen)
+function keepFocusAboveBar(e) {
+  const el = e.target;
+  if (!(el instanceof Element) || !el.matches(':focus-visible')) return;
+  const screen = el.closest('main > .mode.active > .screen');
+  const bar = screen && screen.parentElement.querySelector(':scope > .bar');
+  if (!bar) return;
+  const over = el.getBoundingClientRect().bottom - (bar.getBoundingClientRect().top - 8);
+  if (over > 0) screen.closest('main').scrollTop += over;
+}
+
 // --------------------------------------------------------- LIVE banner
 function liveText(state, label) {
   const l = String(label || '').trim();
@@ -697,6 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
     focusTopSurface();
   });
   document.addEventListener('rc:run', onRunState);
+  document.addEventListener('focusin', keepFocusAboveBar);
   window.addEventListener('popstate', onPopState);
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {

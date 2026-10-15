@@ -239,12 +239,10 @@ button.holding:not(.hold)::after {
    look keep it through the scoped blocks at the top of their own CSS file. */
 
 /* ---------------------------------------------------------------- skeleton */
-/* scroll-padding: keyboard focus scrolls a control clear of the sticky bar
-   (36 px more for the .bar__reason line) instead of leaving it behind it */
-main:has(> .mode.active .bar) {
-  padding-bottom: 0;
-  scroll-padding-bottom: calc(var(--h-bar) + 36px + env(safe-area-inset-bottom));
-}
+/* keyboard focus never rests behind the sticky bar: app.js scrolls a focused
+   control clear of it (scroll-padding on main would also scroll the page to
+   its end whenever a button in the bar itself took focus) */
+main:has(> .mode.active .bar) { padding-bottom: 0; }
 /* while a toast shows, ui.js toast() sets body.has-toast and --toast-space
    (its height + 16): the screen grows by that much, so whatever sits under
    the toast can be scrolled clear of it. On .screen, not main, so the
