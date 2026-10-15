@@ -271,9 +271,9 @@ export class TimingMode {
         </div>
 
         <div class="stat-strip tm-tiles">
-          <div class="statbox"><b id="tm-band">—</b><span>IN POCKET</span></div>
-          <div class="statbox"><b id="tm-trend" class="tm-drift">—</b><span id="tm-trend-label">DRIFT</span></div>
-          <div class="statbox"><b id="tm-n">0</b><span>HITS</span></div>
+          <div class="statbox"><b id="tm-band">—</b><span>IN POCKET</span><em id="tm-band-of"></em></div>
+          <div class="statbox"><b id="tm-trend" class="tm-drift">—</b><span id="tm-trend-label">DRIFT</span><em id="tm-trend-dir"></em></div>
+          <div class="statbox"><b id="tm-n">0</b><span>HITS</span><em></em></div>
         </div>
       </div>
       <div class="bar">
@@ -306,8 +306,10 @@ export class TimingMode {
       side: $('#tm-steadiness-side'),
       avg: $('#tm-avg'),
       band: $('#tm-band'),
+      bandOf: $('#tm-band-of'),
       trend: $('#tm-trend'),
       trendLabel: $('#tm-trend-label'),
+      trendDir: $('#tm-trend-dir'),
       n: $('#tm-n'),
       bar: $('.bar'),
       go: $('#tm-go'),
@@ -623,8 +625,8 @@ export class TimingMode {
     this.showListening();
     this.el.avg.innerHTML = '<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> —';
     this.el.band.textContent = '—';
-    this.el.trend.textContent = '—';
-    this.el.trendLabel.textContent = 'DRIFT';
+    this.el.bandOf.textContent = '';
+    this.setDriftTile(this.el.trend, this.el.trendLabel, this.el.trendDir, null);
     this.el.n.textContent = '0';
     this.drawChart();
   }
@@ -633,7 +635,7 @@ export class TimingMode {
     const { monitor, steadiness, side } = this.el;
     monitor.classList.add('is-idle');
     steadiness.textContent = '—';
-    steadiness.style.fontSize = '';
+    steadiness.style.removeProperty('--mon-fs');
     side.innerHTML = '<span class="monitor__wait">LISTENING</span>';
   }
 
@@ -647,14 +649,15 @@ export class TimingMode {
     const pocket = this.runPocket;
     const k = this.recent.filter((d) => Math.abs(d) <= pocket).length;
     this.el.band.innerHTML = `${Math.round((100 * k) / s.n)}<i class="unit">%</i>`;
+    this.el.bandOf.textContent = `${k} of ${s.n}`;
     this.el.n.textContent = String(s.n);
-    this.setDriftTile(this.el.trend, this.el.trendLabel, this.drift(Math.max(this.elapsed || 0, relT)));
+    this.setDriftTile(this.el.trend, this.el.trendLabel, this.el.trendDir, this.drift(Math.max(this.elapsed || 0, relT)));
     if (s.n < LISTEN_HITS) return;
     const sd = String(Math.round(s.sd));
     const { monitor, steadiness, side } = this.el;
     monitor.classList.remove('is-idle');
     steadiness.innerHTML = `<span aria-hidden="true">±${sd}</span><span class="sr-only">plus or minus ${sd}</span>`;
-    steadiness.style.fontSize = `${monitorSize(`±${sd}`)}px`;
+    steadiness.style.setProperty('--mon-fs', `${monitorSize(`±${sd}`)}px`);
     if (!side.querySelector('.unit')) side.innerHTML = '<span class="unit">ms</span>';
     this.el.avg.innerHTML = `<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${offsetText(s.mean, 0, { upper: true })}`;
   }
@@ -672,19 +675,22 @@ export class TimingMode {
     return den ? (num / den) * 60 : null;
   }
 
-  setDriftTile(valueEl, labelEl, drift) {
+  // DRIFT tile: "{±x} ms/min" over the label DRIFT, the direction on its own
+  // sub-line ("later" / "earlier"), so neither is cut on a narrow phone
+  setDriftTile(valueEl, labelEl, dirEl, drift) {
+    labelEl.textContent = 'DRIFT';
     if (drift === null) {
       valueEl.textContent = '—';
       valueEl.classList.remove('is-long');
-      labelEl.textContent = 'DRIFT';
+      dirEl.textContent = '';
       return;
     }
     const txt = fmtSigned(drift, 0);
     valueEl.innerHTML = `${txt}<i class="unit">ms/min</i>`;
-    valueEl.classList.toggle('is-long', txt.length > 3);
+    valueEl.classList.toggle('is-long', txt.length >= 3);
     // the word follows the number as shown: a drift that reads 0 has no direction
     const word = dirWord(drift, 0);
-    labelEl.textContent = word ? `DRIFT ${word === 'late' ? 'LATER' : 'EARLIER'}` : 'DRIFT';
+    dirEl.textContent = word ? (word === 'late' ? 'later' : 'earlier') : '';
   }
 
   longestInPocket() {
@@ -762,30 +768,31 @@ export class TimingMode {
       <div class="stat-strip tm-rtiles">
         <div class="statbox"><b>${avg}<i class="unit">ms</i></b><span aria-hidden="true">AVG${avgWord}</span><em class="sr-only">average${avgWord.toLowerCase()}</em></div>
         <div class="statbox"><b>${Math.round(r.pocketPct)}<i class="unit">%</i></b><span>IN POCKET</span><em>${k} of ${r.n}</em></div>
-        <div class="statbox"><b class="tm-drift tm-rdrift">—</b><span class="tm-rdrift-label">DRIFT</span></div>
+        <div class="statbox"><b class="tm-drift tm-rdrift">—</b><span class="tm-rdrift-label">DRIFT</span><em class="tm-rdrift-dir"></em></div>
       </div>
       ${r.warning ? '<div class="card tm-note"><p class="t-body tm-note__text"></p></div>' : ''}
       <p class="tm-foot">${foot.join(' · ')}</p>`;
     if (r.warning) this.el.foot.querySelector('.tm-note__text').textContent = r.warning;
-    this.setDriftTile(this.el.foot.querySelector('.tm-rdrift'), this.el.foot.querySelector('.tm-rdrift-label'), drift);
+    const $f = (sel) => this.el.foot.querySelector(sel);
+    this.setDriftTile($f('.tm-rdrift'), $f('.tm-rdrift-label'), $f('.tm-rdrift-dir'), drift);
 
     this.el.cv.setAttribute('aria-label', `Spread ${nbsp(sdText, 'ms')}, average ${offsetText(r.mean, 0)}, ${Math.round(r.pocketPct)}% in pocket`);
   }
 
   // The stored baseline beside this run's spread. A wider/tighter figure only
   // when the baseline was held at this run's tempo and grid; otherwise the
-  // baseline is shown with its own tempo and nothing is compared.
-  baselineLine(sdText) {
-    const base = store.get('baseline');
+  // baseline is shown with its own tempo and nothing is compared. `name` is
+  // the chip's word: BASELINE, or WAS once this run has replaced it.
+  baselineLine(sdText, base = store.get('baseline'), name = 'BASELINE') {
     if (!base || !Number.isFinite(base.sd)) return '';
     const run = this.lastRun;
     const baseSd = base.sd.toFixed(1);
-    const chip = `BASELINE ±${nbsp(baseSd, 'ms')}`;
+    const chip = `${name} ±${nbsp(baseSd, 'ms')}`;
     if (run && base.bpm === run.bpm && base.subdivision === run.subdivision) {
       // the two figures as shown, so the difference always matches the screen
       const delta = Number(sdText) - Number(baseSd);
       const diff = Math.abs(delta) < 0.05
-        ? 'SAME AS BASELINE'
+        ? (name === 'BASELINE' ? 'SAME AS BASELINE' : 'SAME SPREAD')
         : `${nbsp(Math.abs(delta).toFixed(1), 'ms')} ${delta < 0 ? 'tighter' : 'wider'}`;
       // (the space keeps the two read as separate words; flex drops it visually)
       return `<p class="tm-vs"><span class="chip">${chip}</span> <span class="tm-vs__delta">${diff}</span></p>`;
@@ -825,6 +832,7 @@ export class TimingMode {
     const r = this.lastResult;
     const b = this.root.querySelector('#tm-baseline');
     if (!r || !b || b.classList.contains('is-set')) return;
+    const replaced = store.get('baseline');
     store.set('baseline', {
       bpm: this.lastRun.bpm,
       subdivision: this.lastRun.subdivision,
@@ -841,6 +849,13 @@ export class TimingMode {
     set.setAttribute('aria-disabled', 'true');
     set.innerHTML = `<span class="tm-baseline__main">BASELINE SET</span><span class="btn__sub">${icon('check')}today</span>`;
     b.replaceWith(set);
+    // this run is the baseline now: the line above names the one it replaced
+    const vs = this.el.result.querySelector('.tm-vs');
+    if (vs) {
+      const was = this.baselineLine(r.sd.toFixed(1), replaced, 'WAS');
+      if (was) vs.outerHTML = was;
+      else vs.remove();
+    }
     set.focus();
     announce(`Baseline set: ±${nbsp(r.sd.toFixed(1), 'ms')}.`);
   }
@@ -881,10 +896,12 @@ export class TimingMode {
       ctx.stroke();
     }
 
-    // y gridlines + tick labels
+    // y gridlines + tick labels; a short plot (a 640-tall phone, live) labels
+    // every other line so the 11 px ticks never touch
     ctx.font = mono(11);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
+    const labelEvery = (BOT - TOP) / u < 110 ? 40 : 20;
     for (let d = -Y_MAX; d <= Y_MAX; d += 20) {
       const y = yOf(d);
       if (d !== 0) {
@@ -895,6 +912,7 @@ export class TimingMode {
         ctx.lineTo(R, y);
         ctx.stroke();
       }
+      if (d % labelEvery !== 0) continue;
       ctx.fillStyle = P.ink60;
       ctx.fillText(fmtSigned(d, 0), L - 6 * u, y);
     }

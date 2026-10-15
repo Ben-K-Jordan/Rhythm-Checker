@@ -26,8 +26,22 @@
 #mode-rudiments[data-state="result"] :is(.rud-setup, .highway-panel) { display: none; }
 #mode-rudiments:not([data-state="result"]) .bar { grid-template-columns: 1fr; }
 
+/* --------------------------------------------------------------- bar
+   Result: EDIT SETUP + PLAY AGAIN. Fixed shares (no auto minimum), so a long
+   label can never push the primary past the screen edge. Under 375 px the
+   labels step down; the primary stays at 24 px (white on red floor). */
+#mode-rudiments[data-state="result"] .bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); }
+#mode-rudiments .bar > .btn { min-width: 0; }
+#mode-rudiments .bar > .btn--secondary { padding-inline: var(--s2); }
+@media (max-width: 374px) {
+  #mode-rudiments[data-state="result"] .bar > .btn--primary { gap: 6px; padding-inline: 10px; font-size: 24px; letter-spacing: .02em; }
+  #mode-rudiments[data-state="result"] .bar > .btn--secondary { font-size: 16px; }
+}
+
 /* ----------------------------------------------------------------- title */
-.rud-title__slot { display: flex; justify-content: flex-end; min-width: 0; }
+/* the chip drops under the stamp when both do not fit one line (320 px) */
+.rud-title { flex-wrap: wrap; row-gap: var(--s1); }
+.rud-title__slot { display: flex; justify-content: flex-end; flex: 0 1 auto; min-width: 0; margin-left: auto; }
 
 /* -------------------------------------------------------- stopped card */
 .rud-stopped { flex-direction: column; align-items: flex-start; gap: var(--s2); }
@@ -110,18 +124,23 @@
 }
 .param-box--menu > button[aria-expanded="true"]::after { transform: rotate(180deg); }
 .param-box.is-open { background: var(--tint); box-shadow: var(--sh-ctl); }
-.param-badge {
-  position: absolute; left: 50%; top: -13px; z-index: 2;
-  transform: translateX(-50%);
-  display: inline-flex; align-items: center; gap: 3px;
-  height: 20px; padding: 0 6px;
-  background: var(--ink); color: var(--paper);
-  font: 600 var(--t-label)/1 var(--label-font);
-  letter-spacing: .04em;
-  white-space: nowrap;
-  pointer-events: none;
+/* under 360 px the caps lose tracking and the cues move to the corner, so
+   BARS and METER never run into their cycle icon / caret */
+@media (max-width: 359px) {
+  .param-box__cap { left: 6px; letter-spacing: .02em; }
+  .param-box__cue { right: 4px; }
+  .param-box--menu > button::after { right: 4px; }
 }
-.param-badge .icon { width: 12px; height: 12px; }
+/* the active ramp: a line under the param row, 8 px below the boxes */
+.param-badge {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: calc(-1 * var(--s1));
+  font: 400 var(--t-label)/1.2 var(--label-font);
+  letter-spacing: .04em;
+  color: var(--ink);
+}
+.param-badge b { font-weight: 700; letter-spacing: .08em; }
+.param-badge .icon { width: 14px; height: 14px; }
 
 /* tempo / meter disclosure */
 .rud-disc { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3) var(--s2); }
@@ -134,7 +153,7 @@
 }
 .rud-steps > button + button { border-left: var(--border); }
 .rud-steps > button:active { background: var(--tint); }
-.rud-bpm { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.rud-bpm { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 72px; }
 .rud-bpm b { font: 700 40px/1 var(--mono-font); letter-spacing: -.03em; }
 .rud-bpm span { margin-top: 2px; font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .08em; color: var(--ink60); }
 .rud-tap {
@@ -144,8 +163,15 @@
   font: 700 var(--t-control)/1 var(--label-font); letter-spacing: .05em;
 }
 .rud-tap:active { background: var(--amber); }
+/* below 380 px the steppers and the 40 px number need the whole row: TAP
+   moves under them, full width */
+@media (max-width: 379px) {
+  .rud-tempo { flex-wrap: wrap; column-gap: var(--s1); row-gap: var(--s2); }
+  .rud-tap { order: 1; width: 100%; height: var(--hit); }
+}
 .rud-disc__label { font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .08em; color: var(--ink60); margin-bottom: -4px; }
 .rud-ramp > button { padding: 4px 2px; }
+.rud-ramp .seg__sub { white-space: normal; }
 .rud-meters.seg { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .rud-meters.seg > button { border-left: var(--border); font-family: var(--mono-font); font-size: 16px; letter-spacing: 0; }
 .rud-meters.seg > button:nth-child(4n + 1) { border-left: 0; }
@@ -162,14 +188,19 @@
 .rud-pattern-card > .rud-am { margin: 0 var(--s2); }
 .rud-am.seg { grid-auto-columns: auto; }
 .rud-am.seg > button { padding: var(--s1) 10px; white-space: nowrap; }
+@media (max-width: 359px) { .rud-am.seg > button { padding-inline: 6px; } }
 .rud-notation {
   overflow-x: auto; overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   margin: 0 var(--s1);
 }
+/* heads stacked over the pucks: only the staff line runs past the last note */
+.rud-notation.is-aligned { overflow-x: hidden; }
 .rud-notation-svg { display: block; }
+/* rows hold as many pucks as fit (rudiments.js); safe centring so a row can
+   never spill out to the unscrollable left */
 .accent-editor { display: flex; flex-direction: column; gap: var(--s1); padding: 0 2px; }
-.accent-row { display: flex; justify-content: center; gap: 2px; padding-top: 18px; }
+.accent-row { display: flex; justify-content: safe center; gap: 2px; padding-top: 18px; }
 .accent-puck {
   position: relative;
   flex: none;
@@ -182,7 +213,9 @@
 .accent-puck.r { background: var(--red); }
 .accent-puck.l { background: var(--blue); }
 .accent-puck.pulse-start { border-style: dashed; }
-.accent-puck.on { box-shadow: 0 0 0 2px var(--white), 0 0 0 5px var(--ink); }
+/* the accent ring is drawn inside the 44 px puck, so an edge puck never
+   bulges over the card border */
+.accent-puck.on { box-shadow: inset 0 0 0 2px var(--white), inset 0 0 0 5px var(--ink); }
 .accent-puck.on::before {
   content: '>';
   position: absolute; left: 50%; top: -21px;
@@ -190,7 +223,7 @@
   font: 700 14px/1 var(--mono-font);
   color: var(--ink);
 }
-.accent-puck:focus-visible { outline-offset: 5px; }
+.accent-puck:focus-visible { outline-offset: var(--focus-offset); }
 
 /* --------------------------------------------------------- count-in */
 .rud-countin { height: 124px; }
@@ -200,10 +233,14 @@
 /* ---------------------------------------------------------- monitor */
 .rud-monitor { min-height: 124px; align-content: end; }
 .rud-monitor .monitor__cap { margin: 0 0 6px; }
-.rud-monitor #rud-judge-num { display: block; }
+/* size by glyph count (monitorSize via --mon-fs), so short screens can scale it */
+.rud-monitor #rud-judge-num { display: block; font-size: var(--mon-fs, var(--t-monitor)); }
 .rud-monitor #rud-judge-num .icon { width: .8em; height: .8em; vertical-align: 0; }
-.rud-monitor.is-idle #rud-judge-num { color: var(--ink60); }
 .rud-monitor .monitor__side { margin: 0; }
+/* until the first hit: LISTENING alone on the value baseline, caption on top
+   (no "—" beside it); the box keeps its height, so nothing moves on hit 1 */
+.rud-monitor.is-idle { align-content: space-between; }
+.rud-monitor.is-idle #rud-judge-num { display: none; }
 
 /* ------------------------------------------------ early/late strip (8.2) */
 .rud-strip { grid-template-rows: auto 1fr; align-content: start; row-gap: 4px; height: var(--h-strip); padding: 5px 8px 0; }
@@ -261,12 +298,36 @@
 .rud-tiles .statbox b .unit { margin-left: 2px; }
 .rud-tiles .statbox em { margin-top: 2px; }
 
+/* ------------------------------------------- short phones (640-700 tall)
+   iPhone SE installed (375 x 647) and 640-tall Androids: count-in panel,
+   monitor and highway step down so the live tiles clear the STOP bar. The
+   "played · coming up" key would sit on the L lane in a 150 px panel, so it
+   is left out there. */
+@media (max-height: 700px) {
+  #mode-rudiments { --h-highway-run: 150px; }
+  .rud-countin { height: 88px; }
+  .rud-countin b { font-size: 72px; }
+  .rud-monitor { min-height: 88px; }
+  .rud-monitor #rud-judge-num { font-size: calc(var(--mon-fs, var(--t-monitor)) * .66); }
+  #mode-rudiments:is([data-state="countin"], [data-state="running"]) .hw-legend { display: none; }
+}
+
 /* --------------------------------------------------------- report (5.9) */
 .rud-report { flex-direction: column; gap: var(--s3); }
 .rud-hero .hero__cap { display: block; }
 .rud-hero__num { display: flex; align-items: baseline; gap: 6px; }
 .rud-hero__num b { font: 700 var(--t-hero)/.86 var(--mono-font); letter-spacing: -.03em; white-space: nowrap; }
 .rud-hero__num .unit { margin-left: 0; font-size: 28px; }
+/* HITS / MISSED / EXTRA HITS + "not counted": narrower inner padding below
+   375 px so the label and its sub-line stay whole, on one line each */
+@media (max-width: 374px) {
+  .rud-report .stat-strip .statbox { padding-inline: 6px; }
+  .rud-report .statbox em { white-space: nowrap; }
+}
+@media (max-width: 359px) {
+  .rud-report .stat-strip .statbox { padding-inline: 5px; }
+  .rud-report .statbox em { font-size: var(--t-axis); }
+}
 .rud-accents { font: 400 var(--t-label)/1.35 var(--label-font); letter-spacing: .04em; }
 .rud-accents b { font-weight: 700; letter-spacing: .08em; }
 

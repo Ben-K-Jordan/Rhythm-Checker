@@ -202,6 +202,10 @@ export function buildChart(rud, groove, bars, ramp, lead = 'R',
 const NBSP = ' ';
 const one = (x) => Math.abs(x).toFixed(1);
 const HAND_WORD = { R: 'right', L: 'left' };
+const PUCK_SIZE = 44;    // accent puck, = the 44 px target
+const PUCK_PITCH = 46;   // puck + 2 px gap
+const PUCK_ROW_MAX = 8;  // never more than one bar of 16ths in a row
+const HEAD_DX = 6;       // notation.js draws a notehead 6 px right of its slot
 const CYCLE_SVG = '<svg class="icon param-box__cue" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="2.8" d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M20.5 3.5v6h-6z"/></svg>';
 
 // Signed tick label for an ms axis: U+2212 minus, '+' on positives, bare 0.
@@ -341,13 +345,13 @@ export class RudimentsMode {
             <div class="param-box param-box--menu">
               <span class="param-box__cap" aria-hidden="true">BPM</span>
               <button type="button" id="rud-tempo-chip" aria-expanded="false" aria-controls="rud-disc" aria-label="Tempo: ${this.bpm} BPM">${this.bpm}</button>
-              <span class="param-badge hidden"></span>
             </div>
             <div class="param-box param-box--menu">
               <span class="param-box__cap" aria-hidden="true">METER</span>
               <button type="button" id="rud-meter-chip" aria-expanded="false" aria-controls="rud-disc" aria-label="Meter: ${meter.label}">${meter.label}</button>
             </div>
           </div>
+          <p class="param-badge hidden"></p>
           <div id="rud-disc" class="disclosure rud-disc hidden"></div>
           <section class="card rud-pattern-card" aria-labelledby="rud-pattern-head">
             <div class="sec-head">
@@ -387,7 +391,7 @@ export class RudimentsMode {
         </div>
         <div class="stat-strip rud-tiles">
           <div class="statbox"><b id="rud-spread">—</b><span>SPREAD</span></div>
-          <div class="statbox"><b id="rud-avg">—</b><span id="rud-avg-label"><span aria-hidden="true">AVG</span><span class="sr-only">Average</span></span></div>
+          <div class="statbox"><b id="rud-avg">—</b><span id="rud-avg-label" aria-hidden="true">AVG</span><em id="rud-avg-sr" class="sr-only">Average</em></div>
           <div class="statbox"><b id="rud-acc">—</b><span>HITS</span><em id="rud-combo" class="hidden"></em></div>
         </div>
         <div id="rud-summary" class="rud-report"></div>
@@ -449,6 +453,14 @@ export class RudimentsMode {
 
     this.hw = createHighway($('#rud-highway'));
     this.hw.draw(null);
+    // puck rows and the staff above them follow the PATTERN card's width
+    // (rotation, split view, a narrow phone), not just the first render
+    this._padW = 0;
+    if (typeof ResizeObserver === 'function') {
+      if (this._ro) this._ro.disconnect();
+      this._ro = new ResizeObserver(() => this.onPatternResize());
+      this._ro.observe($('#rud-accent-editor'));
+    }
     this.renderAccentEditor();
     this.renderRampBadge();
     this.renderTitleSlot();
@@ -476,14 +488,17 @@ export class RudimentsMode {
     this.updateTempoText();
   }
 
+  // the active ramp, as a line under the param row (beside the tempo chip,
+  // never on a box border); the same words as the RAMP segment it came from
   renderRampBadge() {
     const badge = this.root.querySelector('.param-badge');
     if (!badge) return;
     const r = RAMPS.find((x) => x.id === this.rampId);
     badge.classList.toggle('hidden', !r || !r.ramp);
     if (r && r.ramp) {
-      badge.innerHTML = `${icon('ramp')}+${r.ramp.addBpm}/${r.ramp.everyBars}`;
-      badge.setAttribute('aria-label', `Ramp: plus ${r.ramp.addBpm} BPM every ${r.ramp.everyBars} bars`);
+      badge.innerHTML = `${icon('ramp')}<b>RAMP</b> ${nbsp(`+${r.ramp.addBpm}`, 'BPM')} per ${nbsp(r.ramp.everyBars, 'bars')}`;
+    } else {
+      badge.replaceChildren();
     }
   }
 
@@ -604,10 +619,11 @@ export class RudimentsMode {
 
   // real rhythm notation for the current rudiment; accents reflect the chosen
   // mode (AS WRITTEN by default) — a sight-reading aid.
-  notationSVG(rud, width) {
+  notationSVG(rud, width, grid = null) {
     const accent = this.accentValue();
     return rudimentNotationSVG(rud, {
       width,
+      ...(grid || {}),
       accentOf: (n, idx) => accentForNote(rud, accent, { ...n, phrasePos: idx }),
     });
   }
@@ -615,7 +631,49 @@ export class RudimentsMode {
   refreshNotation() {
     const el = this.root.querySelector('.rud-notation');
     if (!el) return;
-    el.innerHTML = this.notationSVG(this.currentRudiment(), el.clientWidth || 340);
+    const rud = this.currentRudiment();
+    const grid = this.notationGrid(rud, el);
+    el.classList.toggle('is-aligned', !!grid);
+    el.innerHTML = this.notationSVG(rud, el.clientWidth || 340, grid);
+    el.scrollLeft = 0;
+  }
+
+  // Staff geometry that stacks each notehead over its sticking puck: the
+  // first puck's centre (in .rud-notation px) and one puck pitch per note.
+  // Only when the whole phrase sits in one puck row and its notes are evenly
+  // spaced in time, as the pucks are; otherwise null (proportional spacing).
+  notationGrid(rud, host) {
+    const rows = this.root.querySelectorAll('#rud-accent-editor .accent-row');
+    if (rows.length !== 1 || !host.clientWidth) return null;
+    const slots = rud.notes.map((n) => n.slot);
+    const step = slots.length > 1 ? slots[1] - slots[0] : 0;
+    if (step <= 0 || slots.some((s, i) => i > 0 && s - slots[i - 1] !== step)) return null;
+    const first = rows[0].querySelector('.accent-puck');
+    if (!first) return null;
+    const hr = host.getBoundingClientRect();
+    const pr = first.getBoundingClientRect();
+    const centre = pr.left + pr.width / 2 - (hr.left + host.clientLeft);
+    const beatW = (rud.grid / step) * PUCK_PITCH;
+    return { padL: centre - HEAD_DX - (slots[0] / rud.grid) * beatW, beatW };
+  }
+
+  // how many pucks fit one row of the PATTERN card (null while it is hidden)
+  puckRowCap() {
+    const el = this.root.querySelector('#rud-accent-editor');
+    if (!el || !el.clientWidth) return null;
+    const cs = getComputedStyle(el);
+    const inner = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return Math.max(1, Math.min(PUCK_ROW_MAX, Math.floor((inner + PUCK_PITCH - PUCK_SIZE) / PUCK_PITCH)));
+  }
+
+  onPatternResize() {
+    const el = this.root.querySelector('#rud-accent-editor');
+    const w = el ? el.clientWidth : 0;
+    if (!w) { this._padW = 0; return; } // hidden: lay out again once shown
+    if (w === this._padW) return;       // only the height changed
+    this._padW = w;
+    if (this.puckRowCap() !== this._rowCap) this.renderAccentEditor();
+    else this.refreshNotation();
   }
 
   accentValue() {
@@ -636,12 +694,17 @@ export class RudimentsMode {
     this.renderAccentEditor();
   }
 
-  // one 44 px puck per note, rows of at most 8 that break on a beat boundary
+  // One 44 px puck per note. A row holds as many as the card fits (8 on a
+  // 390 phone, 6 at 320) and breaks on a beat boundary; a beat too long for
+  // one row splits into even halves (or thirds).
   renderAccentEditor() {
     const el = this.root.querySelector('#rud-accent-editor');
     if (!el) return;
     const rud = this.currentRudiment();
     const accent = this.accentValue();
+    const cap = this.puckRowCap() || this._rowCap || PUCK_ROW_MAX;
+    this._rowCap = cap;
+    const focusStep = el.contains(document.activeElement) ? document.activeElement.dataset.step : null;
     const beats = [];
     rud.notes.forEach((n, i) => {
       const b = Math.floor(n.slot / rud.grid);
@@ -651,9 +714,13 @@ export class RudimentsMode {
     });
     const rows = [[]];
     for (const b of beats) {
-      const row = rows[rows.length - 1];
-      if (row.length && row.length + b.idx.length > 8) rows.push([...b.idx]);
-      else row.push(...b.idx);
+      const size = Math.ceil(b.idx.length / Math.ceil(b.idx.length / cap));
+      for (let k = 0; k < b.idx.length; k += size) {
+        const part = b.idx.slice(k, k + size);
+        const row = rows[rows.length - 1];
+        if (row.length && row.length + part.length > cap) rows.push(part);
+        else row.push(...part);
+      }
     }
     const puck = (i) => {
       const n = rud.notes[i];
@@ -665,6 +732,10 @@ export class RudimentsMode {
         aria-label="Note ${i + 1}, ${HAND_WORD[hand]} hand, ${on ? 'accented' : 'not accented'}">${hand}</button>`;
     };
     el.innerHTML = rows.map((r) => `<div class="accent-row">${r.map(puck).join('')}</div>`).join('');
+    if (focusStep !== null && focusStep !== undefined) {
+      const again = el.querySelector(`.accent-puck[data-step="${focusStep}"]`);
+      if (again) again.focus({ preventScroll: true });
+    }
     this.refreshNotation();
     el.querySelectorAll('.accent-puck').forEach((p) => {
       p.addEventListener('click', () => {
@@ -728,14 +799,15 @@ export class RudimentsMode {
     $('#rud-judge-label').textContent = 'LAST HIT';
     const num = $('#rud-judge-num');
     num.textContent = '—';
-    num.style.fontSize = `${monitorSize('—')}px`;
+    num.style.setProperty('--mon-fs', `${monitorSize('—')}px`);
     $('#rud-judge-cap').innerHTML = '<span class="monitor__wait">LISTENING</span>';
     for (const id of ['#rud-spread', '#rud-avg', '#rud-acc']) {
       const b = $(id);
       b.textContent = '—';
       b.parentElement.classList.add('is-empty');
     }
-    $('#rud-avg-label').innerHTML = '<span aria-hidden="true">AVG</span><span class="sr-only">Average</span>';
+    $('#rud-avg-label').textContent = 'AVG';
+    $('#rud-avg-sr').textContent = 'Average';
     $('#rud-combo').classList.add('hidden');
   }
 
@@ -957,8 +1029,8 @@ export class RudimentsMode {
     if (s) {
       set('#rud-avg', `${Math.abs(s.mean).toFixed(0)}<i class="unit">ms</i>`, false);
       const dir = dirWord(s.mean, 0);
-      const word = dir ? ` ${dir.toUpperCase()}` : '';
-      $('#rud-avg-label').innerHTML = `<span aria-hidden="true">AVG${word}</span><span class="sr-only">Average${word.toLowerCase()}</span>`;
+      $('#rud-avg-label').textContent = dir ? `AVG ${dir.toUpperCase()}` : 'AVG';
+      $('#rud-avg-sr').textContent = dir ? `Average ${dir}` : 'Average';
     }
     if (seen) set('#rud-acc', `${hits}<i class="unit">/${seen}</i>`, false);
     else set('#rud-acc', '—', true);
@@ -976,12 +1048,12 @@ export class RudimentsMode {
     mon.classList.toggle('is-miss', judge === 'miss');
     if (judge === 'miss') {
       num.innerHTML = `${icon('cross')}<span class="sr-only">Missed</span>`;
-      num.style.fontSize = `${monitorSize('000')}px`;
+      num.style.setProperty('--mon-fs', `${monitorSize('000')}px`);
       cap.innerHTML = '<span class="dir">MISSED</span>';
     } else {
       const text = fmtSigned(devMs, 0);
       num.textContent = text;
-      num.style.fontSize = `${monitorSize(text)}px`;
+      num.style.setProperty('--mon-fs', `${monitorSize(text)}px`);
       // a hit that reads 0 is on the click: no EARLY / LATE beside it
       const word = dirWord(devMs, 0).toUpperCase();
       cap.innerHTML = `<span class="unit">ms</span>${word ? ` <span class="dir">${word}</span>` : ''}`;

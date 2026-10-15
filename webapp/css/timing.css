@@ -16,6 +16,9 @@
 #mode-timing[data-state="countin"] .tm-countin { display: flex; }
 #mode-timing[data-state="running"] .tm-monitor { display: grid; }
 #mode-timing[data-state="running"] .tm-avgline { display: block; }
+/* the AVG line's slot is held through the count-in, so the chart and tiles
+   do not jump down when playing starts */
+#mode-timing[data-state="countin"] .tm-avgline { display: block; visibility: hidden; }
 #mode-timing:is([data-state="countin"], [data-state="running"]) .tm-tiles { display: grid; }
 #mode-timing:is([data-state="countin"], [data-state="running"]) .tm-title { display: none; }
 #mode-timing[data-state="result"] :is(.tm-setup, .tm-chart-home) { display: none; }
@@ -72,6 +75,12 @@
 .tc-tempo .tc-val { min-width: 0; text-align: center; white-space: nowrap; }
 .tc-tempo .tc-val b { font: 700 40px/1 var(--mono-font); letter-spacing: -.03em; }
 .tc-unit { font: 600 var(--t-control)/1 var(--label-font); letter-spacing: .05em; }
+/* 320 px: "120 BPM" clear of the + stepper, QUARTERS clear of its borders */
+@media (max-width: 359px) {
+  .tc-tempo { column-gap: var(--s2); }
+  .tc-tempo .tc-val b { font-size: 32px; }
+  #tm-grid > button { padding: var(--s1) 2px; font-size: var(--t-label); letter-spacing: .02em; }
+}
 
 .tc-hold { display: flex; flex-direction: column; gap: 6px; }
 .tc-hold .seg + .tc-cap { margin-top: 6px; }
@@ -112,9 +121,13 @@
 .tm-countin .countin__dots { display: grid; grid-template-columns: repeat(2, 20px); gap: var(--s2); }
 .tm-monitor { min-height: 124px; align-content: end; }
 .tm-monitor .monitor__cap { margin: 0 0 6px; }
-.tm-monitor #tm-steadiness { display: block; }
-.tm-monitor.is-idle #tm-steadiness { color: var(--ink60); }
+/* size by glyph count (monitorSize via --mon-fs), so short screens can scale it */
+.tm-monitor #tm-steadiness { display: block; font-size: var(--mon-fs, var(--t-monitor)); }
 .tm-monitor .monitor__side { margin: 0; }
+/* until hit 6: LISTENING alone on the value baseline, caption on top (no
+   "—" beside it); the box keeps its height, so nothing moves at hit 6 */
+.tm-monitor.is-idle { align-content: space-between; }
+.tm-monitor.is-idle #tm-steadiness { display: none; }
 .tm-avgline { font: 700 var(--t-avg)/1.1 var(--label-font); letter-spacing: .02em; }
 
 /* ------------------------------------------------------- drift chart (8.4) */
@@ -131,9 +144,10 @@
 .lg-band { display: inline-block; width: 14px; height: 9px; background: var(--tint); border-block: 1px solid rgba(20, 18, 16, .3); }
 .tm-plot { position: relative; height: var(--h-chart); }
 .tm-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
+/* near the top of the plot, so the first view at 390 x 763 keeps it clear of the bar */
 .tm-plot__hint {
-  position: absolute; left: 50%; top: 50%;
-  transform: translate(-50%, -50%);
+  position: absolute; left: 50%; top: var(--s6);
+  transform: translateX(-50%);
   width: max-content; max-width: 76%;
   padding: 6px 10px;
   background: var(--white);
@@ -147,7 +161,15 @@
 #mode-timing .statbox b .unit { margin-left: 2px; }
 #mode-timing .statbox b.tm-drift .unit { font-size: var(--t-caption); letter-spacing: 0; }
 #mode-timing .statbox b.tm-drift.is-long { font-size: 22px; }
-#mode-timing .statbox em { margin-top: 2px; }
+#mode-timing .statbox em { margin-top: 2px; white-space: nowrap; }
+/* live tiles keep the sub-line row ("k of n", "later") from the first frame,
+   so they never grow mid-run; same height as the result tiles */
+.tm-tiles .statbox em { min-height: 1.3em; }
+/* 320 px: a 3-glyph drift ("−20 ms/min") and "105 of 115" fit their tiles */
+@media (max-width: 359px) {
+  #mode-timing .stat-strip .statbox { padding-inline: 6px; }
+  #mode-timing .statbox b.tm-drift.is-long { font-size: 20px; }
+}
 
 /* ----------------------------------------------------------- result */
 .tm-hero .hero__cap { display: block; }
@@ -167,10 +189,22 @@
 #mode-timing .fact { display: block; overflow: visible; -webkit-line-clamp: none; line-clamp: none; }
 .tm-foot { font: 400 var(--t-axis)/1.3 var(--mono-font); color: var(--ink60); }
 
-/* ------------------------------------------------------------- bar */
+/* ------------------------------------------------------------- bar
+   Result: baseline + START AGAIN. Fixed shares (no auto minimum): the
+   SET BASELINE / HOLD / SET states keep one width, so START AGAIN never
+   moves or leaves the screen. Under 375 px the labels step down; the primary
+   stays at 24 px (white on red floor). */
+#mode-timing .bar:has(> .btn ~ .btn) { grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); }
+#mode-timing .bar > .btn { min-width: 0; }
+@media (max-width: 374px) {
+  #mode-timing .bar:has(> .btn ~ .btn) > .btn--primary { gap: 6px; padding-inline: 10px; font-size: 24px; letter-spacing: .02em; }
+  #mode-timing .bar > .tm-baseline { font-size: 16px; }
+}
 .tm-baseline { padding: 0 var(--s2); white-space: normal; line-height: 1; }
 .tm-baseline__main { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-align: center; }
-.tm-baseline .btn__sub { white-space: nowrap; }
+/* the sub-line wraps (HOLD TO / REPLACE) rather than run into the borders */
+.tm-baseline .btn__sub { white-space: normal; text-align: center; line-height: 1.15; letter-spacing: .06em; }
+@media (max-width: 359px) { .tm-baseline .btn__sub { letter-spacing: .02em; } }
 #tm-baseline.is-set,
 #tm-baseline.is-set:active {
   background: var(--white); color: var(--ink);
@@ -180,3 +214,17 @@
 }
 #tm-baseline.is-set .btn__sub { display: inline-flex; align-items: center; gap: 4px; color: var(--ink60); }
 #tm-baseline.is-set .btn__sub .icon { width: 12px; height: 12px; color: var(--green-ink); }
+
+/* ------------------------------------------- short phones (640-700 tall)
+   iPhone SE installed (375 x 647) and 640-tall Androids, while live: the
+   count-in panel and monitor step down, the plot shrinks and the chart's
+   title row goes (the plot carries EARLY / LATE, the legend the units), so
+   the tiles clear the STOP bar. */
+@media (max-height: 700px) {
+  .tm-countin { height: 88px; }
+  .tm-countin b { font-size: 72px; }
+  .tm-monitor { min-height: 88px; }
+  .tm-monitor #tm-steadiness { font-size: calc(var(--mon-fs, var(--t-monitor)) * .66); }
+  #mode-timing:is([data-state="countin"], [data-state="running"]) .tm-chart > .sec-head { display: none; }
+  #mode-timing:is([data-state="countin"], [data-state="running"]) .tm-plot { height: 120px; }
+}
