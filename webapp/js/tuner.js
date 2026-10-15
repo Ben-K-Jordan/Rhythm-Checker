@@ -23,6 +23,17 @@ const r1 = (x) => Math.round(x * 10) / 10;
 // targets read in whole Hz above 100 Hz; kick-range pitches keep a decimal
 const fmtHz = (hz) => String(hz >= 100 ? Math.round(hz) : r1(hz));
 const hzText = (hz) => nbsp(fmtHz(hz), 'Hz');
+// toast separators: the NBSP keeps each "·" on the line it closes
+const SEP = '\u00a0· ';
+
+// status-slot lines (the idle line and the LISTEN line are built per drum)
+const NO_PITCH = 'No clear pitch. Let the head ring.';
+const PAIR_RESO = 'Now tap the reso to see the pair.';
+const PAIR_BATTER = 'Tap the batter too to see the pair.';
+const refText = (hz) => `Playing ${hzText(hz)}. Tap after it stops.`;
+
+// live monitor sizes (--t-monitor, -4, -5), largest first
+const MONITOR_STEPS = [120, 96, 72];
 
 function median(arr) {
   const s = [...arr].sort((a, b) => a - b);
@@ -197,8 +208,8 @@ export class TunerMode {
     const pre = this.mic.grabWindow(onset.time - TONE_WINDOW - 0.01, TONE_WINDOW);
     const hz = estimatePitch(win, this.mic.audioContext.sampleRate, pre);
     if (hz === null) {
-      this.flashStatus('No clear pitch. Let the head ring.');
-      announce('No clear pitch. Let the head ring.');
+      this.flashStatus(NO_PITCH);
+      announce(NO_PITCH);
       return;
     }
     this.status = null;
@@ -335,6 +346,11 @@ export class TunerMode {
     const drum = this.drum();
     const lug = this.mode === 'lug';
     const focusKey = this.focusKey();
+    // The rebuild forces layout while the screen is half built (seg() measures
+    // the chip row), and <main> clamps its scroll to that shorter page. Put
+    // the scroll back afterwards, so a tap never throws the page to the top.
+    const scroller = this.root.closest('main');
+    const keepTop = scroller ? scroller.scrollTop : 0;
     this.root.innerHTML = `
       <div class="screen tuner">
         <div class="title-row">
@@ -371,7 +387,10 @@ export class TunerMode {
       (id) => this.setDrum(id));
     chips.insertAdjacentHTML('beforeend',
       `<button type="button" class="btn--quiet tuner-editkit" id="tuner-edit-kit">EDIT KIT${icon('tri-right')}</button>`);
-    chips.dispatchEvent(new Event('scroll')); // re-measure the end fade with EDIT KIT in the row
+    // seg() fades the right edge until the row's end; once the row is
+    // scrolled, a chip cut at the left edge fades out the same way
+    chips.addEventListener('scroll', () => chips.classList.toggle('is-scrolled', chips.scrollLeft > 1), { passive: true });
+    chips.dispatchEvent(new Event('scroll')); // re-measure both fades with EDIT KIT in the row
     $('#tuner-edit-kit').addEventListener('click', () => this.openKit());
 
     const select = $('#tuner-head');
@@ -412,6 +431,7 @@ export class TunerMode {
       $('#tuner-save').addEventListener('click', () => this.save());
     }
     this.updateReadout();
+    if (scroller && scroller.scrollTop !== keepTop) scroller.scrollTop = keepTop;
     if (focusKey) {
       const el = this.root.querySelector(focusKey);
       if (el) el.focus({ preventScroll: true });
@@ -447,19 +467,23 @@ export class TunerMode {
     // NONE drops the feel label only: targets, tempo and runs stay as they are
     const off = !(feel && FEELS[feel]);
     const none = `<button type="button" class="feel-none${off ? ' on' : ''}" id="tuner-feel-none" data-feel="none" aria-pressed="${off}" aria-label="NONE, no player feel. Kit targets stay.">NONE</button>`;
+    // Everything above the gauge keeps its height from idle to reading, so
+    // the gauge (the reference) never moves between taps: the age caption and
+    // the Hz line hold their place while empty, the status slot is as tall as
+    // the tallest line it can show, and the batter/reso pair sits below.
+    const sizers = this.statusLines().map((t) => `<span class="tuner-slot__size" aria-hidden="true">${esc(t)}</span>`).join('');
     return `
       <section class="tuner-read">
-        <div class="monitor__cap tuner-cap hidden" id="tuner-cap"></div>
+        <div class="monitor__cap tuner-cap is-off" id="tuner-cap">LAST TAP</div>
         <div class="tuner-mon">
           <div class="monitor is-idle"><b id="gauge-cents">—</b><span class="monitor__side"><i class="unit" id="tuner-unit">${target ? '¢' : 'Hz'}</i></span></div>
           <div class="tuner-dir"><span id="gauge-state" class="dir hidden"></span><span class="chip chip--ok tuner-intune hidden" id="tuner-tol"></span></div>
         </div>
         <div class="tuner-hzline">
-          <span id="gauge-note" class="hidden"></span>
+          <span id="gauge-note" class="${target ? 'is-off' : 'hidden'}"></span>
           ${target ? `<span id="gauge-target">VS ${hzText(target)} · ${esc(this.targetSource())}</span>` : ''}
         </div>
-        <p id="tuner-status" class="tuner-status hidden"></p>
-        <p id="tuner-heads" class="tuner-pair hidden"></p>
+        <div class="tuner-slot">${sizers}<p id="tuner-status" class="tuner-status hidden"></p></div>
       </section>
       <div class="card tuner-notarget${target ? ' hidden' : ''}"><p${target ? '' : ' id="gauge-target"'}>No target yet. Tap, then save.</p></div>
       <div class="card gauge-card${target ? '' : ' hidden'}">
@@ -468,6 +492,7 @@ export class TunerMode {
         <span class="gauge-end gauge-end--flat" aria-hidden="true">FLAT</span>
         <span class="gauge-end gauge-end--sharp" aria-hidden="true">SHARP</span>
       </div>
+      <p id="tuner-heads" class="tuner-pair hidden"></p>
       <section class="tuner-feel" aria-labelledby="tuner-feel-title">
         <div class="sec-head">
           <h2 class="sec-head__stamp" id="tuner-feel-title">PLAYER FEEL</h2>
@@ -480,9 +505,10 @@ export class TunerMode {
   lugHTML() {
     return `
       <div id="lug-panel" class="card lug-panel" role="group" aria-label="Lug pass" tabindex="-1">
-        <div class="lug-count" role="group" aria-labelledby="lug-count-label">
+        <div class="lug-count">
           <span class="lug-count__label" id="lug-count-label">LUGS ON THIS DRUM</span>
-          <div class="lug-count__ctl">
+          <span class="chip lug-progress" id="lug-progress"></span>
+          <div class="lug-count__ctl" role="group" aria-labelledby="lug-count-label">
             <button type="button" id="lug-less" class="lug-count__btn" aria-label="Fewer lugs" aria-describedby="lug-count">${stepIcon('M5 12h14')}</button>
             <span id="lug-count" class="lug-count__n">${this.lugSlots()}</span>
             <button type="button" id="lug-more" class="lug-count__btn" aria-label="More lugs" aria-describedby="lug-count">${stepIcon('M5 12h14M12 5v14')}</button>
@@ -491,7 +517,6 @@ export class TunerMode {
         <div class="lug-top">
           <div class="lug-diagram" id="lug-diagram"></div>
           <div id="lug-verdict" class="lug-verdict">
-            <span class="chip lug-progress" id="lug-progress"></span>
             <div class="hero lug-hero hidden" id="lug-hero">
               <div class="hero__cap">ALL LUGS WITHIN</div>
               <b id="lug-spread"></b>
@@ -511,6 +536,21 @@ export class TunerMode {
     return `Tap the ${this.drumName()}. Let it ring.`;
   }
 
+  // every line the pitch status slot can show for this drum + head
+  statusLines() {
+    const lines = [this.idleText(), NO_PITCH, PAIR_RESO, PAIR_BATTER];
+    const target = this.targetHz();
+    if (target) lines.push(refText(target));
+    return lines;
+  }
+
+  // one head of this drum read, the other not yet
+  pairPrompt() {
+    const m = this.heads[this.drumId || 'free'] || {};
+    if (m.batter && m.reso) return '';
+    return m.batter ? PAIR_RESO : m.reso ? PAIR_BATTER : '';
+  }
+
   flashStatus(msg) {
     this.status = msg;
     this.renderStatus();
@@ -519,12 +559,27 @@ export class TunerMode {
   renderStatus() {
     const el = this.root.querySelector('#tuner-status');
     if (!el) return;
-    const idle = this.mode === 'fund' && this.lastHz === null;
+    const fund = this.mode === 'fund';
     // while LISTEN plays, say why taps are not being read
     const playing = this._refTimer !== null && this._ref ? this._ref.msg : '';
-    const text = playing || this.status || (idle ? this.idleText() : '');
+    const text = playing || this.status
+      || (fund ? (this.lastHz === null ? this.idleText() : this.pairPrompt()) : '');
     el.textContent = text;
     el.classList.toggle('hidden', !text);
+  }
+
+  // A narrow phone can't hold a 120 px number beside SHARP or IN TUNE: step
+  // down the monitor sizes until the number, its unit and the direction word
+  // sit side by side with the row's gap between them.
+  fitMonitor(el, value) {
+    const steps = MONITOR_STEPS.slice(MONITOR_STEPS.indexOf(monitorSize(value)));
+    const row = el.closest('.tuner-mon');
+    const dir = row && row.querySelector('.tuner-dir');
+    el.style.fontSize = `${steps[0]}px`;
+    if (!dir || !row.clientWidth) return; // not on screen: activate() renders again
+    const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+    const fits = () => el.parentElement.scrollWidth + gap + dir.getBoundingClientRect().width <= row.clientWidth;
+    for (let i = 1; i < steps.length && !fits(); i++) el.style.fontSize = `${steps[i]}px`;
   }
 
   updateReadout() {
@@ -567,17 +622,21 @@ export class TunerMode {
       }
     }
     centsEl.textContent = value;
-    centsEl.style.fontSize = `${monitorSize(value)}px`;
     monitor.classList.toggle('is-idle', hz === null);
     unitEl.textContent = target ? '¢' : 'Hz';
     stateEl.textContent = state;
     stateEl.classList.toggle('hidden', !state);
     tolEl.innerHTML = inTune ? `${icon('check')}±${tol}¢` : '';
     tolEl.classList.toggle('hidden', !inTune);
-    noteEl.innerHTML = hz !== null && target
+    this.fitMonitor(centsEl, value);
+    // with a target the Hz line keeps its place while idle (a hidden
+    // placeholder holds the line), so the first tap doesn't push the gauge
+    const showNote = hz !== null && !!target;
+    noteEl.innerHTML = showNote
       ? `${esc(nbsp(hz.toFixed(1), 'Hz'))}<span class="tuner-note"> · ${esc(hzToNote(hz))}</span>`
-      : '';
-    noteEl.classList.toggle('hidden', !(hz !== null && target));
+      : esc(nbsp('—', 'Hz'));
+    noteEl.classList.toggle('is-off', !showNote);
+    noteEl.classList.toggle('hidden', !target);
 
     if (hand) {
       hand.setAttribute('transform', `rotate(${deg.toFixed(1)} ${GX} ${GY})`);
@@ -606,13 +665,14 @@ export class TunerMode {
     if (!cap || !read) return;
     const r = this.lastHz !== null ? this.reading : null;
     if (!r) {
-      cap.classList.add('hidden');
+      // kept in flow, unseen: the caption's line stays reserved
+      cap.classList.add('is-off');
       read.classList.remove('is-stale');
       return;
     }
     const age = performance.now() - r.at;
     cap.textContent = `LAST TAP · ${nbsp(Math.floor(age / 1000), 's')} AGO`;
-    cap.classList.remove('hidden');
+    cap.classList.remove('is-off');
     read.classList.toggle('is-stale', age >= STALE_MS);
     const hand = this.root.querySelector('#gauge-hand');
     if (hand) hand.classList.toggle('is-stale', age >= STALE_MS);
@@ -650,6 +710,8 @@ export class TunerMode {
     reason.classList.toggle('hidden', !why);
   }
 
+  // the batter/reso comparison, under the gauge; until both heads are read
+  // the status slot above the gauge prompts for the other one
   renderHeads() {
     const el = this.root.querySelector('#tuner-heads');
     if (!el) return;
@@ -663,10 +725,6 @@ export class TunerMode {
           ? 'reso above: the pitch bends down after the hit'
           : 'reso below: shorter, fatter';
       text = `Batter ${nbsp(m.batter.toFixed(1), 'Hz')} · reso ${nbsp(m.reso.toFixed(1), 'Hz')} · ${Math.abs(st).toFixed(1)} semitones apart, ${how}`;
-    } else if (m.batter) {
-      text = 'Now tap the reso to see the pair.';
-    } else if (m.reso) {
-      text = 'Tap the batter too to see the pair.';
     }
     el.textContent = text;
     el.classList.toggle('hidden', !text);
@@ -761,23 +819,25 @@ export class TunerMode {
     if (!f) return;
     const snapshot = applyFeel(id);
     if (!snapshot) return;
+    // the whole strip (NONE included) stays tappable while the toast is up
+    const strip = () => this.root.querySelector('.tuner-feel__seg');
     if (snapshot.hits === 0) {
       // nothing in the kit has a role to retune: leave the store exactly as it was
       restoreFeel(snapshot);
       this.render();
-      this.showToast('No drums named snare, rack, floor or kick.', { action: 'EDIT KIT', onAction: () => this.openKit() });
+      this.showToast('No drums named snare, rack, floor or kick.', { action: 'EDIT KIT', onAction: () => this.openKit() }, strip());
       return;
     }
     this.render();
     const n = snapshot.hits;
-    this.showToast(`${f.label} loaded · ${f.voice} · ${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned · ${nbsp(f.defaultBpm, 'BPM')}`, {
+    this.showToast(`${f.label} loaded${SEP}${f.voice}${SEP}${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned${SEP}${nbsp(f.defaultBpm, 'BPM')}`, {
       action: 'UNDO',
       onAction: () => {
         restoreFeel(snapshot);
         this.render();
         this.focusAfterUndo('.feel-row.on', '#tuner-feel-none', '[data-mode].on');
       },
-    });
+    }, strip());
   }
 
   // NONE: forget the feel, keep everything it wrote (kit targets, tempo, runs)
@@ -793,7 +853,7 @@ export class TunerMode {
         this.render();
         this.focusAfterUndo('.feel-row.on', '#tuner-feel-none', '[data-mode].on');
       },
-    });
+    }, this.root.querySelector('.tuner-feel__seg'));
   }
 
   save() {
@@ -807,14 +867,14 @@ export class TunerMode {
     const prev = d[key] ?? null;
     store.updateDrum(r.drumId, { [key]: r1(hz) });
     this.render();
-    this.showToast(`Saved ${hzText(hz)} · ${d.name} ${head}`, {
+    this.showToast(`Saved ${hzText(hz)}${SEP}${d.name}\u00a0${head}`, {
       action: 'UNDO',
       onAction: () => {
         store.updateDrum(r.drumId, { [key]: prev });
         this.render();
         this.focusAfterUndo('#tuner-save', '[data-head].on');
       },
-    });
+    }, this.root.querySelector('.gauge-card:not(.hidden)'));
   }
 
   // the UNDO button vanished with its toast; keep keyboard focus on this screen
@@ -827,12 +887,30 @@ export class TunerMode {
     }
   }
 
-  // toast() keeps one toast on screen; remember which one is ours
-  showToast(text, opts) {
+  // toast() keeps one toast on screen; remember which one is ours. `clear` is
+  // the block the user just acted on: it is scrolled up out from under the toast.
+  showToast(text, opts, clear = null) {
     const handle = toast(text, opts);
+    const box = document.getElementById('toast');
     // toast() builds a fresh text node per call: while that node is still in
     // the document, the toast on screen is this one
-    this._toast = { handle, el: document.querySelector('#toast .toast__text') };
+    this._toast = { handle, el: box && box.querySelector('.toast__text') };
+    if (!box) return;
+    // tuner.css reserves this much room under the last block while a toast is
+    // up, so every block can be scrolled clear of it
+    this.root.style.setProperty('--toast-h', `${Math.ceil(box.getBoundingClientRect().height)}px`);
+    this.keepClearOfToast(clear, box);
+  }
+
+  // Scroll <main> just far enough that `el` ends 8 px above the toast, never
+  // so far that its top leaves the screen.
+  keepClearOfToast(el, box) {
+    const main = this.root.closest('main');
+    if (!el || !main || !el.getClientRects().length) return;
+    const r = el.getBoundingClientRect();
+    const over = r.bottom - (box.getBoundingClientRect().top - 8);
+    const by = Math.min(over, r.top - main.getBoundingClientRect().top);
+    if (by > 0) main.scrollTop += by;
   }
 
   // close our toast, never one another screen has raised since
@@ -859,7 +937,7 @@ export class TunerMode {
     osc.connect(g).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + REF_LEN);
-    this._ref = { osc, from: t, until: t + REF_LEN + this.refTail(ctx), msg: `Playing ${hzText(hz)}. Tap after it stops.` };
+    this._ref = { osc, from: t, until: t + REF_LEN + this.refTail(ctx), msg: refText(hz) };
     this._refTimer = setTimeout(() => this.endReference(), (this._ref.until - t) * 1000);
     this.renderStatus();
   }

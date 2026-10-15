@@ -222,7 +222,7 @@ export class CalibrateMode {
         ${testing
     ? `<button type="button" id="cal-stop" class="btn btn--primary">${icon('stop')}STOP</button>`
     : `<button type="button" id="cal-done" class="btn btn--secondary">DONE</button>
-        <button type="button" id="cal-go" class="btn btn--primary">${cal === null ? 'START THE TEST' : 'TEST AGAIN'}${icon('play')}</button>`}
+        <button type="button" id="cal-go" class="btn btn--primary${cal === null ? ' is-first' : ''}">${cal === null ? 'START THE TEST' : 'TEST AGAIN'}${icon('play')}</button>`}
       </div>`;
     if (testing) this.bindTest();
     else this.bindIdle();

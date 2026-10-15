@@ -1,6 +1,12 @@
 /* Tuner screen: pitch (reading + gauge + player feel) and lugs. */
 
 .tuner { padding-bottom: var(--s4); }
+/* A toast floats above the bar, over the end of the screen. While one is up,
+   reserve its height (--toast-h, set by tuner.js) plus the 8 px it sits above
+   the bar, so the feel rows and the gauge can scroll clear of it. */
+body:has(#toast:not(.hidden)) #mode-tuner.active > .tuner {
+  padding-bottom: calc(var(--toast-h, 56px) + 8px + var(--s4));
+}
 
 /* ------------------------------------------------------------ setup rows */
 .tuner-modes { flex: none; width: 172px; }
@@ -18,11 +24,25 @@
   scroll-snap-align: start;
 }
 .drum-chips > .tuner-editkit .icon { width: 12px; height: 12px; }
+/* scrolled: a chip cut at the left edge fades out like the right edge does,
+   instead of leaving a sliver with one stray glyph */
+.drum-chips.is-scrolled {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+.drum-chips.is-scrolled.is-end {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px);
+  mask-image: linear-gradient(to right, transparent, #000 24px);
+}
 
 .tuner-headrow { position: relative; }
 
-/* --------------------------------------------------------------- reading */
+/* --------------------------------------------------------------- reading
+   Nothing above the gauge changes height between idle and a reading: the
+   caption and the Hz line hold their place unseen (.is-off), and the status
+   slot is as tall as the tallest line it can show. */
 .tuner-read { display: flex; flex-direction: column; }
+.tuner-cap.is-off, #gauge-note.is-off { visibility: hidden; }
 .tuner-mon {
   display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s2);
   min-height: 104px;
@@ -36,13 +56,22 @@
   text-align: right;
 }
 .tuner-dir .dir { white-space: nowrap; }
+/* The Hz line wraps the target under the reading on narrow phones. The note
+   box is always as wide as the longest reading ("388.7 Hz · C#4", 14 glyphs),
+   so whether it wraps depends on the width and the target, never on the
+   reading: a C4 to C#4 flip can't move the gauge. */
 .tuner-hzline {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
-  column-gap: var(--s2); row-gap: 4px;
+  column-gap: var(--s1); row-gap: 4px;
   margin-top: 10px;
 }
 .tuner-hzline:not(:has(> :not(.hidden))) { display: none; }
-#gauge-note { font: 700 22px/1.15 var(--mono-font); white-space: nowrap; }
+#gauge-note {
+  min-width: calc(14ch - 14 * .02em);
+  font: 700 22px/1.15 var(--mono-font);
+  letter-spacing: -.02em;
+  white-space: nowrap;
+}
 #gauge-note .tuner-note { font-weight: 400; color: var(--ink60); }
 .tuner-hzline #gauge-target {
   margin-left: auto;
@@ -51,8 +80,15 @@
   color: var(--ink60);
   white-space: nowrap;
 }
-.tuner-status { margin-top: var(--s2); font: 400 var(--t-body)/1.4 var(--mono-font); }
-.tuner-pair { margin-top: 6px; font: 400 var(--t-label)/1.4 var(--mono-font); color: var(--ink60); }
+.tuner-status { margin-top: var(--s2); }
+.tuner-status, .tuner-slot__size { font: 400 var(--t-body)/1.4 var(--mono-font); text-wrap: pretty; }
+/* the sizers and the live line share one grid cell: the cell keeps the
+   tallest sizer's height whatever the live line says */
+.tuner-slot { display: grid; margin-top: var(--s2); }
+.tuner-slot > * { grid-area: 1 / 1; }
+.tuner-slot > .tuner-status { margin-top: 0; }
+.tuner-slot__size { visibility: hidden; }
+.tuner-pair { font: 400 var(--t-label)/1.4 var(--mono-font); color: var(--ink60); text-wrap: pretty; }
 
 /* a reading older than --d-stale steps back to secondary ink (never opacity on text) */
 .tuner-read.is-stale :is(#gauge-cents, .unit, #gauge-state, #gauge-note) { color: var(--ink60); transition: color 200ms linear; }
@@ -112,15 +148,26 @@
 }
 
 /* ------------------------------------------------------------------ lugs */
-.lug-panel { display: flex; flex-direction: column; gap: var(--s3); padding: 14px; }
+/* card padding 12/14 (spec 3) and 8 px between blocks: at 390 x 763 the
+   outcome line under the cells clears the START OVER bar at rest */
+.lug-panel { display: flex; flex-direction: column; gap: var(--s2); padding: 12px 14px; }
 
-/* lug count stepper: − N + , remembered per drum */
+/* top row: label, pass progress, then the lug count stepper (− N +,
+   remembered per drum). The progress chip lives here, not over the verdict,
+   so the verdict column is no taller than the ring. */
 .lug-count { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .lug-count__label {
-  min-width: 0;
+  flex: 1 1 0; min-width: 0;
   font: 600 var(--t-label)/1.15 var(--label-font);
   letter-spacing: .08em;
   color: var(--ink60);
+  text-wrap: balance;
+}
+.lug-count .lug-progress { flex: none; }
+/* narrowest phones: the label takes its own line over the chip + stepper */
+@media (max-width: 359px) {
+  .lug-count { flex-wrap: wrap; row-gap: var(--s2); }
+  .lug-count__label { flex-basis: 100%; }
 }
 .lug-count__ctl {
   flex: none;
@@ -181,7 +228,7 @@
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); min-width: 0;
   container-type: inline-size;
 }
-.lug-progress { align-self: flex-end; font-family: var(--mono-font); font-weight: 700; letter-spacing: 0; }
+.lug-progress { font-family: var(--mono-font); font-weight: 700; letter-spacing: 0; white-space: nowrap; }
 .lug-hero { max-width: 100%; }
 .lug-hero .hero__cap { margin-bottom: 4px; }
 /* the number fits its column: Space Mono glyphs are .6 em, the ¢ and its
@@ -190,7 +237,15 @@
   display: block;
   font-size: min(var(--t-hero), calc((100cqi - 20px) / (var(--glyphs, 3) * .6)));
 }
-.lug-median { margin-top: 6px; font: 400 var(--t-body)/1.3 var(--mono-font); }
+/* "median 261.4 Hz" (15 glyphs at .612 em) stays on one line in its column:
+   14 px where it fits, smaller on the narrowest phones, never under 11 px
+   (a 16-lug ring at 320 px leaves too little room: the value then wraps
+   under the word) */
+.lug-median {
+  margin-top: 6px;
+  font: 400 var(--t-body)/1.3 var(--mono-font);
+  font-size: max(var(--t-axis), min(var(--t-body), calc(100cqi / 9.2)));
+}
 
 .lug-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
 .lug-cell {
@@ -207,7 +262,9 @@
   color: var(--ink60);
   white-space: nowrap;
 }
-.lug-cell b { font: 700 20px/1.1 var(--mono-font); letter-spacing: -.02em; white-space: nowrap; }
+/* values sit at the bottom: a cell whose "LUG 6 SHARP" wraps keeps its Hz
+   and ¢ level with the rest of the row */
+.lug-cell b { margin-top: auto; font: 700 20px/1.1 var(--mono-font); letter-spacing: -.02em; white-space: nowrap; }
 .lug-cell i { font: 700 var(--t-control)/1 var(--mono-font); font-style: normal; white-space: nowrap; }
 .lug-cell.is-empty b { font: 700 var(--t-control)/1.45 var(--label-font); letter-spacing: .05em; }
 .lug-cell.is-empty i { color: var(--ink60); }
@@ -215,4 +272,4 @@
 .lug-cell.is-out { background: var(--ink); color: var(--paper); }
 .lug-cell.is-out .lug-cell__lab { color: var(--paper); }
 .lug-cell__word { color: var(--amber); }
-.lug-line { font: 400 var(--t-body)/1.4 var(--mono-font); }
+.lug-line { font: 400 var(--t-body)/1.4 var(--mono-font); text-wrap: pretty; }

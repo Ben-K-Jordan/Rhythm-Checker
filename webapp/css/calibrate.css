@@ -8,7 +8,19 @@
 .cal-hero .unit { margin-left: 2px; }
 .cal-hero.is-empty b { color: var(--ink60); }
 .cal-keep { margin-top: var(--s3); }
-.cal-detail { margin-top: 10px; font: 400 var(--t-label)/1.45 var(--mono-font); color: var(--ink); }
+.cal-detail { margin-top: 10px; font: 400 var(--t-label)/1.45 var(--mono-font); color: var(--ink); text-wrap: pretty; }
+
+/* ------------------------------------------------------------------- bar
+   "START THE TEST ▶" (first run) needs ~246 px at 28 px, more than the
+   1fr / 1.9fr bar gives it under 375 px. DONE shrinks to its label; below
+   360 px the CTA also steps down to 24 px, still large text on red. */
+@media (max-width: 374px) {
+  .cal-bar:has(> .is-first) { grid-template-columns: auto minmax(0, 1fr); }
+  .cal-bar > .btn--primary.is-first { min-width: 0; letter-spacing: .02em; }
+}
+@media (max-width: 359px) {
+  .cal-bar > .btn--primary.is-first { gap: 8px; padding-inline: 12px; font-size: 24px; }
+}
 
 /* ------------------------------------------------------------------ cards */
 .cal-card { display: flex; flex-direction: column; gap: var(--s3); }
@@ -185,6 +197,11 @@
 /* -------------------------------------------------------------------- test */
 .cal-live .live__box { flex: 1 1 auto; }
 .cal-live__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "TEST · HIT EACH CLICK · 8 TO GO" is 2 px too wide at 320: tighter
+   tracking keeps the countdown whole */
+@media (max-width: 359px) {
+  .cal-live__text { letter-spacing: .05em; }
+}
 .lat-body--test { align-items: center; gap: var(--s4); padding: var(--s1) 0 var(--s2); }
 .cal-pulse {
   display: grid; place-items: center;
