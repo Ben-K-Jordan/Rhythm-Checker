@@ -157,8 +157,14 @@
 .tm-hero__num .unit { margin-left: 0; font-size: 28px; }
 .tm-vs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
 .tm-vs__delta { font: 700 18px/1.1 var(--label-font); letter-spacing: .03em; }
+/* a baseline from another tempo carries it in the chip ("… AT 60 BPM · 16THS"):
+   let that longer chip wrap on narrow phones instead of overflowing */
+.tm-vs__chip { height: auto; min-height: 28px; padding-block: 4px; white-space: normal; line-height: 1.2; }
 .tm-note { padding: 10px 12px; }
-#mode-timing .fact { -webkit-line-clamp: 3; line-clamp: 3; }
+/* never cut a fact short: factLine() already caps it at 100 characters, which
+   a mixed entrance ("ran from 30 ms early to 5 ms late…") can need on a
+   320 px phone, where a line clamp would hide the end of it */
+#mode-timing .fact { display: block; overflow: visible; -webkit-line-clamp: none; line-clamp: none; }
 .tm-foot { font: 400 var(--t-axis)/1.3 var(--mono-font); color: var(--ink60); }
 
 /* ------------------------------------------------------------- bar */

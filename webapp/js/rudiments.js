@@ -13,7 +13,9 @@ import { BleedGuard, judgeHit, JUDGE_WINDOWS, summarize } from './dsp.js';
 import { store } from './store.js';
 import { FEELS } from './feel.js';
 import { wakeLock } from './audio.js';
-import { icon, fmtSigned, dirWord, nbsp, monitorSize, factLine, announce, setRunState, seg } from './ui.js';
+import {
+  icon, fmtSigned, dirWord, offsetText, nbsp, monitorSize, factLine, announce, setRunState, seg,
+} from './ui.js';
 import { createHighway } from './highway.js';
 
 export { RUDIMENTS };
@@ -221,10 +223,7 @@ export class RudimentsMode {
     this.customAccents = new Set();
     this.expand = null;
     this.rudimentId = 'single-paradiddle';
-    const saved = store.get('grooveRud');
-    this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
-    this.meterId = (saved && saved.meterId) || '4/4';
-    this.grouping = (saved && saved.grouping) || defaultGrouping(meterById('4/4'));
+    this.readGroove();
     this.tap = new TapTempo();
     this.recentDevs = [];
     this.judged = [];
@@ -237,19 +236,41 @@ export class RudimentsMode {
 
   activate() {
     this.mic.setDetectorOptions({ refractory: 0.03, threshold: 2.5, minLevel: 0.01 });
-    // a persona feel picked in the tuner may have moved the working tempo and
-    // surfaced its vocabulary; adopt both when idle (targeted updates, so a
-    // run report already on screen survives), never mid-run
-    if (!this.running) {
-      const saved = store.get('grooveRud');
-      this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
-      this.updateTempoText();
-      const sel = this.root.querySelector('#rud-pattern');
-      if (sel) sel.innerHTML = this.patternOptionsHTML();
-      this.renderTitleSlot();
-      this.refreshNotation();
-    }
+    this.refresh();
     if (!this._raf) this.loop();
+  }
+
+  // the working tempo / meter / grouping from the store (a grouping that is
+  // not one of the meter's own falls back to its default)
+  readGroove() {
+    const saved = store.get('grooveRud');
+    const meter = meterById(saved && saved.meterId);
+    this.bpm = (saved && saved.bpm) || store.get('preferredBpm') || 120;
+    this.meterId = meter.id;
+    this.grouping = saved && typeof saved.grouping === 'string' && Object.hasOwn(meter.groupings, saved.grouping)
+      ? saved.grouping : defaultGrouping(meter);
+  }
+
+  // Re-read what Settings, an import, RESET ALL, Calibrate or a player feel may
+  // have changed: tempo, meter, the NOT CALIBRATED chip, the feel's picks and
+  // the setup views. The shell calls this after each (activate() too).
+  // Targeted updates, so a run report already on screen survives; a run in
+  // progress is never touched.
+  refresh() {
+    if (this.running) return;
+    this.readGroove();
+    this.updateTempoText();
+    const meterChip = this.root.querySelector('#rud-meter-chip');
+    if (meterChip) {
+      const label = meterById(this.meterId).label;
+      meterChip.textContent = label;
+      meterChip.setAttribute('aria-label', `Meter: ${label}`);
+    }
+    if (this.expand) this.renderDisclosure(); // an open TEMPO / METER panel shows the new values
+    const sel = this.root.querySelector('#rud-pattern');
+    if (sel) sel.innerHTML = this.patternOptionsHTML();
+    this.renderTitleSlot();
+    this.refreshNotation();
   }
 
   grooveValue() {
@@ -685,12 +706,18 @@ export class RudimentsMode {
     line.textContent = text;
   }
 
+  // summary strip / EDIT SETUP: back to setup. Both controls are hidden in
+  // idle, so focus moves to the first setup control instead of <body>.
   editSetup() {
     if (this.running) return;
     this.setState('idle');
     this.renderTitleSlot();
     this.hw.draw(null);
     this.refreshNotation();
+    const main = this.root.closest('main');
+    if (main) main.scrollTop = 0;
+    const first = this.root.querySelector('#rud-pattern');
+    if (first) first.focus({ preventScroll: true });
   }
 
   // -------------------------------------------------------------- live
@@ -928,8 +955,9 @@ export class RudimentsMode {
     if (s && s.n >= 2) set('#rud-spread', `±${Math.round(s.sd)}<i class="unit">ms</i>`, false);
     else set('#rud-spread', '—', true);
     if (s) {
-      set('#rud-avg', `${Math.abs(Math.round(s.mean))}<i class="unit">ms</i>`, false);
-      const word = Math.round(s.mean) === 0 ? '' : ` ${dirWord(s.mean).toUpperCase()}`;
+      set('#rud-avg', `${Math.abs(s.mean).toFixed(0)}<i class="unit">ms</i>`, false);
+      const dir = dirWord(s.mean, 0);
+      const word = dir ? ` ${dir.toUpperCase()}` : '';
       $('#rud-avg-label').innerHTML = `<span aria-hidden="true">AVG${word}</span><span class="sr-only">Average${word.toLowerCase()}</span>`;
     }
     if (seen) set('#rud-acc', `${hits}<i class="unit">/${seen}</i>`, false);
@@ -954,8 +982,9 @@ export class RudimentsMode {
       const text = fmtSigned(devMs, 0);
       num.textContent = text;
       num.style.fontSize = `${monitorSize(text)}px`;
-      const word = dirWord(devMs).toUpperCase();
-      cap.innerHTML = `<span class="unit">ms</span> <span class="dir">${word}</span>`;
+      // a hit that reads 0 is on the click: no EARLY / LATE beside it
+      const word = dirWord(devMs, 0).toUpperCase();
+      cap.innerHTML = `<span class="unit">ms</span>${word ? ` <span class="dir">${word}</span>` : ''}`;
     }
     $('#rud-judge-label').textContent = this.showGradesRun && judge !== 'miss'
       ? `LAST HIT · ${judge.toUpperCase()}` : 'LAST HIT';
@@ -1025,7 +1054,7 @@ export class RudimentsMode {
       p.push('<path id="jb-needle" d="" fill="var(--ink)"/>');
     }
     const label = s
-      ? `Early or late, last ${devs.length} hits. Average ${one(s.mean)} ms ${dirWord(s.mean)}.`
+      ? `Early or late, last ${devs.length} hits. Average ${offsetText(s.mean, 1)}.`
       : 'Early or late strip, no hits yet.';
     host.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${p.join('')}</svg>`;
   }
@@ -1092,7 +1121,7 @@ export class RudimentsMode {
         this.renderSummaryStrip(seg0.bpm);
         const { s } = this.liveStats();
         announce(s && s.n >= 2
-          ? `Bar ${bar}. Spread ${Math.round(s.sd)} ms. Average ${Math.abs(Math.round(s.mean))} ms ${dirWord(s.mean)}.`
+          ? `Bar ${bar}. Spread ${nbsp(Math.round(s.sd), 'ms')}. Average ${offsetText(s.mean, 0)}.`
           : `Bar ${bar}.`);
       }
     }
@@ -1163,7 +1192,7 @@ export class RudimentsMode {
     let offsetHint = '';
     if (s.n >= 8 && Math.abs(s.mean) > 25 && s.sd < Math.abs(s.mean)) {
       const tail = cal === null ? 'Likely phone lag.' : 'If the phone moved, recalibrate.';
-      offsetHint = `<div class="card rud-note"><p class="t-body">Hits sit ${nbsp(one(s.mean), 'ms')} ${dirWord(s.mean)} as a group. ${tail}</p>
+      offsetHint = `<div class="card rud-note"><p class="t-body">Hits sit ${offsetText(s.mean, 1)} as a group. ${tail}</p>
         <button type="button" class="btn btn--quiet rud-cal">CALIBRATE${icon('tri-right')}</button></div>`;
     }
     const bleedNote = this.bleed.warning();
@@ -1220,7 +1249,8 @@ export class RudimentsMode {
       const ticks = [-R, -R / 2, 0, R / 2, R];
       const grid = ticks.map((t) => `<i class="${t === 0 ? 'bs-zero' : 'bs-grid'}" style="left:${P(t)}%"></i>`).join('');
       const rows = strokes.map((k) => {
-        const val = Math.abs(k.mean) < 0.05 ? '0.0' : `${one(k.mean)} ${dirWord(k.mean)}`;
+        const dir = dirWord(k.mean, 1);
+        const val = dir ? `${one(k.mean)} ${dir}` : one(k.mean);
         const lo = P(k.mean - k.sd);
         const hi = P(k.mean + k.sd);
         const hand = k.hand === 'R' ? 'r' : 'l';
@@ -1246,7 +1276,6 @@ export class RudimentsMode {
       : '';
 
     const sdText = one(s.sd);
-    const word = dirWord(s.mean).toUpperCase();
     const foot = [`${this.strays} extra hits not counted`];
     if (cal !== null) foot.push(`latency ${nbsp(fmtSigned(-cal, 0), 'ms')} applied`);
 
@@ -1255,7 +1284,7 @@ export class RudimentsMode {
         <p class="hero__cap">SPREAD · ${this.barsUsed} BARS · ${s.n} HITS</p>
         <p class="rud-hero__num"><b><span aria-hidden="true">±${sdText}</span><span class="sr-only">plus or minus ${sdText}</span></b><span class="unit">ms</span></p>
         <p class="hero__def">How tightly the hits group.</p>
-        <p class="hero__avg"><span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${nbsp(one(s.mean), 'ms')} ${word}</p>
+        <p class="hero__avg"><span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${offsetText(s.mean, 1, { upper: true })}</p>
       </div>
       <p class="fact" role="status">${fact}</p>
       <div class="stat-strip">
@@ -1274,7 +1303,7 @@ export class RudimentsMode {
       <p class="rud-foot">${foot.join(' · ')}</p>`;
     const calBtn = el.querySelector('.rud-cal');
     if (calBtn) calBtn.addEventListener('click', () => { if (!this.running) this.nav('calibrate'); });
-    announce(`Run done. Spread ${sdText} ms. Average ${one(s.mean)} ms ${dirWord(s.mean)}.`);
+    announce(`Run done. Spread ${nbsp(sdText, 'ms')}. Average ${offsetText(s.mean, 1)}.`);
 
     store.addRun({
       kind: 'rudiment',

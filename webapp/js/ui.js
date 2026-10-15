@@ -40,13 +40,26 @@ export function fmtSigned(ms, digits = 0) {
   return (v < 0 ? MINUS : '+') + text;
 }
 
-// Negative offsets are early.
-export function dirWord(ms) {
-  return ms < 0 ? 'early' : 'late';
+// Negative offsets are early. Pass `digits`, the precision the value is shown
+// at, and a value that shows as 0 (or 0.0) gets no word at all: '' — a centred
+// offset is neither early nor late. Without `digits` the sign alone decides.
+export function dirWord(ms, digits) {
+  const v = Number(ms);
+  if (digits !== undefined && Number(Math.abs(v).toFixed(digits)) === 0) return '';
+  return v < 0 ? 'early' : 'late';
 }
 
 export function nbsp(value, unit) {
   return `${value}${NBSP}${unit}`;
+}
+
+// An offset's size as shown, NBSP before the unit, then its direction word
+// only when the shown size is not 0: "12 ms early", "0.0 ms".
+export function offsetText(ms, digits = 0, { upper = false, unit = 'ms' } = {}) {
+  const word = dirWord(ms, digits);
+  const text = nbsp(Math.abs(Number(ms)).toFixed(digits), unit);
+  if (!word) return text;
+  return `${text} ${upper ? word.toUpperCase() : word}`;
 }
 
 // Live monitor font size in px by glyph count (sign included).
@@ -74,7 +87,7 @@ function rudimentsFact(d) {
   const avg = Math.abs(d.mean);
   if (avg >= 10 && d.sd <= avg / 2) {
     const lag = d.calibrationMs === null ? ' Likely phone lag.' : '';
-    return `Hits sat ${nbsp(one(d.mean), 'ms')} ${dirWord(d.mean)} as a group.${lag}`;
+    return `Hits sat ${offsetText(d.mean, 1)} as a group.${lag}`;
   }
   let worst = null;
   for (const s of d.strokes || []) {
@@ -91,6 +104,27 @@ function rudimentsFact(d) {
   return `${d.within} of ${d.hits} hits within ±${nbsp(d.windowMs, 'ms')} of the click.`;
 }
 
+// Where a handful of signed offsets actually sat, in whole ms as shown: one
+// side -> "came 20–30 ms early"; both sides -> "ran from 30 ms early to 5 ms
+// late"; all at 0 -> "came 0 ms from the click". Never a range of sizes under
+// one direction word that some of the hits contradict. (Kept short: with
+// 3-digit offsets and counts the whole fact still fits the 100-char cap.)
+function offsetSpread(xs) {
+  const shown = xs.map((x) => {
+    const m = Math.round(Math.abs(x));
+    return m === 0 ? 0 : Math.sign(x) * m;
+  });
+  const early = shown.filter((x) => x < 0).map((x) => -x);
+  const late = shown.filter((x) => x > 0);
+  if (early.length && late.length) {
+    return `ran from ${nbsp(Math.max(...early), 'ms')} early to ${nbsp(Math.max(...late), 'ms')} late`;
+  }
+  if (!early.length && !late.length) return `came ${nbsp(0, 'ms')} from the click`;
+  const sizes = shown.map((x) => Math.abs(x)); // any 0s belong in the range too
+  const lo = Math.min(...sizes), hi = Math.max(...sizes);
+  return `came ${nbsp(lo === hi ? lo : `${lo}–${hi}`, 'ms')} ${early.length ? 'early' : 'late'}`;
+}
+
 function timingFact(d) {
   const offs = d.offsets || [];
   const p = d.pocketMs;
@@ -98,12 +132,8 @@ function timingFact(d) {
   const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
   if (offs.length > 6) {
     const first = offs.slice(0, 6), rest = offs.slice(6);
-    const m1 = mean(first);
-    if (Math.abs(m1 - mean(rest)) >= 15) {
-      const mags = first.map((x) => Math.round(Math.abs(x)));
-      const lo = Math.min(...mags), hi = Math.max(...mags);
-      const span = lo === hi ? `${lo}` : `${lo}–${hi}`;
-      return `The first 6 hits came ${nbsp(span, 'ms')} ${dirWord(m1)}. After that, ${inPocket(rest)} of ${rest.length} landed in the pocket.`;
+    if (Math.abs(mean(first) - mean(rest)) >= 15) {
+      return `The first 6 hits ${offsetSpread(first)}. After that, ${inPocket(rest)} of ${rest.length} landed in the pocket.`;
     }
   }
   if (d.drift !== null && d.drift !== undefined && Math.abs(d.drift) >= 20) {

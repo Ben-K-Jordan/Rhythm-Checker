@@ -8,7 +8,7 @@ import { store } from './store.js';
 import { theme, fitCanvas, holdToConfirm } from './theme.js';
 import { wakeLock } from './audio.js';
 import {
-  icon, fmtSigned, dirWord, nbsp, monitorSize, factLine, announce, setRunState, seg,
+  icon, fmtSigned, dirWord, offsetText, nbsp, monitorSize, factLine, announce, setRunState, seg,
 } from './ui.js';
 
 export class TimingSession extends EventTarget {
@@ -334,24 +334,13 @@ export class TimingMode {
       this.syncSummary();
     });
     this.el.go.addEventListener('click', () => (this.running ? this.stopRun() : this.startRun()));
-    $('.tm-sumbtn').addEventListener('click', () => {
-      if (this.running) return;
-      this.clearResult();
-      this.setState('idle');
-    });
+    $('.tm-sumbtn').addEventListener('click', () => this.editSetup());
 
     fitCanvas(this.el.cv, CHART_W, ({ w, h, cssPerLogical }) => {
       this.geom = { w, h, s: cssPerLogical };
       this.drawChart();
     });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => this.drawChart());
-    // the settings sheet opens over this screen without a nav, so no activate() follows it
-    const sheet = document.getElementById('settings');
-    if (sheet) {
-      new MutationObserver(() => {
-        if (sheet.classList.contains('hidden') && this.root.classList.contains('active')) this.refresh();
-      }).observe(sheet, { attributes: true, attributeFilter: ['class'] });
-    }
 
     this.syncBpm();
     this.syncClick();
@@ -374,7 +363,8 @@ export class TimingMode {
     this.refresh();
   }
 
-  // re-read what Settings, Calibrate or a player feel may have changed
+  // re-read what Settings, an import, RESET ALL, Calibrate or a player feel
+  // may have changed; the shell calls this after each (activate() too)
   refresh() {
     if (!this.running) {
       this.bpm = store.get('preferredBpm') || 120;
@@ -384,6 +374,18 @@ export class TimingMode {
     this.syncCalibration();
     this.syncLegend();
     this.drawChart();
+  }
+
+  // the result's summary strip: back to setup. The strip itself is hidden in
+  // idle, so focus moves to the first setup control instead of <body>.
+  editSetup() {
+    if (this.running) return;
+    this.clearResult();
+    this.setState('idle');
+    const main = this.root.closest('main');
+    if (main) main.scrollTop = 0;
+    const first = this.root.querySelector('.tm-setup button:not(:disabled)');
+    if (first) first.focus({ preventScroll: true });
   }
 
   deactivate() {
@@ -609,8 +611,7 @@ export class TimingMode {
   }
 
   avgWords(mean) {
-    const r = Math.round(Math.abs(mean));
-    return r === 0 ? 'Average 0 ms' : `Average ${nbsp(r, 'ms')} ${dirWord(mean)}`;
+    return `Average ${offsetText(mean, 0)}`;
   }
 
   clearLive() {
@@ -655,9 +656,7 @@ export class TimingMode {
     steadiness.innerHTML = `<span aria-hidden="true">±${sd}</span><span class="sr-only">plus or minus ${sd}</span>`;
     steadiness.style.fontSize = `${monitorSize(`±${sd}`)}px`;
     if (!side.querySelector('.unit')) side.innerHTML = '<span class="unit">ms</span>';
-    const r = Math.round(Math.abs(s.mean));
-    const word = r === 0 ? '' : ` ${dirWord(s.mean).toUpperCase()}`;
-    this.el.avg.innerHTML = `<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${nbsp(r, 'ms')}${word}`;
+    this.el.avg.innerHTML = `<span aria-hidden="true">AVG</span><span class="sr-only">Average</span> ${offsetText(s.mean, 0, { upper: true })}`;
   }
 
   // least-squares slope of offsets over time, from 5 s on, in ms per minute
@@ -683,7 +682,9 @@ export class TimingMode {
     const txt = fmtSigned(drift, 0);
     valueEl.innerHTML = `${txt}<i class="unit">ms/min</i>`;
     valueEl.classList.toggle('is-long', txt.length > 3);
-    labelEl.textContent = Math.round(drift) === 0 ? 'DRIFT' : `DRIFT ${drift > 0 ? 'LATER' : 'EARLIER'}`;
+    // the word follows the number as shown: a drift that reads 0 has no direction
+    const word = dirWord(drift, 0);
+    labelEl.textContent = word ? `DRIFT ${word === 'late' ? 'LATER' : 'EARLIER'}` : 'DRIFT';
   }
 
   longestInPocket() {
@@ -736,13 +737,7 @@ export class TimingMode {
   renderResult(r) {
     const pocket = this.runPocket;
     const sdText = r.sd.toFixed(1);
-    const base = store.get('baseline');
-    let vs = '';
-    if (base && Number.isFinite(base.sd)) {
-      const delta = r.sd - base.sd;
-      vs = `<p class="tm-vs"><span class="chip">BASELINE ±${base.sd.toFixed(1)}</span>`
-        + `<span class="tm-vs__delta">${nbsp(Math.abs(delta).toFixed(1), 'ms')} ${delta < 0 ? 'tighter' : 'wider'}</span></p>`;
-    }
+    const vs = this.baselineLine(sdText);
     const drift = this.drift(this.lastRun.seconds);
     const fact = factLine('timing', { offsets: this.recent, pocketMs: pocket, drift });
     const heroSize = sdText.length + 1 > 5 ? ' tm-hero__num--long' : '';
@@ -755,8 +750,9 @@ export class TimingMode {
       ${vs}
       <p class="fact" role="status">${fact}</p>`;
 
-    const avg = Math.round(Math.abs(r.mean));
-    const avgWord = avg === 0 ? '' : ` ${dirWord(r.mean).toUpperCase()}`;
+    const avg = Math.abs(r.mean).toFixed(0);
+    const avgDir = dirWord(r.mean, 0);
+    const avgWord = avgDir ? ` ${avgDir.toUpperCase()}` : '';
     const k = this.recent.filter((d) => Math.abs(d) <= pocket).length;
     const longest = Math.round(this.longestInPocket());
     const foot = [`Longest in pocket <span id="tm-steady">${nbsp(longest, 's')}</span>`,
@@ -773,8 +769,32 @@ export class TimingMode {
     if (r.warning) this.el.foot.querySelector('.tm-note__text').textContent = r.warning;
     this.setDriftTile(this.el.foot.querySelector('.tm-rdrift'), this.el.foot.querySelector('.tm-rdrift-label'), drift);
 
-    const avgSpoken = avg === 0 ? 'average 0 ms' : `average ${nbsp(avg, 'ms')}${avgWord.toLowerCase()}`;
-    this.el.cv.setAttribute('aria-label', `Spread ${nbsp(sdText, 'ms')}, ${avgSpoken}, ${Math.round(r.pocketPct)}% in pocket`);
+    this.el.cv.setAttribute('aria-label', `Spread ${nbsp(sdText, 'ms')}, average ${offsetText(r.mean, 0)}, ${Math.round(r.pocketPct)}% in pocket`);
+  }
+
+  // The stored baseline beside this run's spread. A wider/tighter figure only
+  // when the baseline was held at this run's tempo and grid; otherwise the
+  // baseline is shown with its own tempo and nothing is compared.
+  baselineLine(sdText) {
+    const base = store.get('baseline');
+    if (!base || !Number.isFinite(base.sd)) return '';
+    const run = this.lastRun;
+    const baseSd = base.sd.toFixed(1);
+    const chip = `BASELINE ±${nbsp(baseSd, 'ms')}`;
+    if (run && base.bpm === run.bpm && base.subdivision === run.subdivision) {
+      // the two figures as shown, so the difference always matches the screen
+      const delta = Number(sdText) - Number(baseSd);
+      const diff = Math.abs(delta) < 0.05
+        ? 'SAME AS BASELINE'
+        : `${nbsp(Math.abs(delta).toFixed(1), 'ms')} ${delta < 0 ? 'tighter' : 'wider'}`;
+      // (the space keeps the two read as separate words; flex drops it visually)
+      return `<p class="tm-vs"><span class="chip">${chip}</span> <span class="tm-vs__delta">${diff}</span></p>`;
+    }
+    const at = [];
+    if (Number.isFinite(base.bpm)) at.push(nbsp(base.bpm, 'BPM'));
+    const grid = GRIDS.find((g) => g.value === base.subdivision);
+    if (grid && (!run || grid.value !== run.subdivision)) at.push(grid.label);
+    return `<p class="tm-vs"><span class="chip tm-vs__chip">${chip}${at.length ? ` AT ${at.join(' · ')}` : ''}</span></p>`;
   }
 
   removeBaselineButton() {
