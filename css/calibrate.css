@@ -1,0 +1,219 @@
+/* Calibrate: latency hero, mic floor (level meter + threshold slider), the
+   latency test and the post-test hit strip. */
+
+.cal { padding-bottom: var(--s4); }
+
+/* ------------------------------------------------------------ latency hero */
+.cal-hero { display: flex; flex-direction: column; align-items: flex-start; }
+.cal-hero .unit { margin-left: 2px; }
+.cal-hero.is-empty b { color: var(--ink60); }
+.cal-keep { margin-top: var(--s3); }
+.cal-detail { margin-top: 10px; font: 400 var(--t-label)/1.45 var(--mono-font); color: var(--ink); text-wrap: pretty; }
+
+/* ------------------------------------------------------------------- bar
+   "START THE TEST ▶" (first run) needs ~246 px at 28 px, more than the
+   1fr / 1.9fr bar gives it under 375 px. DONE shrinks to its label; below
+   360 px the CTA also steps down to 24 px, still large text on red. */
+@media (max-width: 374px) {
+  .cal-bar:has(> .is-first) { grid-template-columns: auto minmax(0, 1fr); }
+  .cal-bar > .btn--primary.is-first { min-width: 0; letter-spacing: .02em; }
+}
+@media (max-width: 359px) {
+  .cal-bar > .btn--primary.is-first { gap: 8px; padding-inline: 12px; font-size: 24px; }
+}
+
+/* ------------------------------------------------------------------ cards */
+.cal-card { display: flex; flex-direction: column; gap: var(--s3); }
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 28px; }
+.cal-card h2 {
+  display: flex; align-items: center; gap: 10px; flex: none;
+  font: 700 17px/1 var(--label-font);
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+.num-chip {
+  display: inline-grid; place-items: center; flex: none;
+  width: 28px; height: 28px;
+  background: var(--ink); color: var(--paper);
+  font: 700 var(--t-control)/1 var(--mono-font);
+}
+.cal-src {
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 var(--t-label)/1.2 var(--label-font);
+  letter-spacing: .06em;
+  color: var(--ink60);
+}
+
+/* test: card 1 folds to one line */
+.cal-card--sum { flex-direction: row; align-items: center; justify-content: space-between; }
+.cal-sum { font: 700 var(--t-control)/1 var(--label-font); letter-spacing: .05em; white-space: nowrap; }
+
+/* ------------------------------------------------- level meter (spec 8.6)
+   x of a level fraction f inside the meter: 2 px track border + 2 px inset. */
+.cal-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); }
+.cal-cap { font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .08em; color: var(--ink60); }
+.cal-peak { font: 700 var(--t-caption)/1 var(--mono-font); color: var(--ink60); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.cal-meter {
+  --x: calc(4px + var(--f, 0) * (100% - 8px));
+  position: relative;
+  height: 84px;
+  margin-top: -4px;
+}
+.trig-label {
+  position: absolute; top: 0; left: var(--x);
+  display: flex; align-items: center;
+  height: 22px; margin-left: -2px; padding: 0 8px;
+  background: var(--ink); color: var(--paper);
+  font: 600 var(--t-label)/1 var(--label-font);
+  letter-spacing: .06em;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.trig-label.is-flip { margin-left: 2px; transform: translateX(-100%); }
+/* 44 tall pointer zone around the 32 px bar */
+.level-track {
+  position: absolute; top: 18px; left: 0; right: 0;
+  height: var(--hit);
+  touch-action: pan-y;
+  cursor: ew-resize;
+}
+.level-bar {
+  position: absolute; top: 6px; left: 0; right: 0;
+  height: 32px;
+  border: var(--border);
+  background: var(--white);
+}
+.level-segs {
+  position: absolute; inset: 2px;
+  display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px;
+}
+.level-segs i { background: var(--rule); }
+.level-segs i.on { background: var(--dot); }
+.level-segs i.on.is-above { background: var(--green); }
+.level-peak {
+  position: absolute; top: 2px; bottom: 2px;
+  left: calc(2px + var(--p, 0) * (100% - 4px));
+  width: 2.5px; margin-left: -1.25px;
+  background: var(--ink);
+  pointer-events: none;
+}
+.trig-mark {
+  position: absolute; top: 18px; left: var(--x);
+  width: var(--hit); height: var(--hit);
+  margin-left: calc(var(--hit) / -2);
+  touch-action: pan-y;
+  cursor: ew-resize;
+  z-index: 1;
+}
+.trig-mark:focus-visible { outline-offset: 0; }
+.cal-meter:has(.trig-mark:focus-visible) .trig-label { background: var(--amber); color: var(--ink); }
+.trig-mark::before {
+  content: '';
+  position: absolute; left: 50%; top: 4px; bottom: 2px;
+  width: 3.5px; margin-left: -1.75px;
+  background: var(--ink);
+}
+.level-axis { position: absolute; left: 0; right: 0; top: 68px; height: 14px; }
+.level-axis span {
+  position: absolute; top: 0;
+  left: calc(4px + var(--a) * (100% - 8px));
+  transform: translateX(-50%);
+  font: 400 var(--t-axis)/1.2 var(--mono-font);
+  color: var(--ink60);
+  white-space: nowrap;
+}
+.level-axis span:first-child { left: 0; transform: none; }
+.level-axis span:last-child { left: auto; right: 0; transform: none; }
+
+.cal-noise:empty { display: none; }
+.cal-note { font: 400 var(--t-label)/1.45 var(--mono-font); color: var(--ink60); }
+.cal-auto { align-self: flex-start; min-height: var(--hit); }
+
+/* ------------------------------------------------------------ latency card */
+.lat-body { display: flex; flex-direction: column; gap: var(--s3); }
+.cal-how { font: 400 var(--t-body)/1.4 var(--mono-font); color: var(--ink); }
+.cal-clear { align-self: flex-start; padding: 0 var(--s2); margin-left: calc(-1 * var(--s2)); text-decoration: none; }
+.cal-clear .hold__label { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.cal-clear__sub { font: 600 var(--t-caption)/1 var(--label-font); letter-spacing: .06em; color: var(--ink60); }
+
+/* post-test strip, early left / late right: label 0-12, bracket 12-18,
+   dots 20-76 around 48, base 80, ticks 80-85 (zero 80-88), axis 88,
+   EARLY / LATE 104-116 */
+.cal-hits { display: flex; flex-direction: column; gap: var(--s2); }
+.hits-plot { position: relative; height: 118px; }
+.hits-plot > * { --px: calc(10px + var(--x, 0) * (100% - 20px)); position: absolute; }
+.hits-base { left: 10px; right: 10px; top: 80px; height: 1px; background: var(--ink60); }
+.hits-tick { left: var(--px); top: 80px; width: 1px; height: 5px; background: var(--ink60); }
+.hits-tick--zero { width: 2px; height: 8px; margin-left: -0.5px; background: var(--ink); }
+.hits-zero { left: var(--px); top: 20px; height: 60px; border-left: 1px dashed var(--ink60); }
+.hits-med { left: var(--px); top: 18px; height: 62px; width: 2px; margin-left: -1px; background: var(--ink); box-shadow: 0 0 0 1px var(--white); }
+.hits-med__label {
+  left: var(--px); top: 0;
+  transform: translateX(-50%);
+  font: 700 var(--t-caption)/1 var(--mono-font);
+  white-space: nowrap;
+}
+.hits-med__label.is-start { transform: none; margin-left: -1px; }
+.hits-med__label.is-end { transform: translateX(-100%); margin-left: 1px; }
+.hits-bracket {
+  left: calc(10px + var(--x0) * (100% - 20px));
+  right: calc(100% - 10px - var(--x1) * (100% - 20px));
+  top: 13px; height: 6px;
+  border: 2px solid var(--ink); border-bottom: 0;
+}
+.hits-dot {
+  left: var(--px); top: calc(48px + var(--dy, 0px));
+  width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 1.5px var(--white);
+}
+.hits-dot.is-dropped { background: var(--white); border: 2px solid var(--ink); }
+.hits-dot.is-out { width: 0; height: 0; border-radius: 0; background: none; box-shadow: none; border-top: 5px solid transparent; border-bottom: 5px solid transparent; margin-top: -5px; }
+.hits-dot.is-out.is-low { border-left: 0; border-right: 9px solid var(--ink); margin-left: -9px; }
+.hits-dot.is-out.is-high { border-right: 0; border-left: 9px solid var(--ink); margin-left: 0; }
+.hits-axis {
+  left: var(--px); top: 88px;
+  transform: translateX(-50%);
+  font: 400 var(--t-axis)/1.2 var(--mono-font);
+  color: var(--ink60);
+  white-space: nowrap;
+}
+.hits-axis--start { left: 0; transform: none; }
+.hits-axis--end { left: auto; right: 0; transform: none; }
+.hits-end {
+  top: 104px;
+  font: 600 var(--t-caption)/1 var(--label-font);
+  letter-spacing: .08em;
+  color: var(--ink60);
+  white-space: nowrap;
+}
+.hits-end--start { left: 0; }
+.hits-end--end { right: 0; }
+
+/* -------------------------------------------------------------------- test */
+.cal-live .live__box { flex: 1 1 auto; }
+.cal-live__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "TEST · HIT EACH CLICK · 8 TO GO" is 2 px too wide at 320: tighter
+   tracking keeps the countdown whole */
+@media (max-width: 359px) {
+  .cal-live__text { letter-spacing: .05em; }
+}
+.lat-body--test { align-items: center; gap: var(--s4); padding: var(--s1) 0 var(--s2); }
+.cal-pulse {
+  display: grid; place-items: center;
+  width: 200px; height: 200px;
+  border: 4px solid var(--ink); border-radius: 50%;
+  background: var(--paper);
+  box-shadow: var(--sh-card);
+  color: var(--ink);
+  font: 700 var(--t-countin)/1 var(--mono-font);
+}
+.cal-pulse.counting { background: var(--amber); }
+.cal-pulse.lit { background: var(--ink); }
+.tap-dots { display: flex; justify-content: center; gap: var(--s2); }
+.tap-dots i { width: 20px; height: 20px; border: var(--border); border-radius: 50%; background: var(--white); }
+.tap-dots i.on { background: var(--ink); }

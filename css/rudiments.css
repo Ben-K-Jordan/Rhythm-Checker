@@ -1,0 +1,391 @@
+/* Rudiments screen: setup, count-in, running, result, stopped (spec 5.6-5.10). */
+
+#mode-rudiments .rud { padding-bottom: var(--s4); }
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .rud { gap: var(--s2); }
+
+/* ------------------------------------------------- visibility per run state */
+#mode-rudiments .rud-stopped,
+#mode-rudiments .rud-lockstrip,
+#mode-rudiments .rud-sumbtn,
+#mode-rudiments .rud-countin,
+#mode-rudiments .rud-monitor,
+#mode-rudiments .rud-strip,
+#mode-rudiments .rud-tiles,
+#mode-rudiments .rud-report,
+#mode-rudiments #rud-edit { display: none; }
+
+#mode-rudiments[data-state="stopped"] .rud-stopped { display: flex; }
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .rud-lockstrip { display: flex; }
+#mode-rudiments[data-state="result"] .rud-sumbtn { display: flex; }
+#mode-rudiments[data-state="countin"] .rud-countin { display: flex; }
+#mode-rudiments[data-state="running"] .rud-monitor { display: grid; }
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) :is(.rud-strip, .rud-tiles) { display: grid; }
+#mode-rudiments[data-state="result"] .rud-report { display: flex; }
+#mode-rudiments[data-state="result"] #rud-edit { display: inline-flex; }
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .rud-title { display: none; }
+#mode-rudiments[data-state="result"] :is(.rud-setup, .highway-panel) { display: none; }
+#mode-rudiments:not([data-state="result"]) .bar { grid-template-columns: 1fr; }
+
+/* --------------------------------------------------------------- bar
+   Result: EDIT SETUP + PLAY AGAIN. Fixed shares (no auto minimum), so a long
+   label can never push the primary past the screen edge. Under 375 px the
+   labels step down; the primary stays at 24 px (white on red floor). */
+#mode-rudiments[data-state="result"] .bar { grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr); }
+#mode-rudiments .bar > .btn { min-width: 0; }
+#mode-rudiments .bar > .btn--secondary { padding-inline: var(--s2); }
+@media (max-width: 374px) {
+  #mode-rudiments[data-state="result"] .bar > .btn--primary { gap: 6px; padding-inline: 10px; font-size: 24px; letter-spacing: .02em; }
+  #mode-rudiments[data-state="result"] .bar > .btn--secondary { font-size: 16px; }
+}
+
+/* ----------------------------------------------------------------- title */
+/* the chip drops under the stamp when both do not fit one line (320 px) */
+.rud-title { flex-wrap: wrap; row-gap: var(--s1); }
+.rud-title__slot { display: flex; justify-content: flex-end; flex: 0 1 auto; min-width: 0; margin-left: auto; }
+
+/* -------------------------------------------------------- stopped card */
+.rud-stopped { flex-direction: column; align-items: flex-start; gap: var(--s2); }
+.rud-stopped__line { font: 400 var(--t-body)/1.4 var(--mono-font); color: var(--paper); }
+
+/* ------------------------------------------------- summary strip (locked) */
+.rud-lockstrip, .rud-sumbtn { padding: 0 10px; letter-spacing: .03em; }
+.rud-lockstrip > .rud-sum,
+.rud-sumbtn > .rud-sum {
+  flex: 1 1 auto;
+  display: flex; align-items: center; gap: 5px;
+  min-width: 0; overflow: hidden;
+}
+.rud-sum > :not(.summary__name) { flex: none; }
+.rud-sumbtn { cursor: pointer; }
+.rud-sumbtn:active { transform: translate(1px, 1px); }
+.summary__lock .icon { width: 18px; height: 18px; }
+
+/* ------------------------------------------------------------- setup */
+.rud-setup { display: flex; flex-direction: column; gap: var(--s3); }
+
+.rud-picker { position: relative; }
+.rud-picker select {
+  display: block;
+  width: 100%; height: 52px;
+  padding: 0 48px 0 14px;
+  border: 0;
+  background: var(--ink); color: var(--paper);
+  box-shadow: 4px 4px 0 var(--red);
+  font: 700 18px/1 var(--label-font);
+  letter-spacing: .04em;
+  appearance: none; -webkit-appearance: none;
+  text-overflow: ellipsis;
+}
+.rud-picker select:focus-visible { outline: var(--focus-dark); }
+.rud-picker > .icon {
+  position: absolute; right: 16px; top: 50%;
+  width: 20px; height: 20px;
+  transform: translateY(-50%);
+  color: var(--amber);
+  pointer-events: none;
+}
+
+.param-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); }
+.param-box {
+  position: relative;
+  height: 64px;
+  border: var(--border);
+  background: var(--white);
+  box-shadow: var(--sh-card);
+}
+.param-box > button {
+  position: absolute; inset: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 4px 7px;
+  font: 700 26px/1 var(--mono-font);
+  letter-spacing: -.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.param-box > button:active { background: var(--tint); }
+.param-box__cap {
+  position: absolute; left: 8px; top: 7px; z-index: 1;
+  font: 600 var(--t-label)/1 var(--label-font);
+  letter-spacing: .08em;
+  color: var(--ink60);
+  pointer-events: none;
+}
+.param-box__cue {
+  position: absolute; right: 7px; top: 6px; z-index: 1;
+  width: 14px; height: 14px;
+  color: var(--ink);
+  pointer-events: none;
+}
+.param-box--menu > button::after {
+  content: '';
+  position: absolute; right: 8px; top: 10px;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 7px solid currentColor;
+}
+.param-box--menu > button[aria-expanded="true"]::after { transform: rotate(180deg); }
+.param-box.is-open { background: var(--tint); box-shadow: var(--sh-ctl); }
+/* under 360 px the caps lose tracking and the cues move to the corner, so
+   BARS and METER never run into their cycle icon / caret */
+@media (max-width: 359px) {
+  .param-box__cap { left: 6px; letter-spacing: .02em; }
+  .param-box__cue { right: 4px; }
+  .param-box--menu > button::after { right: 4px; }
+}
+/* the active ramp: a line under the param row, 8 px below the boxes */
+.param-badge {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: calc(-1 * var(--s1));
+  font: 400 var(--t-label)/1.2 var(--label-font);
+  letter-spacing: .04em;
+  color: var(--ink);
+}
+.param-badge b { font-weight: 700; letter-spacing: .08em; }
+.param-badge .icon { width: 14px; height: 14px; }
+
+/* tempo / meter disclosure */
+.rud-disc { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3) var(--s2); }
+.rud-tempo { display: flex; align-items: center; gap: var(--s2); }
+.rud-steps { display: flex; flex: none; border: var(--border); box-shadow: var(--sh-ctl); }
+.rud-steps > button {
+  width: var(--hit); height: var(--hit);
+  background: var(--white);
+  font: 700 17px/1 var(--mono-font);
+}
+.rud-steps > button + button { border-left: var(--border); }
+.rud-steps > button:active { background: var(--tint); }
+.rud-bpm { flex: 1; display: flex; flex-direction: column; align-items: center; min-width: 72px; }
+.rud-bpm b { font: 700 40px/1 var(--mono-font); letter-spacing: -.03em; }
+.rud-bpm span { margin-top: 2px; font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .08em; color: var(--ink60); }
+.rud-tap {
+  flex: none;
+  width: 56px; height: 88px;
+  border: var(--border); background: var(--white); box-shadow: var(--sh-ctl);
+  font: 700 var(--t-control)/1 var(--label-font); letter-spacing: .05em;
+}
+.rud-tap:active { background: var(--amber); }
+/* below 380 px the steppers and the 40 px number need the whole row: TAP
+   moves under them, full width */
+@media (max-width: 379px) {
+  .rud-tempo { flex-wrap: wrap; column-gap: var(--s1); row-gap: var(--s2); }
+  .rud-tap { order: 1; width: 100%; height: var(--hit); }
+}
+.rud-disc__label { font: 600 var(--t-label)/1 var(--label-font); letter-spacing: .08em; color: var(--ink60); margin-bottom: -4px; }
+.rud-ramp > button { padding: 4px 2px; }
+.rud-ramp .seg__sub { white-space: normal; }
+.rud-meters.seg { grid-auto-flow: row; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rud-meters.seg > button { border-left: var(--border); font-family: var(--mono-font); font-size: 16px; letter-spacing: 0; }
+.rud-meters.seg > button:nth-child(4n + 1) { border-left: 0; }
+.rud-meters.seg > button:nth-child(n + 5) { border-top: var(--border); }
+.rud-groupings > button { font-family: var(--mono-font); letter-spacing: 0; }
+
+/* PATTERN card: 8 px page margin so eight 44 px pucks fit on a 390 phone */
+.rud-pattern-card {
+  display: flex; flex-direction: column; gap: var(--s3);
+  margin: 0 calc(var(--s2) - var(--gutter));
+  padding: var(--s3) 0 var(--s3);
+}
+.rud-pattern-card > .sec-head,
+.rud-pattern-card > .rud-am { margin: 0 var(--s2); }
+.rud-am.seg { grid-auto-columns: auto; }
+.rud-am.seg > button { padding: var(--s1) 10px; white-space: nowrap; }
+@media (max-width: 359px) { .rud-am.seg > button { padding-inline: 6px; } }
+.rud-notation {
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 var(--s1);
+}
+/* heads stacked over the pucks: only the staff line runs past the last note */
+.rud-notation.is-aligned { overflow-x: hidden; }
+.rud-notation-svg { display: block; }
+/* rows hold as many pucks as fit (rudiments.js); safe centring so a row can
+   never spill out to the unscrollable left */
+.accent-editor { display: flex; flex-direction: column; gap: var(--s1); padding: 0 2px; }
+.accent-row { display: flex; justify-content: safe center; gap: 2px; padding-top: 18px; }
+.accent-puck {
+  position: relative;
+  flex: none;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  color: var(--white);
+  font: 400 22px/1 var(--display-font);
+}
+.accent-puck.r { background: var(--red); }
+.accent-puck.l { background: var(--blue); }
+.accent-puck.pulse-start { border-style: dashed; }
+/* the accent ring is drawn inside the 44 px puck, so an edge puck never
+   bulges over the card border */
+.accent-puck.on { box-shadow: inset 0 0 0 2px var(--white), inset 0 0 0 5px var(--ink); }
+.accent-puck.on::before {
+  content: '>';
+  position: absolute; left: 50%; top: -21px;
+  transform: translateX(-50%);
+  font: 700 14px/1 var(--mono-font);
+  color: var(--ink);
+}
+.accent-puck:focus-visible { outline-offset: var(--focus-offset); }
+
+/* --------------------------------------------------------- count-in */
+.rud-countin { height: 124px; }
+.rud-countin .countin__dots { display: grid; grid-template-columns: repeat(4, 20px); gap: var(--s2); }
+.rud-countin .countin__dots.is-wide { grid-template-columns: repeat(6, 20px); }
+
+/* ---------------------------------------------------------- monitor */
+.rud-monitor { min-height: 124px; align-content: end; }
+.rud-monitor .monitor__cap { margin: 0 0 6px; }
+/* size by glyph count (monitorSize via --mon-fs), so short screens can scale it */
+.rud-monitor #rud-judge-num { display: block; font-size: var(--mon-fs, var(--t-monitor)); }
+.rud-monitor #rud-judge-num .icon { width: .8em; height: .8em; vertical-align: 0; }
+.rud-monitor .monitor__side { margin: 0; }
+/* until the first hit: LISTENING alone on the value baseline, caption on top
+   (no "—" beside it); the box keeps its height, so nothing moves on hit 1 */
+.rud-monitor.is-idle { align-content: space-between; }
+.rud-monitor.is-idle #rud-judge-num { display: none; }
+
+/* ------------------------------------------------ early/late strip (8.2) */
+.rud-strip { grid-template-rows: auto 1fr; align-content: start; row-gap: 4px; height: var(--h-strip); padding: 5px 8px 0; }
+.rud-strip__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); height: 16px; }
+.rud-strip__dir {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: 700 var(--t-label)/1 var(--label-font); letter-spacing: .08em;
+}
+.rud-strip__dir .icon { width: 11px; height: 11px; }
+.rud-strip__legend {
+  display: inline-flex; align-items: center; gap: 3px;
+  font: 400 var(--t-axis)/1 var(--mono-font); color: var(--ink60);
+  white-space: nowrap;
+}
+.rud-strip__legend .icon { width: 10px; height: 10px; color: var(--ink); }
+.rud-strip__plot { min-width: 0; overflow: hidden; }
+.rud-strip__plot svg { display: block; }
+.rud-strip__tick, .rud-strip__tier { font: 400 11px var(--mono-font); fill: var(--ink60); }
+
+/* ------------------------------------------------------- highway (8.1) */
+.highway-panel {
+  position: relative;
+  height: var(--h-highway-idle);
+  border: var(--border);
+  background: var(--white);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .highway-panel { height: var(--h-highway-run); }
+.highway-panel canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
+.hw-idle {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s2);
+  padding: var(--s4) var(--s6);
+  background: var(--white);
+  text-align: center;
+}
+.hw-idle__title { font: 400 var(--t-title)/1 var(--display-font); letter-spacing: .02em; }
+.hw-idle__hint { font: 400 var(--t-body)/1.4 var(--mono-font); }
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .hw-idle { display: none; }
+.hw-legend {
+  position: absolute; right: 6px; bottom: 4px;
+  display: none; align-items: center; gap: 5px;
+  padding: 0 4px;
+  background: var(--white);
+  font: 400 var(--t-axis)/13px var(--mono-font); color: var(--ink60);
+  pointer-events: none;
+}
+#mode-rudiments:is([data-state="countin"], [data-state="running"]) .hw-legend { display: flex; }
+.hw-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+.hw-legend .hw-legend__past { opacity: .38; }
+.hw-legend .hw-legend__next { margin-left: 2px; }
+
+/* ------------------------------------------------------------ live tiles */
+.rud-tiles .statbox b .unit { margin-left: 2px; }
+.rud-tiles .statbox em { margin-top: 2px; }
+
+/* ------------------------------------------- short phones (640-700 tall)
+   iPhone SE installed (375 x 647) and 640-tall Androids: count-in panel,
+   monitor and highway step down so the live tiles clear the STOP bar. The
+   "played · coming up" key would sit on the L lane in a 150 px panel, so it
+   is left out there. */
+/* 701-760 px tall: the running highway gives up height as the screen
+   shrinks, so the live tiles (and their shadow) clear STOP */
+@media (max-height: 760px) {
+  #mode-rudiments {
+    --h-highway-run: clamp(150px, calc(100vh - 536px), 220px);
+    --h-highway-run: clamp(150px, calc(100dvh - 536px), 220px);
+  }
+}
+@media (max-height: 700px) {
+  #mode-rudiments { --h-highway-run: 150px; }
+  .rud-countin { height: 88px; }
+  .rud-countin b { font-size: 72px; }
+  .rud-monitor { min-height: 88px; }
+  .rud-monitor #rud-judge-num { font-size: calc(var(--mon-fs, var(--t-monitor)) * .66); }
+  #mode-rudiments:is([data-state="countin"], [data-state="running"]) .hw-legend { display: none; }
+}
+
+/* --------------------------------------------------------- report (5.9) */
+.rud-report { flex-direction: column; gap: var(--s3); }
+.rud-hero .hero__cap { display: block; }
+.rud-hero__num { display: flex; align-items: baseline; gap: 6px; }
+.rud-hero__num b { font: 700 var(--t-hero)/.86 var(--mono-font); letter-spacing: -.03em; white-space: nowrap; }
+.rud-hero__num .unit { margin-left: 0; font-size: 28px; }
+/* HITS / MISSED / EXTRA HITS + "not counted": narrower inner padding below
+   375 px so the label and its sub-line stay whole, on one line each */
+@media (max-width: 374px) {
+  .rud-report .stat-strip .statbox { padding-inline: 6px; }
+  .rud-report .statbox em { white-space: nowrap; }
+}
+@media (max-width: 359px) {
+  .rud-report .stat-strip .statbox { padding-inline: 5px; }
+  .rud-report .statbox em { font-size: var(--t-axis); }
+}
+.rud-accents { font: 400 var(--t-label)/1.35 var(--label-font); letter-spacing: .04em; }
+.rud-accents b { font-weight: 700; letter-spacing: .08em; }
+
+.rud-bystroke { display: flex; flex-direction: column; gap: var(--s2); }
+.rud-bystroke > .sec-head { margin-bottom: var(--s1); }
+.rud-bystroke .sec-head__aside { font-size: var(--t-axis); }
+.bs-row, .bs-axis { display: grid; grid-template-columns: 44px minmax(0, 1fr) 88px; align-items: center; column-gap: var(--s2); }
+.bs-row { height: 22px; }
+.bs-name { display: inline-flex; align-items: center; gap: 6px; font: 700 var(--t-control)/1 var(--label-font); letter-spacing: .04em; }
+.bs-sw { width: 12px; height: 12px; flex: none; }
+.bs-sw.r, .bs-dot.r { background: var(--red); }
+.bs-sw.l, .bs-dot.l { background: var(--blue); }
+.bs-plot { position: relative; height: 22px; }
+.bs-plot > i { position: absolute; top: 0; bottom: 0; }
+.bs-grid { width: 1px; background: var(--rule); }
+.bs-zero { width: 2px; margin-left: -1px; background: var(--ink); z-index: 1; }
+.bs-bar {
+  top: 50% !important; bottom: auto !important;
+  height: 10px; margin-top: -5px;
+  border-left: 2px solid var(--ink); border-right: 2px solid var(--ink);
+  background: linear-gradient(var(--ink), var(--ink)) center / 100% 2px no-repeat;
+  z-index: 2;
+}
+.bs-dot { top: 50% !important; bottom: auto !important; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid var(--ink); z-index: 3; }
+.bs-val { font: 400 var(--t-caption)/1 var(--mono-font); text-align: right; white-space: nowrap; }
+.bs-axis { height: 16px; }
+.bs-axis__plot { grid-column: 2; position: relative; height: 16px; }
+.bs-axis__plot > span {
+  position: absolute; top: 2px;
+  transform: translateX(-50%);
+  font: 400 var(--t-axis)/1 var(--mono-font); color: var(--ink60);
+  white-space: nowrap;
+}
+.bs-axis__unit { grid-column: 3; justify-self: end; font: 400 var(--t-axis)/1 var(--mono-font); color: var(--ink60); }
+.bs-dirs { display: flex; justify-content: space-between; padding: 0 96px 0 52px; }
+.bs-dirs span {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: 700 var(--t-label)/1 var(--label-font); letter-spacing: .08em;
+}
+.bs-dirs .icon { width: 11px; height: 11px; }
+
+.rud-bytempo { display: flex; flex-direction: column; gap: var(--s2); }
+.rud-bytempo ul { margin: 0; padding: 0; list-style: none; font: 400 var(--t-body)/1.6 var(--mono-font); }
+.rud-note { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); }
+.rud-cal { min-height: var(--hit); }
+.rud-foot { font: 400 var(--t-axis)/1.35 var(--mono-font); color: var(--ink60); }
+
+/* Timing's #tm-final still borrows this pre-v3 look; the Timing owner drops it when migrating. */
+.rud-summary {
+  margin: 10px 14px 0; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+  background: #fff; padding: 10px 12px; font: 400 11px var(--mono-font); line-height: 1.6;
+}
+.rud-summary .sub { color: var(--ink60); }
