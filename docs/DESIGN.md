@@ -89,7 +89,7 @@ Class API in `webapp/css/base.css`; helpers in `webapp/js/ui.js`.
 | `.monitor`, `.hero` | The live number and the result number. `monitorSize(str)` picks 120/96/72. |
 | `.live` | Hazard LIVE banner that replaces the header while a run counts in or plays. Only STOP is on screen. |
 | `.summary` | Locked one-line setup summary while running; a button back to setup after a run. |
-| `.toast` | `toast(text, { action, onAction })`. One at a time, 6 s, sits above the bar. UNDO restores the exact previous values. |
+| `.toast` | `toast(text, { action, onAction, keepClear, returnFocus })`. One at a time, 6 s, sits above the bar. While it shows, the screen keeps room under it and `keepClear` (the block just tapped) scrolls out from under it; that room is only given back when doing so cannot move the page. It stays up while keyboard focus is on its action, and if it closes holding focus, focus goes to `returnFocus`. UNDO restores the exact previous values. |
 | `.sheet`, `.scrim` | Settings only. `role="dialog"`, header and main are `inert` while open, Esc closes, focus returns to the gear. |
 | `.meter` | Four-bar mic meter in the header; tap goes to Calibrate. |
 | `.stepper`, `.switch` | A real visible number input between − and +; a `role="switch"` toggle. |
