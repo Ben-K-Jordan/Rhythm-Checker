@@ -303,6 +303,14 @@
    monitor and highway step down so the live tiles clear the STOP bar. The
    "played · coming up" key would sit on the L lane in a 150 px panel, so it
    is left out there. */
+/* 701-760 px tall: the running highway gives up height as the screen
+   shrinks, so the live tiles (and their shadow) clear STOP */
+@media (max-height: 760px) {
+  #mode-rudiments {
+    --h-highway-run: clamp(150px, calc(100vh - 536px), 220px);
+    --h-highway-run: clamp(150px, calc(100dvh - 536px), 220px);
+  }
+}
 @media (max-height: 700px) {
   #mode-rudiments { --h-highway-run: 150px; }
   .rud-countin { height: 88px; }

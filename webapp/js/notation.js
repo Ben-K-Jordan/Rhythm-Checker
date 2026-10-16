@@ -92,9 +92,13 @@ export function rudimentNotationSVG(rud, opts = {}) {
   const beatW = opts.beatW ?? (opts.width
     ? Math.max(minBeatW, Math.min(170, (opts.width - padL - padR) / beats))
     : minBeatW);
-  const width = padL + beats * beatW + padR;
+  // opts.noteX(beat, slot): a caller that stacks noteheads over something
+  // else, even where the notes are not evenly spaced in time, places every
+  // head itself; beams and the tuplet numeral still carry the rhythm
+  const ownX = typeof opts.noteX === 'function' ? opts.noteX : null;
+  const width = ownX && opts.width ? opts.width : padL + beats * beatW + padR;
   const beatX = (b) => padL + b * beatW;
-  const noteX = (b, s) => beatX(b) + (s / grid) * beatW + 6;
+  const noteX = ownX || ((b, s) => beatX(b) + (s / grid) * beatW + 6);
   const stemX = (x) => x - 5.2;
 
   const model = notationModel(rud, { accentOf });
@@ -112,7 +116,8 @@ export function rudimentNotationSVG(rud, opts = {}) {
     }
     const ns = beat.notes.map((n) => ({ ...n, x: noteX(b, n.sib) }));
     if (beat.tuplet) {
-      p.push(`<text x="${beatX(b) + beatW * 0.5}" y="${LY - 27}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--ink60)">${beat.tuplet}</text>`);
+      const tx = ownX ? (ns[0].x + ns[ns.length - 1].x) / 2 : beatX(b) + beatW * 0.5;
+      p.push(`<text x="${tx}" y="${LY - 27}" text-anchor="middle" font-family="var(--mono-font)" font-size="11" fill="var(--ink60)">${beat.tuplet}</text>`);
     }
     for (const n of ns) {
       const { x } = n;

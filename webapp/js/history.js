@@ -220,12 +220,22 @@ function spreadSvg(runs, g, baseSd, sel, endLabel) {
   if (yb !== null) {
     const text = `baseline ${spreadText(baseSd)}`;
     const mid = SP.l + g.pw / 2;
+    const tw = text.length * 6.6;
     const base = placeLabel([
       [SP.l + 4, yb - 5, 'start'], [SP.l + 4, yb + 14, 'start'], [mid, yb - 5, 'middle'], [mid, yb + 14, 'middle'],
       [right - 4, yb - 5, 'end'], [right - 4, yb + 14, 'end'],
-    ].map(([x, y, a]) => (a === 'middle' ? [x - (text.length * 6.6) / 2, y, 'start'] : [x, y, a])),
-    text.length * 6.6, 9, paths, placed, bounds);
-    parts.push(`<text class="sp-base-label" x="${base.c[0].toFixed(1)}" y="${base.c[1].toFixed(1)}" text-anchor="${base.c[2]}">${text}</text>`);
+      [SP.l + 4, yb - 19, 'start'], [SP.l + 4, yb + 28, 'start'], [right - 4, yb - 19, 'end'], [right - 4, yb + 28, 'end'],
+    ].map(([x, y, a]) => (a === 'middle' ? [x - tw / 2, y, 'start'] : [x, y, a])),
+    tw, 9, paths, placed, bounds);
+    if (base.ok) {
+      parts.push(`<text class="sp-base-label" x="${base.c[0].toFixed(1)}" y="${base.c[1].toFixed(1)}" text-anchor="${base.c[2]}">${text}</text>`);
+    } else {
+      // every slot by the hairline crosses the data: key it in the date row
+      // instead (between the first and last date), never over the marks
+      const kx = mid - (tw + 18) / 2, ky = SP.h - 5;
+      parts.push(`<line class="sp-base" x1="${kx.toFixed(1)}" x2="${(kx + 14).toFixed(1)}" y1="${(ky - 4).toFixed(1)}" y2="${(ky - 4).toFixed(1)}"/>`);
+      parts.push(`<text class="sp-base-label" x="${(kx + 18).toFixed(1)}" y="${ky}">${text}</text>`);
+    }
   }
   parts.push(...labels);
   const first = validDate(runs[0]), lastD = validDate(runs[runs.length - 1]);

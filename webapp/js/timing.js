@@ -541,7 +541,15 @@ export class TimingMode {
     const line = `Stopped at ${mmss(at)}. Not saved.`;
     this.showNotice(line);
     this.setState('stopped');
+    this.toTop();
     announce(line);
+  }
+
+  // setup comes back above the chart: start from the top, where the notice is
+  // (left alone, scroll anchoring can carry a slightly scrolled page to its end)
+  toTop() {
+    const main = this.root.closest('main');
+    if (main) main.scrollTop = 0;
   }
 
   onAborted() {
@@ -550,6 +558,7 @@ export class TimingMode {
     this.clearLive();
     this.showNotice('Hold stopped: mic lost. Not saved.');
     this.setState('stopped');
+    this.toTop();
   }
 
   startLoop() {

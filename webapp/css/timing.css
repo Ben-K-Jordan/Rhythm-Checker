@@ -146,7 +146,7 @@
 .tm-plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
 /* near the top of the plot, so the first view at 390 x 763 keeps it clear of the bar */
 .tm-plot__hint {
-  position: absolute; left: 50%; top: var(--s6);
+  position: absolute; left: 50%; top: var(--s2); /* high in the plot: clear of the bar top on 700-760 px tall screens */
   transform: translateX(-50%);
   width: max-content; max-width: 76%;
   padding: 6px 10px;
@@ -221,6 +221,15 @@
    count-in panel and monitor step down, the plot shrinks and the chart's
    title row goes (the plot carries EARLY / LATE, the legend the units), so
    the tiles clear the STOP bar. */
+/* 701-760 px tall (a 360x740 Android, say): the live chart gives up height as
+   the screen shrinks, so the tiles clear STOP at every height down to the
+   700 px step instead of sitting under it */
+@media (max-height: 760px) {
+  #mode-timing:is([data-state="countin"], [data-state="running"]) .tm-plot {
+    height: clamp(120px, calc(100vh - 560px), 200px);
+    height: clamp(120px, calc(100dvh - 560px), 200px);
+  }
+}
 @media (max-height: 700px) {
   .tm-countin { height: 88px; }
   .tm-countin b { font-size: 72px; }

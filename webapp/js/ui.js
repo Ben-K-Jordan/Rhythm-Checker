@@ -240,39 +240,91 @@ function toastEl() {
 // move the page: if the screen is scrolled into it, it stays until the user
 // scrolls back out, so nothing ever jumps on its own when a toast times out.
 const SCROLLERS = 'main, #settings-body';
-let releaseToastSpace = null;
+let spaceHold = null;  // a closed toast's pad that still holds a scroller up
+let current = null;    // { close, ms, refocus } for the toast on screen
+let focusWired = false;
+
+const shown = (sc) => sc.isConnected && sc.getClientRects().length > 0;
+
+// stop watching; `keepClass` when a new toast takes the pad straight over
+function endHold(keepClass) {
+  if (!spaceHold) return;
+  for (const sc of spaceHold.scrollers) sc.removeEventListener('scroll', spaceHold.check);
+  spaceHold = null;
+  if (!keepClass && !document.querySelector('#toast:not(.hidden)')) document.body.classList.remove('has-toast');
+}
+
+// would dropping the pad pull a scroller that is still on screen?
+function padHolds() {
+  return !!spaceHold && spaceHold.scrollers.some((sc, i) => shown(sc) && sc.scrollTop > spaceHold.limits[i]);
+}
 
 function holdToastSpace() {
-  if (releaseToastSpace) releaseToastSpace();
+  endHold(true);
   const body = document.body;
-  const space = parseFloat(getComputedStyle(body).getPropertyValue('--toast-space')) || 0;
-  const scrollers = [...document.querySelectorAll(SCROLLERS)].filter((sc) => sc.getClientRects().length);
-  const clamps = () => scrollers.some((sc) => sc.scrollTop > sc.scrollHeight - sc.clientHeight - space);
-  if (!clamps()) { body.classList.remove('has-toast'); return; }
-  const check = () => { if (!clamps()) releaseToastSpace(); };
-  releaseToastSpace = () => {
-    for (const sc of scrollers) sc.removeEventListener('scroll', check);
-    releaseToastSpace = null;
-    if (!document.querySelector('#toast:not(.hidden)')) body.classList.remove('has-toast');
-  };
+  const scrollers = [...document.querySelectorAll(SCROLLERS)].filter(shown);
+  // how far each could scroll without the pad: measured, not assumed, since
+  // not every screen takes it. scrollTop is restored in the same task, so
+  // nothing is painted in between.
+  const tops = scrollers.map((sc) => sc.scrollTop);
+  body.classList.remove('has-toast');
+  const limits = scrollers.map((sc) => sc.scrollHeight - sc.clientHeight);
+  body.classList.add('has-toast');
+  scrollers.forEach((sc, i) => { sc.scrollTop = tops[i]; });
+  const check = () => { if (!padHolds()) endHold(false); };
+  spaceHold = { scrollers, limits, check };
+  if (!padHolds()) { endHold(false); return; }
   for (const sc of scrollers) sc.addEventListener('scroll', check, { passive: true });
 }
 
-export function toast(text, { action = null, onAction = null, ms = 6000, keepClear = null } = {}) {
+// The shell calls this when a scroller leaves or resets on its own (the
+// settings sheet closing, a screen change): a held pad that no longer holds
+// anything up is dropped.
+export function settleToastSpace() {
+  if (spaceHold && !padHolds()) endHold(false);
+}
+
+// a keyboard user who reaches UNDO keeps the toast for as long as they stay on it
+function wireToastFocus(el) {
+  if (focusWired) return;
+  focusWired = true;
+  el.addEventListener('focusin', () => clearTimeout(toastTimer));
+  el.addEventListener('focusout', (e) => {
+    if (el.contains(e.relatedTarget) || !current || current.ms <= 0) return;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(current.close, current.ms);
+  });
+}
+
+// returnFocus: where keyboard focus goes if the toast closes while holding it
+// (an element, or a function returning one); defaults to keepClear's first control
+export function toast(text, { action = null, onAction = null, ms = 6000, keepClear = null, returnFocus = null } = {}) {
   const el = toastEl();
+  wireToastFocus(el);
   clearTimeout(toastTimer);
-  if (releaseToastSpace) releaseToastSpace();
+  const lost = el.contains(document.activeElement) && current ? current.refocus : null;
+  endHold(true); // this toast takes over any pad still held: nothing moves in between
   el.replaceChildren();
+  if (lost) lost();
   const msg = document.createElement('span');
   msg.className = 'toast__text';
   msg.textContent = text;
   el.appendChild(msg);
+  const refocus = () => {
+    let t = typeof returnFocus === 'function' ? returnFocus() : returnFocus;
+    if (!t && keepClear) t = keepClear.matches('button, [tabindex]') ? keepClear : keepClear.querySelector('button:not(:disabled), [tabindex]');
+    if (t && t.isConnected) t.focus({ preventScroll: true });
+  };
   const close = () => {
     clearTimeout(toastTimer);
+    const hadFocus = el.contains(document.activeElement);
+    if (current && current.close === close) current = null;
     el.classList.add('hidden');
     el.replaceChildren();
     holdToastSpace();
+    if (hadFocus) refocus();
   };
+  current = { close, ms, refocus };
   if (action) {
     const btn = document.createElement('button');
     btn.type = 'button';

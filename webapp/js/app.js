@@ -6,7 +6,7 @@ import { MicEngine } from './audio.js';
 import { selftest } from './dsp.js';
 import { store } from './store.js';
 import { holdToConfirm, levelFrac } from './theme.js';
-import { toast, seg, icon, fmtSigned, nbsp, announce, esc } from './ui.js';
+import { toast, seg, icon, fmtSigned, nbsp, announce, esc, settleToastSpace } from './ui.js';
 import { HomeMode } from './home.js';
 import { TunerMode } from './tuner.js';
 import { TimingMode } from './timing.js';
@@ -120,6 +120,7 @@ function nav(name, { push = true } = {}) {
   shownMode = target;
   if (target && target.activate) target.activate();
   $('main').scrollTop = 0;
+  settleToastSpace(); // a pad held for the old screen's scroll holds nothing up now
   if (push) syncHistory(name);
   landOnScreen();
 }
@@ -308,6 +309,7 @@ function closeSettings({ refocus = true } = {}) {
   $('main').inert = false;
   document.removeEventListener('keydown', onSettingsKey);
   refreshScreens();
+  settleToastSpace(); // the sheet's own scroll is gone with it
   if (refocus) $('#chrome-gear-left').focus();
 }
 
@@ -482,7 +484,8 @@ function renderSettings(focusId = null) {
     holdToConfirm(del, () => {
       const before = structuredClone(store.get('kit'));
       const name = input.value;
-      store.removeDrum(row.dataset.id);
+      const id = row.dataset.id;
+      store.removeDrum(id);
       renderSettings('kit-add');
       refreshScreens();
       toast(`${name} removed`, {
@@ -491,7 +494,12 @@ function renderSettings(focusId = null) {
         action: 'UNDO',
         onAction: () => {
           store.set('kit', before);
-          if (settingsOpen()) renderSettings();
+          if (settingsOpen()) {
+            renderSettings();
+            // the UNDO button went with the toast: put focus on the drum it brought back
+            const back = [...document.querySelectorAll('#settings-body .kit-row')].find((r) => r.dataset.id === id);
+            if (back && (!document.activeElement || document.activeElement === document.body)) back.querySelector('.kit-del').focus();
+          }
           refreshScreens();
         },
       });

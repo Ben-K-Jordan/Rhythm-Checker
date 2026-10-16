@@ -262,6 +262,8 @@ export class HomeMode {
         // the strip the user just tapped stays clear of the toast, so the
         // next tap lands on a card, not on UNDO
         keepClear: this.root.querySelector('.home-feel__seg'),
+        // if the toast times out while focus is on UNDO, focus goes back to the strip
+        returnFocus: () => this.root.querySelector('.home-feel__seg > button.on') || this.root.querySelector('.home-feel__seg > button'),
         action: 'UNDO',
         onAction: () => {
           this.feelToast = null;

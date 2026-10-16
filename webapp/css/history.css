@@ -7,9 +7,11 @@
 /* ------------------------------------------------------------ chart cards */
 .hist-card { display: flex; flex-direction: column; gap: 10px; }
 .hist-caption { min-height: 16px; font: 400 var(--t-caption)/1.35 var(--mono-font); color: var(--ink); }
-/* a run's caption is one line or two: always keep two, so stepping through
-   the points never moves the cards below */
+/* a run's caption is one line or two (three on ALL below 360 px, with a
+   long rudiment name): always keep that room, so stepping through the
+   points never moves the cards below */
 .spread-caption { min-height: calc(2 * 1.35em); }
+@media (max-width: 359px) { .spread-caption { min-height: calc(3 * 1.35em); } }
 
 .spread-plot { position: relative; height: var(--h-trend); cursor: pointer; touch-action: manipulation; }
 .spread-plot svg { display: block; width: 100%; height: var(--h-trend); overflow: visible; }

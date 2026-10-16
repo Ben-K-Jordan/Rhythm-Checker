@@ -33,7 +33,7 @@ const PAIR_BATTER = 'Tap the batter too to see the pair.';
 const refText = (hz) => `Playing ${hzText(hz)}. Tap after it stops.`;
 
 // live monitor sizes (--t-monitor, -4, -5), largest first
-const MONITOR_STEPS = [120, 96, 72];
+const MONITOR_STEPS = [120, 96, 72, 60]; // 60: a 5-glyph sharp reading at 320 px
 
 function median(arr) {
   const s = [...arr].sort((a, b) => a - b);
@@ -855,6 +855,7 @@ export class TunerMode {
     this.render();
     const n = snapshot.hits;
     this.showToast(`${f.label} loaded${SEP}${f.voice}${SEP}${nbsp(n, n === 1 ? 'drum' : 'drums')} retuned${SEP}${nbsp(f.defaultBpm, 'BPM')}`, {
+      returnFocus: () => this.firstShown('.feel-row.on', '#tuner-feel-none', '[data-mode].on'),
       action: 'UNDO',
       onAction: () => {
         restoreFeel(snapshot);
@@ -871,6 +872,7 @@ export class TunerMode {
     store.set('feel', null);
     this.render();
     this.showToast('Feel cleared. Kit targets kept.', {
+      returnFocus: () => this.firstShown('.feel-row.on', '#tuner-feel-none', '[data-mode].on'),
       action: 'UNDO',
       onAction: () => {
         store.set('feel', prev);
@@ -892,6 +894,7 @@ export class TunerMode {
     store.updateDrum(r.drumId, { [key]: r1(hz) });
     this.render();
     this.showToast(`Saved ${hzText(hz)}${SEP}${d.name}\u00a0${head}`, {
+      returnFocus: () => this.firstShown('#tuner-save', '[data-head].on'),
       action: 'UNDO',
       onAction: () => {
         store.updateDrum(r.drumId, { [key]: prev });
@@ -904,11 +907,18 @@ export class TunerMode {
   // the UNDO button vanished with its toast; keep keyboard focus on this screen
   focusAfterUndo(...sels) {
     if (document.activeElement && document.activeElement !== document.body) return;
+    const el = this.firstShown(...sels);
+    if (el) el.focus();
+  }
+
+  // the first of these that is on screen and enabled; in LUGS mode the feel
+  // rows exist but are not shown
+  firstShown(...sels) {
     for (const sel of sels) {
       const el = this.root.querySelector(sel);
-      // skip hidden targets: in LUGS mode the feel rows exist but are not shown
-      if (el && !el.disabled && el.getClientRects().length) { el.focus(); return; }
+      if (el && !el.disabled && el.getClientRects().length) return el;
     }
+    return null;
   }
 
   // toast() keeps one toast on screen; remember which one is ours. `clear` is

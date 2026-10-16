@@ -638,23 +638,32 @@ export class RudimentsMode {
     el.scrollLeft = 0;
   }
 
-  // Staff geometry that stacks each notehead over its sticking puck: the
-  // first puck's centre (in .rud-notation px) and one puck pitch per note.
-  // Only when the whole phrase sits in one puck row and its notes are evenly
-  // spaced in time, as the pucks are; otherwise null (proportional spacing).
+  // Staff geometry that stacks each notehead over its sticking puck, when the
+  // whole phrase sits in one puck row: evenly spaced notes get the first
+  // puck's centre (in .rud-notation px) and one puck pitch per note; uneven
+  // ones get each head's x. Longer phrases return null (proportional spacing).
   notationGrid(rud, host) {
     const rows = this.root.querySelectorAll('#rud-accent-editor .accent-row');
     if (rows.length !== 1 || !host.clientWidth) return null;
-    const slots = rud.notes.map((n) => n.slot);
-    const step = slots.length > 1 ? slots[1] - slots[0] : 0;
-    if (step <= 0 || slots.some((s, i) => i > 0 && s - slots[i - 1] !== step)) return null;
     const first = rows[0].querySelector('.accent-puck');
     if (!first) return null;
     const hr = host.getBoundingClientRect();
-    const pr = first.getBoundingClientRect();
-    const centre = pr.left + pr.width / 2 - (hr.left + host.clientLeft);
+    const centreOf = (el) => { const r = el.getBoundingClientRect(); return r.left + r.width / 2 - (hr.left + host.clientLeft); };
+    const slots = rud.notes.map((n) => n.slot);
+    const step = slots.length > 1 ? slots[1] - slots[0] : 0;
+    if (step <= 0 || slots.some((s, i) => i > 0 && s - slots[i - 1] !== step)) {
+      // not evenly spaced in time (Single Ratamacue): each head over its own
+      // puck; the beams and the tuplet numeral still carry the rhythm
+      const at = new Map();
+      for (const p of rows[0].querySelectorAll('.accent-puck')) {
+        const n = rud.notes[+p.dataset.step];
+        if (n) at.set(n.slot, centreOf(p));
+      }
+      if (at.size !== rud.notes.length) return null;
+      return { noteX: (b, sib) => at.get(b * rud.grid + sib) };
+    }
     const beatW = (rud.grid / step) * PUCK_PITCH;
-    return { padL: centre - HEAD_DX - (slots[0] / rud.grid) * beatW, beatW };
+    return { padL: centreOf(first) - HEAD_DX - (slots[0] / rud.grid) * beatW, beatW };
   }
 
   // how many pucks fit one row of the PATTERN card (null while it is hidden)
