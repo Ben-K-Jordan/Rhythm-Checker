@@ -76,10 +76,13 @@ export class TimingSession extends EventTarget {
     const pocket = this.devs.length
       ? (100 * this.devs.filter((d) => Math.abs(d) <= band).length) / this.devs.length
       : 0;
+    // round once, here: the result shows exactly what History will show
     const result = stats
       ? {
         ...stats,
-        pocketPct: pocket,
+        mean: +stats.mean.toFixed(2),
+        sd: +stats.sd.toFixed(2),
+        pocketPct: +pocket.toFixed(1),
         unaligned: this.hits.length - this.devs.length,
         warning: this.bleed.warning(),
       }

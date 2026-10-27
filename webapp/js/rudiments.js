@@ -1226,6 +1226,9 @@ export class RudimentsMode {
       el.innerHTML = '<div class="card rud-note"><p class="t-body">No hits heard. Check the mic meter, then try a slower tempo.</p></div>';
       return;
     }
+    // round once, here: the report shows exactly what History will show
+    s.mean = +s.mean.toFixed(2);
+    s.sd = +s.sd.toFixed(2);
 
     const rud = this.rudiment;
     const perPhrase = rud.notes.length;
