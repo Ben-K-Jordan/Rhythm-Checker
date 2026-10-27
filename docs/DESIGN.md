@@ -154,8 +154,9 @@ Checked before every UI change ships:
 - Check at 390 × 763 (an installed iPhone) that the primary button is fully visible.
 
 v3 before → after, measured over 18 screen states in Chromium at 390 × 844:
-text under 11 px went from 333 to 0, controls under 44 px from 208 to 0, and
-contrast failures stayed at 0.
+text under 11 px went from 333 to 0, controls under 44 px from 208 to 0, text
+below WCAG AA contrast from 35 to 0, and controls with no accessible name from
+23 to 0.
 
 ## Using the tokens in Figma
 
