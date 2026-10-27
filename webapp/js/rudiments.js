@@ -1393,7 +1393,9 @@ export class RudimentsMode {
       kind: 'rudiment',
       label: `${rud.name} (${this.lead}-lead)`,
       accentDb: this._accentDb,
-      meter: `${this.grooveUsed.meter.label} ${this.grooveUsed.grouping}`,
+      // the grouping only means something when the meter offers a choice (7/8 2+2+3, not 4/4 4)
+      meter: Object.keys(this.grooveUsed.meter.groupings || {}).length > 1
+        ? `${this.grooveUsed.meter.label} ${this.grooveUsed.grouping}` : this.grooveUsed.meter.label,
       bpmStart: segs[0].bpm,
       bpmEnd: segs[segs.length - 1].bpm,
       n: s.n,
