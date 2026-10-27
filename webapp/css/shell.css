@@ -177,11 +177,11 @@ body.has-toast #settings-body { padding-bottom: calc(var(--toast-space) + var(--
 /* sits right of TONIGHT / RUDIMENTS, never over the masthead or a bill */
 .starburst {
   position: absolute;
-  top: -30px;
-  right: -14px;
+  top: -34px;
+  right: -18px;
   z-index: 1;
-  width: 76px;
-  height: 76px;
+  width: 84px;
+  height: 84px;
   pointer-events: none;
 }
 .starburst svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-10deg); }
@@ -192,8 +192,8 @@ body.has-toast #settings-body { padding-bottom: calc(var(--toast-space) + var(--
   align-items: center;
   justify-content: center;
   text-align: center;
-  font: 700 var(--t-label)/1.05 var(--label-font);
-  letter-spacing: .02em;
+  font: 700 12px/1 var(--label-font);
+  letter-spacing: 0;
   color: var(--ink);
   transform: rotate(-9deg);
 }
@@ -283,7 +283,7 @@ body.has-toast #settings-body { padding-bottom: calc(var(--toast-space) + var(--
    stays on screen; below ~600 px tall the poster scrolls the rest */
 @media (max-height: 700px) {
   /* no spare height above the lineup: the burst would climb onto the dateline */
-  .starburst { top: -8px; }
+  .starburst { top: -12px; }
 }
 @media (max-height: 680px) {
   .poster-masthead { font-size: 64px; }

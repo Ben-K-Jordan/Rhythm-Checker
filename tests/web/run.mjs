@@ -327,7 +327,7 @@ check('hist-all-two-series', await page.locator('.sp-legend:not([hidden]) .sp-le
 await nav('calibrate');
 check('cal-two-steps', await page.locator('.num-chip').count() === 2);
 check('cal-trig-mark', await page.locator('#trig-mark').count() === 1);
-check('cal-result-shown', /^[−+-]8 ?MS$/.test((await page.locator('#cal-result').textContent()).trim()),
+check('cal-result-shown', /^[−+-]8 ?ms$/.test((await page.locator('#cal-result').textContent()).trim()),
   `result=${(await page.locator('#cal-result').textContent()).trim()}`);
 // starting the test shows a 3-2-1 countdown before the clicks begin
 await page.click('#cal-go');

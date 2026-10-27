@@ -241,7 +241,7 @@ export class CalibrateMode {
     return `
       <section class="cal-hero${cal === null ? ' is-empty' : ''}" aria-labelledby="cal-hero-cap">
         <p class="hero__cap" id="cal-hero-cap">LATENCY</p>
-        <p class="hero"><b id="cal-result">${cal === null ? '—' : `${correction(cal)}<span class="unit"> MS</span>`}</b></p>
+        <p class="hero"><b id="cal-result">${cal === null ? '—' : `${correction(cal)}<span class="unit">ms</span>`}</b></p>
         ${keep}
         <p id="cal-detail" class="cal-detail${detail ? '' : ' hidden'}">${detail}</p>
       </section>
@@ -566,7 +566,11 @@ export class CalibrateMode {
       pulse.classList.toggle('lit', idx < CLICKS && rel - idx * CLICK_S < FLASH_S);
       if (idx < IGNORE_FIRST) this.setPhase('FIND THE BEAT');
       else if (idx >= CLICKS) this.setPhase('DONE');
-      else this.setPhase('HIT EACH CLICK', ` · ${CLICKS - idx} TO GO`);
+      else {
+        // the current click stops counting once it has been hit, so this agrees with the dots
+        const togo = CLICKS - idx - (this.taps.some((t) => t.index === idx) ? 1 : 0);
+        this.setPhase('HIT EACH CLICK', ` · ${togo} TO GO`);
+      }
     }
     this._pulseRaf = requestAnimationFrame(() => this._pulse());
   }

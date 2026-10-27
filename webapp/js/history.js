@@ -389,7 +389,7 @@ export class HistoryMode {
     const week = runs.filter((r) => (now - time(r)) < 7 * 86400000).length;
     const tile = (v, label) => `<div class="statbox${runs.length ? '' : ' is-empty'}"><b>${runs.length ? v : '—'}</b><span>${label}</span></div>`;
     this.root.querySelector('.hist-stats').innerHTML = tile(runs.length, 'RUNS')
-      + tile(streakDays(runs), 'DAYS IN A ROW') + tile(week, 'LAST 7 DAYS');
+      + tile(streakDays(runs), streakDays(runs) === 1 ? 'DAY IN A ROW' : 'DAYS IN A ROW') + tile(week, 'LAST 7 DAYS');
 
     const body = this.root.querySelector('.hist-body');
     if (this.ro) { this.ro.disconnect(); this.ro = null; }

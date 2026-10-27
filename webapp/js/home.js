@@ -129,7 +129,7 @@ export class HomeMode {
 
         <div class="stat-strip home-stats${runs.length ? '' : ' hidden'}">
           <div class="statbox"><b>${runs.length}</b><span>RUNS</span></div>
-          <div class="statbox"><b>${streakDays(runs)}</b><span>DAYS IN A ROW</span></div>
+          <div class="statbox"><b>${streakDays(runs)}</b><span>${streakDays(runs) === 1 ? 'DAY' : 'DAYS'} IN A ROW</span></div>
           <div class="statbox${lastSpread ? '' : ' is-empty'}${lastSpread && lastSpread.length >= 5 ? ' statbox--long' : ''}">
             <b>${lastSpread ? `${lastSpread}<i class="unit">${NBSP}ms</i>` : '—'}</b><span>LAST SPREAD</span>
           </div>

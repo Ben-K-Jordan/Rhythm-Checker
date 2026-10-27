@@ -18,7 +18,7 @@
   background: var(--amber); color: var(--ink);
   clip-path: var(--star);
 }
-.home-burst__fill b { font: 400 var(--t-label)/1.05 var(--display-font); letter-spacing: .02em; }
+.home-burst__fill b { font: 400 12px/1 var(--display-font); letter-spacing: 0; }
 .home-burst.is-off { visibility: hidden; }
 
 /* ------------------------------------------------------------ first run */
